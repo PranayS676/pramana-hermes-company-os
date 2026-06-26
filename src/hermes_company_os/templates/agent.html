@@ -41,6 +41,38 @@
         </div>
         <div class="panel wide">
           <div class="panel-header">
+            <div>
+              <h2>Agent Work Queue</h2>
+              <p class="panel-kicker">Current commitments, blockers, and review handoffs.</p>
+            </div>
+            <a href="/queue?owner_agent_id={{ agent.id }}">Open</a>
+          </div>
+          <div class="queue-strip compact">
+            {% for item in agent_work_items %}
+            <a class="queue-strip-row" href="/queue?owner_agent_id={{ agent.id }}">
+              <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+              <div>
+                <strong>{{ item.title }}</strong>
+                <small>
+                  {{ item.priority }}
+                  {% if item.project_id %} - {{ item.project_name }}{% endif %}
+                  {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
+                </small>
+                {% if item.status == "blocked" %}
+                <p>{{ item.blocked_reason }}</p>
+                {% endif %}
+              </div>
+              {% if item.founder_action_required %}
+              <span class="status-pill urgent">founder</span>
+              {% endif %}
+            </a>
+            {% else %}
+            <p class="empty-state">This agent has no queued work.</p>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel wide">
+          <div class="panel-header">
             <h2>Profile Exports</h2>
           </div>
           <div class="command-list">

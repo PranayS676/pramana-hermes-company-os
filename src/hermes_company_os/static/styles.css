@@ -628,6 +628,7 @@ textarea {
 .status-pill.ready,
 .status-pill.completed,
 .status-pill.approved,
+.status-pill.done,
 .status-pill.verified,
 .readiness-card.ready .status-pill,
 .readiness-card.configured .status-pill {
@@ -659,6 +660,8 @@ textarea {
 .status-pill.urgent,
 .status-pill.high,
 .status-pill.current,
+.status-pill.running,
+.status-pill.needs_review,
 .status-pill.deferred,
 .readiness-card.deferred .status-pill {
   background: #f3e7c7;
@@ -667,6 +670,7 @@ textarea {
 
 .status-pill.medium,
 .status-pill.planned,
+.status-pill.assigned,
 .status-pill.draft,
 .status-pill.planning {
   background: var(--blue-soft);
@@ -739,6 +743,181 @@ textarea {
   margin: 6px 0 8px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.queue-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.36fr) minmax(0, 0.64fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.queue-summary-grid {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.queue-controls {
+  position: sticky;
+  top: 18px;
+}
+
+.queue-policy-callout {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #d6e4df;
+  background: #eef7f4;
+  color: var(--accent-strong);
+}
+
+.queue-policy-callout p {
+  margin: 0;
+  color: #355e58;
+  line-height: 1.45;
+}
+
+.compact-panel-header {
+  margin-top: 16px;
+}
+
+.queue-row-list,
+.queue-strip {
+  display: grid;
+  gap: 10px;
+}
+
+.queue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: #fbfcfb;
+  min-width: 0;
+}
+
+.queue-row.blocked {
+  border-color: #dfaaa7;
+  background: #fff8f7;
+}
+
+.queue-row.needs_review {
+  border-color: #dcc57f;
+  background: #fffaf0;
+}
+
+.queue-row-main,
+.queue-row-main > *,
+.queue-update-form,
+.queue-update-form > * {
+  min-width: 0;
+}
+
+.queue-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.queue-title-line strong,
+.queue-strip-row strong {
+  overflow-wrap: anywhere;
+}
+
+.queue-row-main p {
+  margin: 10px 0;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.queue-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.queue-meta-grid span {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.queue-meta-grid strong {
+  color: var(--ink);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.queue-blocker {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e3b3b0;
+  background: #fff3f2;
+}
+
+.queue-blocker span,
+.queue-blocker small {
+  color: #7f3633;
+  overflow-wrap: anywhere;
+}
+
+.queue-update-form {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-label input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
+.queue-strip-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #fbfcfb;
+  color: inherit;
+  text-decoration: none;
+}
+
+.queue-strip-row:hover {
+  border-color: var(--accent);
+}
+
+.queue-strip-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.queue-strip-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 code {
@@ -1516,6 +1695,8 @@ summary {
   .metric-grid,
   .activation-overview,
   .readiness-grid,
+  .queue-layout,
+  .queue-summary-grid,
   .workspace-summary,
   .project-workspace-grid,
   .wizard-layout,
@@ -1561,8 +1742,14 @@ summary {
     .review-contract-grid,
     .quality-check-row,
     .revision-form,
-    .project-decision-strip {
+    .project-decision-strip,
+    .queue-row,
+    .queue-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .queue-controls {
+    position: static;
   }
 
   .stage-decision-summary .summary-span {
@@ -1608,6 +1795,10 @@ summary {
 
   .polished-project-row {
     grid-template-columns: minmax(0, 1fr) 24px;
+  }
+
+  .queue-strip-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .polished-project-row .status-pill {

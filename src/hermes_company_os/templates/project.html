@@ -61,6 +61,7 @@
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
 {% set founder_decision_items = founder_decisions|default([], true) %}
+{% set queue_items = agent_work_items|default([], true) %}
 {% set intake = project.intake|default({}, true) %}
 
 <!doctype html>
@@ -118,6 +119,26 @@
         <a class="secondary-button link-button-muted" href="/decisions?project_id={{ project.id }}">
           <i data-lucide="gavel"></i>
           Open project decisions
+        </a>
+      </section>
+
+      <section class="project-decision-strip project-queue-strip" aria-label="Project agent work queue">
+        <div>
+          <span class="status-pill {% if queue_items %}planned{% else %}ready{% endif %}">
+            {{ queue_items|length }} queue items
+          </span>
+          <strong>Project agent queue</strong>
+          <small>
+            {% if queue_items %}
+            Stage work is tracked by owner, review state, blockers, and founder handoff.
+            {% else %}
+            No queue items are linked to this project yet.
+            {% endif %}
+          </small>
+        </div>
+        <a class="secondary-button link-button-muted" href="/queue?project_id={{ project.id }}">
+          <i data-lucide="list-checks"></i>
+          Open project queue
         </a>
       </section>
 
@@ -394,6 +415,38 @@
               </div>
               {% else %}
               <p class="empty-state">No workflow items have been generated yet.</p>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Agent Work Queue</h2>
+                <p class="panel-kicker">Read-first operating queue linked to wizard stages.</p>
+              </div>
+              <a href="/queue?project_id={{ project.id }}">Open</a>
+            </div>
+            <div class="queue-strip compact">
+              {% for item in queue_items %}
+              <a class="queue-strip-row" href="/queue?project_id={{ project.id }}&owner_agent_id={{ item.owner_agent_id }}">
+                <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>
+                    {{ item.owner_name }} - {{ item.priority }}
+                    {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
+                  </small>
+                  {% if item.status == "blocked" %}
+                  <p>{{ item.blocked_reason }}</p>
+                  {% endif %}
+                </div>
+                {% if item.founder_action_required %}
+                <span class="status-pill urgent">founder</span>
+                {% endif %}
+              </a>
+              {% else %}
+              <p class="empty-state">No agent work items have been created for this project.</p>
               {% endfor %}
             </div>
           </section>

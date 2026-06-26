@@ -22,6 +22,7 @@
           <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
           <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
           <a href="/decisions"><i data-lucide="gavel"></i> Decisions</a>
+          <a href="/queue"><i data-lucide="list-checks"></i> Queue</a>
           <a href="#agents"><i data-lucide="users-round"></i> Agents</a>
           <a href="#standups"><i data-lucide="calendar-clock"></i> Standups</a>
           <a href="#runs"><i data-lucide="activity"></i> Runs</a>
@@ -64,6 +65,10 @@
           <div class="metric">
             <span>{{ founder_actions.founder_decisions.open }}</span>
             <small>open decisions</small>
+          </div>
+          <div class="metric">
+            <span>{{ agent_work_summary.open }}</span>
+            <small>open queue items</small>
           </div>
         </section>
 
@@ -223,6 +228,45 @@
                 <p class="empty-state">No founder decisions yet.</p>
                 {% endfor %}
               </div>
+            </div>
+          </div>
+
+          <div class="panel full" id="agent-work-queue">
+            <div class="panel-header">
+              <div>
+                <h2>Agent Work Queue</h2>
+                <p class="panel-kicker">Chief of Staff triage. Dashboard state is the source of truth.</p>
+              </div>
+              <span class="panel-header-actions">
+                <a href="/queue">Open queue</a>
+              </span>
+            </div>
+            <section class="notice-band compact">
+              <strong>{{ agent_work_summary.blocked }} blocked</strong>
+              <span>
+                {{ agent_work_summary.needs_review }} needs review.
+                {{ agent_work_summary.founder_required }} waiting on founder action.
+              </span>
+            </section>
+            <div class="queue-strip">
+              {% for item in agent_work_items %}
+              <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
+                <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>
+                    {{ item.owner_name }}
+                    {% if item.project_id %} - {{ item.project_name }}{% endif %}
+                    {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
+                  </small>
+                </div>
+                {% if item.founder_action_required %}
+                <span class="status-pill urgent">founder</span>
+                {% endif %}
+              </a>
+              {% else %}
+              <p class="empty-state">No agent work items yet. Product Wizard projects will sync read-first queue items after creation.</p>
+              {% endfor %}
             </div>
           </div>
 

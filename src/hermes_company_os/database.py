@@ -18,6 +18,34 @@ from hermes_company_os.seeds import (
     DEFAULT_WORKFLOW_TEMPLATES,
 )
 
+AGENT_WORK_ITEMS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS agent_work_items (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+    created_by_agent_id TEXT REFERENCES agents(id),
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    stage_id TEXT,
+    artifact_id TEXT,
+    decision_id TEXT REFERENCES founder_decisions(id),
+    task_id TEXT REFERENCES tasks(id),
+    document_id TEXT REFERENCES documents(id),
+    source TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    blocked_reason TEXT NOT NULL DEFAULT '',
+    blocked_owner TEXT NOT NULL DEFAULT '',
+    founder_action_required INTEGER NOT NULL DEFAULT 0,
+    external_handoff_status TEXT NOT NULL DEFAULT 'dashboard_source_of_truth',
+    slack_channel TEXT NOT NULL DEFAULT '',
+    telegram_policy TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -321,11 +349,13 @@ def initialize_database(database_path: Path) -> None:
             );
             """
         )
+        connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
 
 def ensure_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

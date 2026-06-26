@@ -24,6 +24,12 @@ from hermes_company_os.activation_runner import (
     activation_runner_powershell,
 )
 from hermes_company_os.activation_sequence import activation_sequence_markdown
+from hermes_company_os.agent_work_queue import (
+    QUEUE_PRIORITIES,
+    QUEUE_PRIORITY_LABELS,
+    QUEUE_STATE_LABELS,
+    QUEUE_STATES,
+)
 from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
 from hermes_company_os.company_launch_drill import (
     company_launch_drill_json,
@@ -778,6 +784,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profile_acceptance_checks = repository.list_profile_acceptance_checks()
         profile_installation_checks = repository.list_profile_installation_checks()
         founder_decisions = repository.list_founder_decisions()
+        agent_work_items = repository.list_agent_work_items(limit=6, include_done=False)
+        agent_work_summary = repository.agent_work_queue_summary()
         runtime_checks = [
             asdict(check)
             for check in runtime_preflight_checks(
@@ -809,6 +817,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "runs": repository.list_runs(),
                 "projects": repository.list_projects(),
                 "founder_decisions": founder_decisions,
+                "agent_work_items": agent_work_items,
+                "agent_work_summary": agent_work_summary,
                 "founder_actions": founder_next_actions_payload(
                     activation_checks=checks,
                     setup_inputs=setup_inputs,
@@ -3749,6 +3759,129 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 repository.update_integration_status("llm-provider", "configured")
         return RedirectResponse("/setup#profile-smoke", status_code=303)
 
+    @app.get("/queue")
+    def agent_work_queue(
+        request: Request,
+        status: str = "",
+        project_id: str = "",
+        owner_agent_id: str = "",
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        try:
+            items = repository.list_agent_work_items(
+                project_id=project_id,
+                owner_agent_id=owner_agent_id,
+                status=status,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(
+            request,
+            "queue.html",
+            {
+                "items": items,
+                "summary": repository.agent_work_queue_summary(),
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "states": QUEUE_STATES,
+                "state_labels": QUEUE_STATE_LABELS,
+                "priorities": QUEUE_PRIORITIES,
+                "priority_labels": QUEUE_PRIORITY_LABELS,
+                "filters": {
+                    "status": status,
+                    "project_id": project_id,
+                    "owner_agent_id": owner_agent_id,
+                },
+            },
+        )
+
+    @app.post("/queue")
+    def create_agent_work_item(
+        request: Request,
+        title: str = Form(...),
+        owner_agent_id: str = Form("chief-of-staff"),
+        status: str = Form("planned"),
+        priority: str = Form("medium"),
+        project_id: str = Form(""),
+        summary: str = Form(""),
+        blocked_reason: str = Form(""),
+        blocked_owner: str = Form(""),
+        founder_action_required: str = Form(""),
+        return_to: str = Form("/queue"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        reject_secret_values(
+            {
+                "title": title,
+                "owner_agent_id": owner_agent_id,
+                "status": status,
+                "priority": priority,
+                "project_id": project_id,
+                "summary": summary,
+                "blocked_reason": blocked_reason,
+                "blocked_owner": blocked_owner,
+            }
+        )
+        try:
+            repository.create_agent_work_item(
+                title=title,
+                owner_agent_id=owner_agent_id,
+                summary=summary,
+                status=status,
+                priority=priority,
+                project_id=project_id or None,
+                blocked_reason=blocked_reason,
+                blocked_owner=blocked_owner,
+                founder_action_required=form_checkbox_checked(founder_action_required),
+                source="manual",
+                external_handoff_status="dashboard_source_of_truth",
+                slack_channel="#decisions",
+                telegram_policy="Telegram only if this blocks founder progress.",
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
+
+    @app.post("/queue/{work_item_id}")
+    def update_agent_work_item(
+        request: Request,
+        work_item_id: str,
+        status: str = Form(...),
+        priority: str = Form(""),
+        owner_agent_id: str = Form(""),
+        blocked_reason: str = Form(""),
+        blocked_owner: str = Form(""),
+        founder_action_required: str = Form(""),
+        founder_confirmed: str = Form(""),
+        return_to: str = Form("/queue"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_agent_work_item(work_item_id) is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        reject_secret_values(
+            {
+                "status": status,
+                "priority": priority,
+                "owner_agent_id": owner_agent_id,
+                "blocked_reason": blocked_reason,
+                "blocked_owner": blocked_owner,
+            }
+        )
+        try:
+            repository.update_agent_work_item(
+                work_item_id,
+                status=status,
+                priority=priority or None,
+                owner_agent_id=owner_agent_id or None,
+                blocked_reason=blocked_reason,
+                blocked_owner=blocked_owner,
+                founder_action_required=form_checkbox_checked(founder_action_required),
+                founder_confirmed=form_checkbox_checked(founder_confirmed),
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
+
     @app.get("/decisions")
     def founder_decision_inbox(
         request: Request,
@@ -4029,6 +4162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 name=name.strip(),
                 founder_idea=founder_idea.strip(),
             )
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.get("/projects/{project_id}")
@@ -4100,6 +4234,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     project_id=project_id,
                     limit=6,
                 ),
+                "agent_work_items": repository.list_agent_work_items(
+                    project_id=project_id,
+                    limit=8,
+                ),
             },
         )
 
@@ -4137,6 +4275,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 artifact_id=artifact_id,
                 artifact=artifact,
             )
+            repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
@@ -4185,6 +4324,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 artifact_id=artifact_id,
                 artifact=artifact,
             )
+            repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
@@ -4209,6 +4349,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if resolved_stage_id == "tasks":
                 repository.ensure_project_workflow_items(project_id)
+            repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
@@ -4282,6 +4423,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 decision=revision_note,
                 founder_confirmed=True,
             )
+            repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
@@ -4332,6 +4474,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "agent": agent,
                 "live_run_blocker": profile_live_run_blocker(repository, agent_id),
+                "agent_work_items": repository.list_agent_work_items(
+                    owner_agent_id=agent_id,
+                    limit=8,
+                    include_done=False,
+                ),
                 "settings": request.app.state.settings,
             },
         )
