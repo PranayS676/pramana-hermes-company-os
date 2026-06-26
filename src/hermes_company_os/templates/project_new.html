@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New Product Wizard - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Company kickoff</small>
+          </div>
+        </div>
+        <nav>
+          <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a class="active" href="/projects"><i data-lucide="rocket"></i> Projects</a>
+        </nav>
+      </aside>
+
+      <main class="content wizard-page">
+        <a class="back-link" href="/projects"><i data-lucide="arrow-left"></i> Projects</a>
+
+        <section class="wizard-shell">
+          <header class="wizard-header">
+            <div>
+              <p class="eyebrow">New product wizard</p>
+              <h1>Stage the product bet</h1>
+              <p class="page-subtitle">
+                Capture enough context for Hermes to produce the first staged workflow.
+              </p>
+            </div>
+            <a class="secondary-button link-button-muted" href="/setup/idea-intake.md">
+              <i data-lucide="clipboard-list"></i> Idea intake
+            </a>
+          </header>
+
+          <div class="wizard-layout">
+            <nav class="wizard-stepper" aria-label="Wizard stages">
+              <button class="wizard-step-trigger active" type="button" data-step-target="basics">
+                <i data-lucide="badge-info"></i>
+                <span>Basics</span>
+              </button>
+              <button class="wizard-step-trigger" type="button" data-step-target="audience">
+                <i data-lucide="users"></i>
+                <span>Audience</span>
+              </button>
+              <button class="wizard-step-trigger" type="button" data-step-target="constraints">
+                <i data-lucide="sliders-horizontal"></i>
+                <span>Constraints</span>
+              </button>
+              <button class="wizard-step-trigger" type="button" data-step-target="review">
+                <i data-lucide="check-check"></i>
+                <span>Review</span>
+              </button>
+            </nav>
+
+            <form class="wizard-form" method="post" action="/projects">
+              <input type="hidden" name="wizard_version" value="product-wizard-v1">
+
+              <section class="wizard-step-panel active" data-step-panel="basics">
+                <div class="panel-header">
+                  <div>
+                    <h2>Basics</h2>
+                    <p class="panel-kicker">Name, category, and the raw founder idea.</p>
+                  </div>
+                  <i data-lucide="badge-info"></i>
+                </div>
+                <div class="wizard-field-grid">
+                  <label>
+                    Project name
+                    <input name="name" required placeholder="Pramana research workspace">
+                  </label>
+                  <label>
+                    Product category
+                    <select name="product_category">
+                      <option value="saas">SaaS workflow</option>
+                      <option value="agentic_automation">Agentic automation</option>
+                      <option value="data_product">Data product</option>
+                      <option value="marketplace">Marketplace</option>
+                      <option value="internal_tool">Internal tool</option>
+                    </select>
+                  </label>
+                  <label class="form-span">
+                    Founder idea
+                    <textarea
+                      name="founder_idea"
+                      rows="8"
+                      required
+                      placeholder="Describe the product, customer, workflow, and intended outcome."
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="wizard-actions">
+                  <span></span>
+                  <button class="primary-button" type="button" data-next-step="audience">
+                    Audience <i data-lucide="arrow-right"></i>
+                  </button>
+                </div>
+              </section>
+
+              <section class="wizard-step-panel" data-step-panel="audience">
+                <div class="panel-header">
+                  <div>
+                    <h2>Audience And Problem</h2>
+                    <p class="panel-kicker">Who feels the pain and what changes for them.</p>
+                  </div>
+                  <i data-lucide="users"></i>
+                </div>
+                <div class="wizard-field-grid">
+                  <label>
+                    Target audience
+                    <input name="target_audience" placeholder="Busy legal research teams">
+                  </label>
+                  <label>
+                    Current alternative
+                    <input name="current_alternative" placeholder="Manual review, generic search, spreadsheets">
+                  </label>
+                  <label class="form-span">
+                    Problem statement
+                    <textarea
+                      name="problem_statement"
+                      rows="6"
+                      placeholder="Describe the costly, repeated, or risky job the product should improve."
+                    ></textarea>
+                  </label>
+                  <label class="form-span">
+                    Desired outcome
+                    <textarea
+                      name="desired_outcome"
+                      rows="5"
+                      placeholder="Describe the user-visible result that would make the product worth adopting."
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="wizard-actions">
+                  <button class="secondary-button" type="button" data-next-step="basics">
+                    <i data-lucide="arrow-left"></i> Basics
+                  </button>
+                  <button class="primary-button" type="button" data-next-step="constraints">
+                    Constraints <i data-lucide="arrow-right"></i>
+                  </button>
+                </div>
+              </section>
+
+              <section class="wizard-step-panel" data-step-panel="constraints">
+                <div class="panel-header">
+                  <div>
+                    <h2>Constraints</h2>
+                    <p class="panel-kicker">Scope, launch tier, risk, and quality expectations.</p>
+                  </div>
+                  <i data-lucide="sliders-horizontal"></i>
+                </div>
+                <div class="wizard-field-grid">
+                  <label>
+                    Launch tier
+                    <select name="launch_tier">
+                      <option value="t0_internal">T0 internal experiment</option>
+                      <option value="t1_private">T1 private alpha</option>
+                      <option value="t2_beta">T2 public beta</option>
+                      <option value="t3_ga">T3 general availability</option>
+                    </select>
+                  </label>
+                  <label>
+                    Deadline pressure
+                    <select name="deadline_pressure">
+                      <option value="normal">Normal</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="fixed_date">Fixed date</option>
+                    </select>
+                  </label>
+                  <label class="form-span">
+                    Constraints
+                    <textarea
+                      name="constraints"
+                      rows="5"
+                      placeholder="Budget, platform, compliance, integration, migration, or operational limits."
+                    ></textarea>
+                  </label>
+                  <label>
+                    Non-goals
+                    <textarea
+                      name="non_goals"
+                      rows="5"
+                      placeholder="What should Hermes avoid building now?"
+                    ></textarea>
+                  </label>
+                  <label>
+                    Success metrics
+                    <textarea
+                      name="success_metrics"
+                      rows="5"
+                      placeholder="Adoption, activation, accuracy, latency, cost, or quality targets."
+                    ></textarea>
+                  </label>
+                </div>
+                <div class="wizard-actions">
+                  <button class="secondary-button" type="button" data-next-step="audience">
+                    <i data-lucide="arrow-left"></i> Audience
+                  </button>
+                  <button class="primary-button" type="button" data-next-step="review">
+                    Review <i data-lucide="arrow-right"></i>
+                  </button>
+                </div>
+              </section>
+
+              <section class="wizard-step-panel" data-step-panel="review">
+                <div class="panel-header">
+                  <div>
+                    <h2>Review</h2>
+                    <p class="panel-kicker">Create the staged Hermes workflow.</p>
+                  </div>
+                  <i data-lucide="check-check"></i>
+                </div>
+                <div class="review-grid">
+                  <div>
+                    <span class="review-label">Workflow stages</span>
+                    <strong>Research -> PRD -> Architecture -> Tasks -> Code plan -> Acceptance</strong>
+                  </div>
+                  <div>
+                    <span class="review-label">Kanban gate</span>
+                    <strong>Requires approved task stage</strong>
+                  </div>
+                  <div>
+                    <span class="review-label">Founder decision</span>
+                    <strong>Required before external-facing risk</strong>
+                  </div>
+                </div>
+                <div class="artifact-preview">
+                  <span class="review-label">Generated workflow contract</span>
+                  <p>
+                    Hermes creates the local product workflow first. Generation,
+                    approval, revision, and Kanban push proceed one stage at a time.
+                  </p>
+                </div>
+                <div class="wizard-actions">
+                  <button class="secondary-button" type="button" data-next-step="constraints">
+                    <i data-lucide="arrow-left"></i> Constraints
+                  </button>
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="rocket"></i> Create product workflow
+                  </button>
+                </div>
+              </section>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const triggers = document.querySelectorAll("[data-step-target]");
+      const panels = document.querySelectorAll("[data-step-panel]");
+
+      function activateWizardStep(step) {
+        triggers.forEach((trigger) => {
+          trigger.classList.toggle("active", trigger.dataset.stepTarget === step);
+        });
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.stepPanel === step);
+        });
+      }
+
+      triggers.forEach((trigger) => {
+        trigger.addEventListener("click", () => activateWizardStep(trigger.dataset.stepTarget));
+      });
+      document.querySelectorAll("[data-next-step]").forEach((button) => {
+        button.addEventListener("click", () => activateWizardStep(button.dataset.nextStep));
+      });
+      document.querySelector(".wizard-form").addEventListener("invalid", (event) => {
+        const panel = event.target.closest("[data-step-panel]");
+        if (panel) {
+          activateWizardStep(panel.dataset.stepPanel);
+        }
+      }, true);
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

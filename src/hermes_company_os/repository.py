@@ -7,10 +7,35 @@ from pathlib import Path
 from uuid import uuid4
 
 from hermes_company_os.database import connect, decode_capabilities, decode_many
+from hermes_company_os.secret_guard import assert_no_secret_values
 
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def serialize_wizard_json_content(json_content: dict | list | str | None) -> str:
+    if json_content is None:
+        return ""
+    if isinstance(json_content, str):
+        if not json_content.strip():
+            return ""
+        return json.dumps(json.loads(json_content), sort_keys=True)
+    return json.dumps(json_content, sort_keys=True)
+
+
+def decode_project(row: sqlite3.Row) -> dict:
+    project = dict(row)
+    raw_intake = project.get("intake_json", "").strip()
+    project["intake"] = json.loads(raw_intake) if raw_intake else {}
+    return project
+
+
+def decode_wizard_artifact(row: sqlite3.Row) -> dict:
+    artifact = dict(row)
+    raw_json = artifact["json_content"].strip()
+    artifact["json"] = json.loads(raw_json) if raw_json else {}
+    return artifact
 
 
 class CompanyRepository:
@@ -937,6 +962,22 @@ class CompanyRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_product_wizard_stage_definitions(self) -> list[dict]:
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT product_wizard_stage_definitions.*,
+                       agents.name AS owner_name,
+                       agents.hermes_command AS owner_command
+                FROM product_wizard_stage_definitions
+                JOIN agents
+                    ON agents.id = product_wizard_stage_definitions.owner_agent_id
+                ORDER BY product_wizard_stage_definitions.sort_order,
+                         product_wizard_stage_definitions.id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def list_projects(self) -> list[dict]:
         with connect(self.database_path) as connection:
             rows = connection.execute(
@@ -958,7 +999,7 @@ class CompanyRepository:
                 "SELECT * FROM company_projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
-        return dict(row) if row else None
+        return decode_project(row) if row else None
 
     def list_project_workflow_items(self, project_id: str) -> list[dict]:
         with connect(self.database_path) as connection:
@@ -1065,3 +1106,515 @@ class CompanyRepository:
                     ),
                 )
         return project_id
+
+    def create_structured_project(
+        self,
+        name: str,
+        founder_idea: str,
+        intake: dict | None = None,
+    ) -> str:
+        project_id = f"proj-{uuid4().hex[:10]}"
+        now = utc_now()
+        intake_text = serialize_wizard_json_content(intake or {})
+        assert_no_secret_values(
+            {
+                "name": name,
+                "founder_idea": founder_idea,
+                "intake": intake_text,
+            }
+        )
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO company_projects (
+                    id, name, founder_idea, intake_json, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    name.strip(),
+                    founder_idea.strip(),
+                    intake_text,
+                    "wizard_active",
+                    now,
+                    now,
+                ),
+            )
+            definitions = connection.execute(
+                """
+                SELECT *
+                FROM product_wizard_stage_definitions
+                ORDER BY sort_order, id
+                """
+            ).fetchall()
+            for index, definition in enumerate(definitions):
+                connection.execute(
+                    """
+                    INSERT INTO product_wizard_project_stages (
+                        id, project_id, stage_id, owner_agent_id, status,
+                        revision_notes, created_at, updated_at, started_at,
+                        completed_at, approved_at, revision_requested_at, blocked_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"wiz-stage-{uuid4().hex[:10]}",
+                        project_id,
+                        definition["id"],
+                        definition["owner_agent_id"],
+                        "ready" if index == 0 else "waiting",
+                        "",
+                        now,
+                        now,
+                        now if index == 0 else None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                )
+        return project_id
+
+    def ensure_project_workflow_items(self, project_id: str) -> int:
+        project = self.get_project(project_id)
+        if project is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        with connect(self.database_path) as connection:
+            existing = connection.execute(
+                "SELECT COUNT(*) AS item_count FROM project_workflow_items WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            if existing["item_count"]:
+                return 0
+
+            now = utc_now()
+            templates = connection.execute(
+                "SELECT * FROM workflow_templates ORDER BY sort_order, name"
+            ).fetchall()
+            for template in templates:
+                title = template["title_template"].format(
+                    project_name=project["name"],
+                    idea=project["founder_idea"],
+                )
+                prompt = template["prompt_template"].format(
+                    project_name=project["name"],
+                    idea=project["founder_idea"],
+                )
+                task_id = f"task-{uuid4().hex[:10]}"
+                document_id = f"doc-{uuid4().hex[:10]}"
+                workflow_item_id = f"wf-{uuid4().hex[:10]}"
+                connection.execute(
+                    """
+                    INSERT INTO tasks (
+                        id, title, owner_agent_id, kanban_task_id, status, priority,
+                        summary, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id,
+                        title,
+                        template["owner_agent_id"],
+                        None,
+                        "planned",
+                        template["priority"],
+                        prompt,
+                        now,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO documents (
+                        id, title, doc_type, owner_agent_id, status, body,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        document_id,
+                        title,
+                        template["doc_type"],
+                        template["owner_agent_id"],
+                        "draft",
+                        prompt,
+                        now,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO project_workflow_items (
+                        id, project_id, template_id, owner_agent_id, task_id,
+                        document_id, title, status, sort_order, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        workflow_item_id,
+                        project_id,
+                        template["id"],
+                        template["owner_agent_id"],
+                        task_id,
+                        document_id,
+                        title,
+                        "planned",
+                        template["sort_order"],
+                        now,
+                        now,
+                    ),
+                )
+            connection.execute(
+                """
+                UPDATE company_projects
+                SET updated_at = ?
+                WHERE id = ?
+                """,
+                (now, project_id),
+            )
+        return len(templates)
+
+    def list_project_wizard_stages(self, project_id: str) -> list[dict]:
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT stages.*,
+                       definitions.name,
+                       definitions.description,
+                       definitions.sort_order,
+                       definitions.artifact_type,
+                       agents.name AS owner_name,
+                       agents.hermes_command AS owner_command,
+                       latest.id AS latest_artifact_id,
+                       latest.version AS latest_artifact_version,
+                       latest.status AS latest_artifact_status,
+                       latest.created_at AS latest_artifact_created_at,
+                       latest.approved_at AS latest_artifact_approved_at
+                FROM product_wizard_project_stages AS stages
+                JOIN product_wizard_stage_definitions AS definitions
+                    ON definitions.id = stages.stage_id
+                JOIN agents
+                    ON agents.id = stages.owner_agent_id
+                LEFT JOIN product_wizard_artifacts AS latest
+                    ON latest.project_stage_id = stages.id
+                   AND latest.version = (
+                        SELECT MAX(version)
+                        FROM product_wizard_artifacts
+                        WHERE project_stage_id = stages.id
+                   )
+                WHERE stages.project_id = ?
+                ORDER BY definitions.sort_order, definitions.id
+                """,
+                (project_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_project_wizard_stage(self, project_id: str, stage_id: str) -> dict | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT stages.*,
+                       definitions.name,
+                       definitions.description,
+                       definitions.sort_order,
+                       definitions.artifact_type,
+                       agents.name AS owner_name,
+                       agents.hermes_command AS owner_command,
+                       latest.id AS latest_artifact_id,
+                       latest.version AS latest_artifact_version,
+                       latest.status AS latest_artifact_status,
+                       latest.created_at AS latest_artifact_created_at,
+                       latest.approved_at AS latest_artifact_approved_at
+                FROM product_wizard_project_stages AS stages
+                JOIN product_wizard_stage_definitions AS definitions
+                    ON definitions.id = stages.stage_id
+                JOIN agents
+                    ON agents.id = stages.owner_agent_id
+                LEFT JOIN product_wizard_artifacts AS latest
+                    ON latest.project_stage_id = stages.id
+                   AND latest.version = (
+                        SELECT MAX(version)
+                        FROM product_wizard_artifacts
+                        WHERE project_stage_id = stages.id
+                   )
+                WHERE stages.project_id = ? AND stages.stage_id = ?
+                """,
+                (project_id, stage_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_project_stage_artifacts(self, project_id: str, stage_id: str) -> list[dict]:
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT artifacts.*,
+                       agents.name AS owner_name,
+                       agents.hermes_command AS owner_command
+                FROM product_wizard_artifacts AS artifacts
+                JOIN agents ON agents.id = artifacts.owner_agent_id
+                WHERE artifacts.project_id = ? AND artifacts.stage_id = ?
+                ORDER BY artifacts.version DESC
+                """,
+                (project_id, stage_id),
+            ).fetchall()
+        return [decode_wizard_artifact(row) for row in rows]
+
+    def latest_project_stage_artifact(
+        self,
+        project_id: str,
+        stage_id: str,
+    ) -> dict | None:
+        artifacts = self.list_project_stage_artifacts(project_id, stage_id)
+        return artifacts[0] if artifacts else None
+
+    def save_stage_artifact_draft(
+        self,
+        project_id: str,
+        stage_id: str,
+        markdown_content: str,
+        json_content: dict | list | str | None = None,
+        owner_agent_id: str | None = None,
+    ) -> str:
+        json_text = serialize_wizard_json_content(json_content)
+        assert_no_secret_values(
+            {
+                "markdown_content": markdown_content,
+                "json_content": json_text,
+            }
+        )
+        stage = self.get_project_wizard_stage(project_id, stage_id)
+        if stage is None:
+            raise sqlite3.IntegrityError(
+                f"Unknown product wizard stage: {project_id}/{stage_id}"
+            )
+        if stage["status"] == "waiting":
+            raise ValueError("Cannot save a draft for a waiting product wizard stage.")
+        if stage["status"] == "approved":
+            raise ValueError("Request a revision before replacing an approved stage.")
+
+        artifact_owner_id = owner_agent_id or stage["owner_agent_id"]
+        self.assert_agent_exists(artifact_owner_id)
+        artifact_id = f"wiz-artifact-{uuid4().hex[:10]}"
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+                FROM product_wizard_artifacts
+                WHERE project_stage_id = ?
+                """,
+                (stage["id"],),
+            ).fetchone()
+            next_version = row["next_version"]
+            connection.execute(
+                """
+                INSERT INTO product_wizard_artifacts (
+                    id, project_id, project_stage_id, stage_id, version, status,
+                    markdown_content, json_content, owner_agent_id, created_at, approved_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    artifact_id,
+                    project_id,
+                    stage["id"],
+                    stage_id,
+                    next_version,
+                    "draft",
+                    markdown_content.strip(),
+                    json_text,
+                    artifact_owner_id,
+                    now,
+                    None,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE product_wizard_project_stages
+                SET status = ?,
+                    owner_agent_id = ?,
+                    updated_at = ?,
+                    started_at = COALESCE(started_at, ?),
+                    completed_at = NULL,
+                    approved_at = NULL,
+                    blocked_at = NULL
+                WHERE id = ?
+                """,
+                ("draft", artifact_owner_id, now, now, stage["id"]),
+            )
+            connection.execute(
+                """
+                UPDATE company_projects
+                SET updated_at = ?, status = ?
+                WHERE id = ?
+                """,
+                (now, "wizard_active", project_id),
+            )
+        return artifact_id
+
+    def approve_stage(self, project_id: str, stage_id: str) -> None:
+        stage = self.get_project_wizard_stage(project_id, stage_id)
+        if stage is None:
+            raise sqlite3.IntegrityError(
+                f"Unknown product wizard stage: {project_id}/{stage_id}"
+            )
+        if stage["status"] != "draft":
+            raise ValueError("Only draft product wizard stages can be approved.")
+        artifact = self.latest_project_stage_artifact(project_id, stage_id)
+        if artifact is None or artifact["status"] != "draft":
+            raise ValueError("Cannot approve a stage without a draft artifact.")
+
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE product_wizard_artifacts
+                SET status = ?, approved_at = ?
+                WHERE id = ?
+                """,
+                ("approved", now, artifact["id"]),
+            )
+            connection.execute(
+                """
+                UPDATE product_wizard_project_stages
+                SET status = ?,
+                    revision_notes = '',
+                    updated_at = ?,
+                    completed_at = ?,
+                    approved_at = ?,
+                    revision_requested_at = NULL,
+                    blocked_at = NULL
+                WHERE id = ?
+                """,
+                ("approved", now, now, now, stage["id"]),
+            )
+            next_stage = connection.execute(
+                """
+                SELECT next_stages.*
+                FROM product_wizard_project_stages AS next_stages
+                JOIN product_wizard_stage_definitions AS definitions
+                    ON definitions.id = next_stages.stage_id
+                WHERE next_stages.project_id = ?
+                  AND definitions.sort_order > ?
+                ORDER BY definitions.sort_order, definitions.id
+                LIMIT 1
+                """,
+                (project_id, stage["sort_order"]),
+            ).fetchone()
+            if next_stage is None:
+                project_status = "wizard_complete"
+            else:
+                project_status = "wizard_active"
+                if next_stage["status"] == "waiting":
+                    connection.execute(
+                        """
+                        UPDATE product_wizard_project_stages
+                        SET status = ?,
+                            updated_at = ?,
+                            started_at = COALESCE(started_at, ?)
+                        WHERE id = ?
+                        """,
+                        ("ready", now, now, next_stage["id"]),
+                    )
+            connection.execute(
+                """
+                UPDATE company_projects
+                SET updated_at = ?, status = ?
+                WHERE id = ?
+                """,
+                (now, project_status, project_id),
+            )
+
+    def request_stage_revision(
+        self,
+        project_id: str,
+        stage_id: str,
+        notes: str = "",
+    ) -> None:
+        assert_no_secret_values({"revision_notes": notes})
+        stage = self.get_project_wizard_stage(project_id, stage_id)
+        if stage is None:
+            raise sqlite3.IntegrityError(
+                f"Unknown product wizard stage: {project_id}/{stage_id}"
+            )
+        if stage["status"] == "waiting":
+            raise ValueError("Cannot request revision for a waiting product wizard stage.")
+
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE product_wizard_project_stages
+                SET status = ?,
+                    revision_notes = ?,
+                    updated_at = ?,
+                    completed_at = NULL,
+                    approved_at = NULL,
+                    revision_requested_at = ?,
+                    blocked_at = NULL
+                WHERE id = ?
+                """,
+                ("needs_revision", notes.strip(), now, now, stage["id"]),
+            )
+            latest_artifact_id = stage.get("latest_artifact_id")
+            if latest_artifact_id:
+                connection.execute(
+                    """
+                    UPDATE product_wizard_artifacts
+                    SET status = ?, approved_at = NULL
+                    WHERE id = ?
+                    """,
+                    ("needs_revision", latest_artifact_id),
+                )
+            connection.execute(
+                """
+                UPDATE company_projects
+                SET updated_at = ?, status = ?
+                WHERE id = ?
+                """,
+                (now, "wizard_active", project_id),
+            )
+
+    def block_stage(
+        self,
+        project_id: str,
+        stage_id: str,
+        notes: str = "",
+    ) -> None:
+        assert_no_secret_values({"blocker_notes": notes})
+        stage = self.get_project_wizard_stage(project_id, stage_id)
+        if stage is None:
+            raise sqlite3.IntegrityError(
+                f"Unknown product wizard stage: {project_id}/{stage_id}"
+            )
+        if stage["status"] in {"waiting", "approved"}:
+            raise ValueError("Only active product wizard stages can be blocked.")
+
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE product_wizard_project_stages
+                SET status = ?,
+                    revision_notes = ?,
+                    updated_at = ?,
+                    blocked_at = ?
+                WHERE id = ?
+                """,
+                ("blocked", notes.strip(), now, now, stage["id"]),
+            )
+            connection.execute(
+                """
+                UPDATE company_projects
+                SET updated_at = ?, status = ?
+                WHERE id = ?
+                """,
+                (now, "wizard_active", project_id),
+            )
+
+    def next_actionable_stage(self, project_id: str) -> dict | None:
+        for stage in self.list_project_wizard_stages(project_id):
+            if stage["status"] in {"ready", "draft", "needs_revision", "blocked"}:
+                return stage
+        return None

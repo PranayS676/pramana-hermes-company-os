@@ -11,6 +11,7 @@ from hermes_company_os.seeds import (
     DEFAULT_AGENTS,
     DEFAULT_FOUNDER_DECISIONS,
     DEFAULT_INTEGRATIONS,
+    DEFAULT_PRODUCT_WIZARD_STAGES,
     DEFAULT_SETUP_INPUTS,
     DEFAULT_SETUP_STEPS,
     DEFAULT_STANDUPS,
@@ -248,6 +249,7 @@ def initialize_database(database_path: Path) -> None:
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 founder_idea TEXT NOT NULL,
+                intake_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -266,6 +268,49 @@ def initialize_database(database_path: Path) -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_stage_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                sort_order INTEGER NOT NULL,
+                artifact_type TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_project_stages (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+                stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                status TEXT NOT NULL,
+                revision_notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                approved_at TEXT,
+                revision_requested_at TEXT,
+                blocked_at TEXT,
+                UNIQUE(project_id, stage_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_artifacts (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+                project_stage_id TEXT NOT NULL
+                    REFERENCES product_wizard_project_stages(id) ON DELETE CASCADE,
+                stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+                version INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                markdown_content TEXT NOT NULL,
+                json_content TEXT NOT NULL,
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                created_at TEXT NOT NULL,
+                approved_at TEXT,
+                UNIQUE(project_stage_id, version)
+            );
             """
         )
         ensure_schema(connection)
@@ -279,6 +324,14 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     }
     if "kanban_task_id" not in task_columns:
         connection.execute("ALTER TABLE tasks ADD COLUMN kanban_task_id TEXT")
+    project_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(company_projects)").fetchall()
+    }
+    if "intake_json" not in project_columns:
+        connection.execute(
+            "ALTER TABLE company_projects ADD COLUMN intake_json TEXT NOT NULL DEFAULT '{}'"
+        )
 
 
 def seed_defaults(connection: sqlite3.Connection) -> None:
@@ -464,6 +517,17 @@ def seed_defaults(connection: sqlite3.Connection) -> None:
         )
         """,
         DEFAULT_WORKFLOW_TEMPLATES,
+    )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO product_wizard_stage_definitions (
+            id, name, description, owner_agent_id, sort_order, artifact_type
+        )
+        VALUES (
+            :id, :name, :description, :owner_agent_id, :sort_order, :artifact_type
+        )
+        """,
+        DEFAULT_PRODUCT_WIZARD_STAGES,
     )
 
 

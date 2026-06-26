@@ -154,6 +154,10 @@ from hermes_company_os.messaging_verification_import import (
     messaging_verification_template_markdown,
     parse_messaging_verification_reply,
 )
+from hermes_company_os.product_wizard import (
+    ProductWizardIntake,
+    generate_wizard_artifact,
+)
 from hermes_company_os.profile_acceptance import (
     profile_acceptance_json,
     profile_acceptance_markdown,
@@ -325,6 +329,26 @@ def kanban_project_push_blocker(repository: CompanyRepository) -> str:
     )
 
 
+def project_task_stage_approved(repository: CompanyRepository, project_id: str) -> bool:
+    stages = repository.list_project_wizard_stages(project_id)
+    if not stages:
+        return True
+    task_stage = next((stage for stage in stages if stage["stage_id"] == "tasks"), None)
+    return bool(task_stage and task_stage["status"] == "approved")
+
+
+def project_wizard_kanban_blocker(
+    repository: CompanyRepository,
+    project_id: str,
+) -> str:
+    if not project_task_stage_approved(repository, project_id):
+        return (
+            "Complete product wizard tasks approval before pushing this project to "
+            "Kanban."
+        )
+    return kanban_project_push_blocker(repository)
+
+
 def kanban_task_push_blocker(repository: CompanyRepository) -> str:
     prerequisite_checks = [
         item
@@ -339,6 +363,134 @@ def kanban_task_push_blocker(repository: CompanyRepository) -> str:
         "Complete Kanban initialization and diagnostics before running the task-create "
         f"drill. Open checks: {labels}."
     )
+
+
+def product_wizard_intake_from_form(
+    *,
+    name: str,
+    founder_idea: str,
+    target_audience: str = "",
+    problem_statement: str = "",
+    current_alternative: str = "",
+    product_category: str = "",
+    launch_tier: str = "",
+    deadline_pressure: str = "",
+    desired_outcome: str = "",
+    constraints: str = "",
+    non_goals: str = "",
+    success_metrics: str = "",
+) -> dict[str, str]:
+    return {
+        "project_name": name.strip(),
+        "founder_idea": founder_idea.strip(),
+        "target_customer": target_audience.strip(),
+        "problem": problem_statement.strip(),
+        "current_alternatives": current_alternative.strip(),
+        "desired_outcome": desired_outcome.strip(),
+        "constraints": "\n".join(
+            item
+            for item in [
+                f"Product category: {product_category.strip()}" if product_category.strip() else "",
+                f"Launch tier: {launch_tier.strip()}" if launch_tier.strip() else "",
+                (
+                    f"Deadline pressure: {deadline_pressure.strip()}"
+                    if deadline_pressure.strip()
+                    else ""
+                ),
+                constraints.strip(),
+                f"Non-goals: {non_goals.strip()}" if non_goals.strip() else "",
+            ]
+            if item
+        ),
+        "success_metric": success_metrics.strip(),
+    }
+
+
+def product_wizard_intake_from_project(project: dict) -> ProductWizardIntake:
+    intake = dict(project.get("intake") or {})
+    intake.setdefault("project_name", project["name"])
+    intake.setdefault("founder_idea", project["founder_idea"])
+    return ProductWizardIntake.from_mapping(intake)
+
+
+def stage_icon(stage_id: str) -> str:
+    return {
+        "research": "search",
+        "prd": "file-text",
+        "architecture": "network",
+        "tasks": "list-checks",
+        "code_plan": "code-2",
+        "acceptance": "badge-check",
+    }.get(stage_id, "circle")
+
+
+def stage_view(stage: dict) -> dict:
+    return {
+        **stage,
+        "id": stage["stage_id"],
+        "label": stage["name"],
+        "icon": stage_icon(stage["stage_id"]),
+        "summary": stage["description"],
+    }
+
+
+def artifact_view(artifact: dict | None) -> dict | None:
+    if artifact is None:
+        return None
+    title = artifact.get("json", {}).get("title") or artifact["stage_id"].replace("_", " ").title()
+    return {
+        **artifact,
+        "title": title,
+        "body": artifact["markdown_content"],
+        "summary": artifact["markdown_content"],
+    }
+
+
+def stage_artifacts_view(
+    repository: CompanyRepository,
+    project_id: str,
+    stages: list[dict],
+) -> dict[str, list[dict]]:
+    return {
+        stage["stage_id"]: [
+            artifact_view(artifact)
+            for artifact in repository.list_project_stage_artifacts(
+                project_id,
+                stage["stage_id"],
+            )
+        ]
+        for stage in stages
+    }
+
+
+def approved_source_artifacts(
+    repository: CompanyRepository,
+    project_id: str,
+) -> list[dict]:
+    sources = []
+    for stage in repository.list_project_wizard_stages(project_id):
+        artifact = repository.latest_project_stage_artifact(project_id, stage["stage_id"])
+        if not artifact or artifact["status"] != "approved":
+            continue
+        sources.append(
+            {
+                "id": artifact["id"],
+                "stage": artifact["stage_id"],
+                "title": artifact.get("json", {}).get("title") or stage["name"],
+                "content": artifact["markdown_content"],
+                "status": "approved",
+            }
+        )
+    return sources
+
+
+def resolve_stage_id(repository: CompanyRepository, project_id: str, stage_id: str) -> str:
+    if stage_id != "current":
+        return stage_id
+    stage = repository.next_actionable_stage(project_id)
+    if stage is None:
+        raise HTTPException(status_code=409, detail="No actionable product wizard stage.")
+    return stage["stage_id"]
 
 
 def profile_live_run_blocker(repository: CompanyRepository, agent_id: str) -> str:
@@ -3614,18 +3766,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/projects/new")
+    def new_project(request: Request):
+        return templates.TemplateResponse(request, "project_new.html", {})
+
     @app.post("/projects")
     def create_project(
         request: Request,
         name: str = Form(...),
         founder_idea: str = Form(...),
+        wizard_version: str = Form(""),
+        product_category: str = Form(""),
+        target_audience: str = Form(""),
+        current_alternative: str = Form(""),
+        problem_statement: str = Form(""),
+        desired_outcome: str = Form(""),
+        launch_tier: str = Form(""),
+        deadline_pressure: str = Form(""),
+        constraints: str = Form(""),
+        non_goals: str = Form(""),
+        success_metrics: str = Form(""),
     ):
-        reject_secret_values({"name": name, "founder_idea": founder_idea})
-        repository: CompanyRepository = request.app.state.repository
-        project_id = repository.create_project_with_workflow(
-            name=name.strip(),
-            founder_idea=founder_idea.strip(),
+        intake = product_wizard_intake_from_form(
+            name=name,
+            founder_idea=founder_idea,
+            product_category=product_category,
+            target_audience=target_audience,
+            current_alternative=current_alternative,
+            problem_statement=problem_statement,
+            desired_outcome=desired_outcome,
+            launch_tier=launch_tier,
+            deadline_pressure=deadline_pressure,
+            constraints=constraints,
+            non_goals=non_goals,
+            success_metrics=success_metrics,
         )
+        reject_secret_values(intake)
+        repository: CompanyRepository = request.app.state.repository
+        if wizard_version == "product-wizard-v1":
+            project_id = repository.create_structured_project(
+                name=name.strip(),
+                founder_idea=founder_idea.strip(),
+                intake=intake,
+            )
+        else:
+            project_id = repository.create_project_with_workflow(
+                name=name.strip(),
+                founder_idea=founder_idea.strip(),
+            )
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.get("/projects/{project_id}")
@@ -3635,7 +3823,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         workflow_items = repository.list_project_workflow_items(project_id)
-        kanban_blocker = kanban_project_push_blocker(repository)
+        wizard_stages = repository.list_project_wizard_stages(project_id)
+        current_stage = repository.next_actionable_stage(project_id)
+        if current_stage is None and wizard_stages:
+            current_stage = wizard_stages[-1]
+        latest_artifact = (
+            artifact_view(
+                repository.latest_project_stage_artifact(
+                    project_id,
+                    current_stage["stage_id"],
+                )
+            )
+            if current_stage
+            else None
+        )
+        task_stage_approved = project_task_stage_approved(repository, project_id)
+        kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -3645,8 +3848,112 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_linked_count": sum(1 for item in workflow_items if item["kanban_task_id"]),
                 "kanban_ready": not kanban_blocker,
                 "kanban_blocker": kanban_blocker,
+                "wizard_stages": [stage_view(stage) for stage in wizard_stages],
+                "current_stage": stage_view(current_stage) if current_stage else None,
+                "latest_artifact": latest_artifact,
+                "stage_artifacts": stage_artifacts_view(
+                    repository,
+                    project_id,
+                    wizard_stages,
+                ),
+                "task_stage_approved": task_stage_approved,
+                "founder_decisions": repository.list_founder_decisions()[:3],
             },
         )
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/generate")
+    def generate_project_stage(request: Request, project_id: str, stage_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            artifact = generate_wizard_artifact(
+                resolved_stage_id,
+                product_wizard_intake_from_project(project),
+                approved_source_artifacts(repository, project_id),
+            )
+            repository.save_stage_artifact_draft(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                markdown_content=artifact.markdown,
+                json_content=artifact.metadata,
+                owner_agent_id=artifact.owner_agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/regenerate")
+    def regenerate_project_stage(request: Request, project_id: str, stage_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        latest_artifact = repository.latest_project_stage_artifact(
+            project_id,
+            resolved_stage_id,
+        )
+        try:
+            if latest_artifact and latest_artifact["status"] == "approved":
+                repository.request_stage_revision(
+                    project_id=project_id,
+                    stage_id=resolved_stage_id,
+                    notes="Regeneration requested from the product wizard.",
+                )
+            artifact = generate_wizard_artifact(
+                resolved_stage_id,
+                product_wizard_intake_from_project(project),
+                approved_source_artifacts(repository, project_id),
+            )
+            repository.save_stage_artifact_draft(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                markdown_content=artifact.markdown,
+                json_content=artifact.metadata,
+                owner_agent_id=artifact.owner_agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/approve")
+    def approve_project_stage(request: Request, project_id: str, stage_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            repository.approve_stage(project_id, resolved_stage_id)
+            if resolved_stage_id == "tasks":
+                repository.ensure_project_workflow_items(project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/revision")
+    def request_project_stage_revision(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        revision_request: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        reject_secret_values({"revision_request": revision_request})
+        try:
+            repository.request_stage_revision(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                notes=revision_request,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/kanban")
     def push_project_workflow_to_kanban(request: Request, project_id: str):
@@ -3654,7 +3961,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        kanban_blocker = kanban_project_push_blocker(repository)
+        kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         if kanban_blocker:
             raise HTTPException(status_code=409, detail=kanban_blocker)
         workflow_items = repository.list_project_workflow_items(project_id)

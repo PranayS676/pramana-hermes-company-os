@@ -1,3 +1,63 @@
+{% set default_wizard_stages = [
+  {
+    "id": "research",
+    "label": "Research",
+    "status": "current",
+    "icon": "search",
+    "summary": "Market, user, competitor, and evidence quality review."
+  },
+  {
+    "id": "prd",
+    "label": "PRD",
+    "status": "planned",
+    "icon": "file-text",
+    "summary": "Target user, product bet, scope, non-goals, and acceptance criteria."
+  },
+  {
+    "id": "architecture",
+    "label": "Architecture",
+    "status": "planned",
+    "icon": "network",
+    "summary": "System boundaries, data model, reliability, cost, and operating plan."
+  },
+  {
+    "id": "tasks",
+    "label": "Tasks",
+    "status": "planned",
+    "icon": "list-checks",
+    "summary": "Implementation backlog and owner handoff."
+  },
+  {
+    "id": "code_plan",
+    "label": "Code plan",
+    "status": "planned",
+    "icon": "code-2",
+    "summary": "Backend, frontend, test, and rollout plan."
+  },
+  {
+    "id": "acceptance",
+    "label": "Acceptance",
+    "status": "planned",
+    "icon": "badge-check",
+    "summary": "Launch gate, evidence, and founder decision memo."
+  }
+] %}
+{% set stages = wizard_stages|default(default_wizard_stages, true) %}
+{% set active_stage = current_stage|default(stages|first, true) %}
+{% set active_stage_id = active_stage.id|default(active_stage.stage_id|default(active_stage.slug|default(active_stage, true), true), true) %}
+{% set active_stage_label = active_stage.label|default(active_stage.name|default(active_stage_id|replace("_", " ")|title, true), true) %}
+{% set has_latest_artifact = latest_artifact is defined and latest_artifact %}
+{% set fallback_artifact = workflow_items|first if not stages else {} %}
+{% set artifact = latest_artifact|default(fallback_artifact|default({}, true), true) %}
+{% set artifact_title = artifact.title|default(active_stage_label ~ " artifact", true) %}
+{% set artifact_status = artifact.status|default(active_stage.status|default("ready", true), true) %}
+{% set artifact_body = artifact.body|default(artifact.summary|default(project.founder_idea, true), true) %}
+{% set artifacts_by_stage = stage_artifacts|default({}, true) %}
+{% set task_gate_ready = task_stage_approved|default(false) %}
+{% set kanban_gate_open = kanban_ready and task_gate_ready %}
+{% set founder_decision_items = founder_decisions|default([], true) %}
+{% set intake = project.intake|default({}, true) %}
+
 <!doctype html>
 <html lang="en">
   <head>
@@ -8,60 +68,302 @@
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>
   <body>
-    <main class="agent-page">
+    <main class="agent-page project-stage-page">
       <a class="back-link" href="/projects"><i data-lucide="arrow-left"></i> Projects</a>
-      <section class="agent-hero">
+
+      <section class="project-titlebar">
         <div>
           <p class="eyebrow">{{ project.status }}</p>
           <h1>{{ project.name }}</h1>
-          <p>{{ project.founder_idea }}</p>
+          <p class="page-subtitle">{{ project.founder_idea }}</p>
+        </div>
+        <div class="project-title-actions">
+          <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
+          <span class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}">
+            {% if kanban_gate_open %}
+            Kanban ready
+            {% elif not kanban_ready %}
+            Kanban verification needed
+            {% else %}
+            Kanban gated
+            {% endif %}
+          </span>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Generated Company Workflow</h2>
-          {% if kanban_ready %}
-          <form method="post" action="/projects/{{ project.id }}/kanban">
-            <button class="primary-button" type="submit">
-              <i data-lucide="list-plus"></i>
-              Push workflow to Kanban
-            </button>
-          </form>
-          {% else %}
-          <a class="primary-button link-button" href="/setup#kanban-verification">
-            <i data-lucide="shield-alert"></i>
-            Kanban verification needed
-          </a>
-          {% endif %}
+      <section class="stage-timeline-panel">
+        <div class="panel-header inline-panel-header">
+          <div>
+            <h2>Product wizard timeline</h2>
+            <p class="panel-kicker">Each artifact is approved before the next stage opens.</p>
+          </div>
         </div>
-        {% if kanban_blocker %}
-        <p class="empty-state">
-          {{ kanban_blocker }} Use one dashboard task push as the task-create drill,
-          then return here when the Kanban gate is ready.
-        </p>
-        {% endif %}
-        <p class="empty-state">
-          {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
-        </p>
-        <div class="integration-table">
-          {% for item in workflow_items %}
-          <div class="integration-row">
+        <div class="stage-timeline">
+          {% for stage in stages %}
+          {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
+          {% set stage_label = stage.label|default(stage.name|default(stage_id|replace("_", " ")|title, true), true) %}
+          {% set stage_status = stage.status|default("planned", true) %}
+          <div
+            class="stage-node {% if stage_id == active_stage_id %}active{% endif %}"
+            data-stage-id="{{ stage_id }}"
+          >
+            <span class="stage-icon"><i data-lucide="{{ stage.icon|default('circle') }}"></i></span>
             <div>
-              <span class="status-pill {{ item.status }}">{{ item.status }}</span>
-              <strong>{{ item.title }}</strong>
-              <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
-              {% if item.kanban_task_id %}
-              <p>Hermes Kanban task: {{ item.kanban_task_id }}</p>
-              {% endif %}
-            </div>
-            <div class="integration-actions">
-              <code>Task: {{ item.task_id }}</code>
-              <code>Document: {{ item.document_id }}</code>
+              <strong>{{ stage_label }}</strong>
+              <small>{{ stage_status }}</small>
             </div>
           </div>
           {% endfor %}
         </div>
+      </section>
+
+      <section class="project-stage-grid">
+        <div class="stage-main-column">
+          <section class="panel current-stage-panel">
+            <div class="panel-header">
+              <div>
+                <h2>{{ active_stage_label }}</h2>
+                <p class="panel-kicker">
+                  {% if active_stage_id == "acceptance" %}
+                  Acceptance checklist
+                  {% else %}
+                  {{ active_stage.summary|default("Generate, review, approve, or revise this stage.", true) }}
+                  {% endif %}
+                </p>
+              </div>
+              <i data-lucide="{{ active_stage.icon|default('sparkles') }}"></i>
+            </div>
+
+            <div class="stage-action-grid" aria-label="Current stage actions">
+              {% if artifact_status in ["ready", "needs_revision", "blocked"] %}
+              <form method="post" action="/projects/{{ project.id }}/stages/current/generate">
+                <button class="primary-button full-width-button" type="submit">
+                  <i data-lucide="play"></i> Generate
+                </button>
+              </form>
+              {% endif %}
+              {% if has_latest_artifact and artifact_status == "draft" %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/approve">
+                <button class="success-button full-width-button" type="submit">
+                  <i data-lucide="check"></i> Approve
+                </button>
+              </form>
+              {% endif %}
+              {% if has_latest_artifact %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/regenerate">
+                <button class="secondary-button full-width-button" type="submit">
+                  <i data-lucide="refresh-cw"></i> Regenerate
+                </button>
+              </form>
+              {% endif %}
+              {% if has_latest_artifact %}
+              <form
+                class="revision-form"
+                method="post"
+                action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/revision"
+              >
+                <label>
+                  Revision request
+                  <textarea
+                    name="revision_request"
+                    rows="3"
+                    placeholder="State the missing evidence, product change, or quality bar."
+                  ></textarea>
+                </label>
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="message-square-warning"></i> Request revision
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel intake-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Founder Intake</h2>
+                <p class="panel-kicker">Structured context captured before generation.</p>
+              </div>
+              <i data-lucide="clipboard-list"></i>
+            </div>
+            <div class="intake-grid">
+              <div>
+                <span>Target audience</span>
+                <strong>{{ intake.target_customer|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Problem statement</span>
+                <strong>{{ intake.problem|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Constraints</span>
+                <strong>{{ intake.constraints|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Success metrics</span>
+                <strong>{{ intake.success_metric|default("Not specified", true) }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel artifact-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact Preview</h2>
+                <p class="panel-kicker">{{ artifact_title }}</p>
+              </div>
+              <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
+            </div>
+            <article class="artifact-preview" id="artifact-preview">
+              <h3>{{ artifact_title }}</h3>
+              <p class="artifact-copy">{{ artifact_body }}</p>
+            </article>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Generated Company Workflow</h2>
+                <p class="panel-kicker">
+                  {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
+                </p>
+              </div>
+            </div>
+            <div class="integration-table compact-table">
+              {% for item in workflow_items %}
+              <div class="integration-row workflow-item-row">
+                <div>
+                  <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
+                  {% if item.kanban_task_id %}
+                  <p>Hermes Kanban task: {{ item.kanban_task_id }}</p>
+                  {% endif %}
+                </div>
+                <div class="integration-actions">
+                  <code>Task: {{ item.task_id }}</code>
+                  <code>Document: {{ item.document_id }}</code>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No workflow items have been generated yet.</p>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+
+        <aside class="stage-side-column">
+          <section class="panel readiness-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Founder Readiness</h2>
+                <p class="panel-kicker">Decision and handoff gates.</p>
+              </div>
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>Current stage</span>
+                <strong>{{ active_stage_label }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Task stage</span>
+                <strong>{% if task_gate_ready %}Approved{% else %}Awaiting approval{% endif %}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Latest artifact</span>
+                <strong>{{ artifact_status }}</strong>
+              </div>
+              {% if founder_decision_items %}
+              {% for decision in founder_decision_items %}
+              <div class="readiness-line">
+                <span>{{ decision.title|default("Founder decision") }}</span>
+                <strong>{{ decision.status|default("needs_input") }}</strong>
+              </div>
+              {% endfor %}
+              {% else %}
+              <div class="readiness-line">
+                <span>Founder decision</span>
+                <strong>Not requested</strong>
+              </div>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel kanban-gate-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Kanban Push</h2>
+                <p class="panel-kicker">Visible after task-stage approval and Kanban verification.</p>
+              </div>
+              <i data-lucide="kanban-square"></i>
+            </div>
+            {% if kanban_gate_open %}
+            <form method="post" action="/projects/{{ project.id }}/kanban">
+              <button class="primary-button full-width-button" type="submit">
+                <i data-lucide="list-plus"></i>
+                Push workflow to Kanban
+              </button>
+            </form>
+            {% else %}
+            <button class="primary-button full-width-button" type="button" disabled>
+              <i data-lucide="lock"></i>
+              Push workflow to Kanban
+            </button>
+            <p class="empty-state gate-copy">
+              {% if not task_gate_ready %}
+              Approve the tasks stage before pushing workflow items to Hermes Kanban.
+              {% elif kanban_blocker %}
+              {{ kanban_blocker }}
+              {% else %}
+              Kanban verification must be ready before external handoff.
+              {% endif %}
+            </p>
+            {% if not kanban_ready %}
+            <a class="secondary-button link-button-muted full-width-button" href="/setup#kanban-verification">
+              <i data-lucide="shield-alert"></i>
+              Kanban verification
+            </a>
+            {% endif %}
+            {% endif %}
+          </section>
+
+          <section class="panel stage-artifacts-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact history</h2>
+                <p class="panel-kicker">Generated outputs by stage.</p>
+              </div>
+              <i data-lucide="files"></i>
+            </div>
+            <div class="artifact-list">
+              {% for stage in stages %}
+              {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
+              {% set stage_label = stage.label|default(stage.name|default(stage_id|replace("_", " ")|title, true), true) %}
+              {% set stage_artifact_list = artifacts_by_stage.get(stage_id, []) %}
+              <div class="artifact-list-row">
+                <strong>{{ stage_label }}</strong>
+                <small>
+                  {% if stage_artifact_list %}
+                  {{ stage_artifact_list|length }} artifacts
+                  {% else %}
+                  Waiting
+                  {% endif %}
+                </small>
+              </div>
+              {% if stage_artifact_list %}
+              <div class="artifact-version-list">
+                {% for artifact_item in stage_artifact_list %}
+                <a href="#artifact-preview" class="artifact-version-chip">
+                  Version {{ artifact_item.version }} · {{ artifact_item.status }}
+                </a>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </section>
+        </aside>
       </section>
     </main>
     <script>lucide.createIcons();</script>
