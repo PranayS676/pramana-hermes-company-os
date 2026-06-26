@@ -1,0 +1,382 @@
+from __future__ import annotations
+
+from hermes_company_os.activation import cron_commands
+
+
+def activation_runner_markdown(
+    agents: list[dict],
+    setup_values: dict[str, str],
+    schedules: list[dict],
+) -> str:
+    active_schedules = [schedule for schedule in schedules if schedule.get("active", 1)]
+    lines = [
+        "# Local Activation Runner",
+        "",
+        "Use this after Hermes is installed and the dashboard is running locally. "
+        "The runner applies starter profiles and can run no-secret Kanban setup. "
+        "Slack, Telegram, schedule, LLM, cron, and profile smoke phases are explicit "
+        "flags because they depend on workspace state or external credentials.",
+        "",
+        "## Command",
+        "",
+        "```powershell",
+        "Invoke-WebRequest -UseBasicParsing "
+        "http://127.0.0.1:8002/setup/activation-runner.ps1 "
+        "-OutFile .\\activation-runner.ps1",
+        ".\\activation-runner.ps1",
+        "```",
+        "",
+        "## Optional Flags",
+        "",
+        "- `-InstallHermes`: download `/setup/hermes-install.ps1` and run the "
+        "official installer if `hermes` is missing.",
+        "- `-SkipProfiles`: do not apply starter profile identity artifacts.",
+        "- `-SkipProfileAudit`: do not run and import the profile installation audit.",
+        "- `-SkipKanban`: do not run Hermes Kanban initialization or diagnostics.",
+        "- `-RunSlackProvisioning`: download and run the Slack provisioning bridge.",
+        "- `-RunTelegramProvisioning`: download and run the Telegram provisioning bridge.",
+        "- `-SendTelegramTest`: include one urgent Telegram send test in that bridge.",
+        "- `-RunScheduleProvisioning`: download and run the schedule provisioning bridge.",
+        "- `-RunLlmProvisioning`: download and run the LLM provisioning bridge.",
+        "- `-RunLlmFinalization`: download and run the final LLM audit bridge.",
+        "- `-ExecuteProvisioning`: pass execution approval into child provisioning scripts.",
+        "- `-InstallCron`: install active Chief of Staff standup cron jobs.",
+        "- `-RunSmokeChecks`: call dashboard profile smoke checks after LLM credentials exist.",
+        "- `-TelegramChatId`: override the Telegram urgent test chat ID.",
+        "- `-DashboardBaseUrl`: override the local dashboard URL if not using port 8002.",
+        "",
+        "## Default Phases",
+        "",
+        "1. Check the Hermes CLI is on PATH; with `-InstallHermes`, run the guarded "
+        "Hermes installer first if it is missing.",
+        "2. Download and run each per-profile apply script from this dashboard.",
+        "3. Run `/setup/profile-installation.ps1` and import the no-secret audit output.",
+        "4. Run `hermes kanban init` and `hermes kanban diagnostics --json`.",
+        "5. Record dashboard Kanban initialization and diagnostics checks.",
+        "6. Leave Slack, Telegram, schedule, and LLM provisioning as opt-in phases.",
+        "",
+        "## Profiles",
+        "",
+    ]
+    for agent in agents:
+        lines.append(f"- `{agent['id']}` via `/setup/profile-apply/{agent['id']}.ps1`")
+    lines.extend(
+        [
+            "",
+            "## Active Cron Jobs",
+            "",
+        ]
+    )
+    if active_schedules:
+        for command in cron_commands(setup_values, schedules):
+            lines.append(f"- `{command}`")
+    else:
+        lines.append("- None. Enable at least one schedule before using `-InstallCron`.")
+    lines.extend(
+        [
+            "",
+            "## Credential Boundary",
+            "",
+            "- This runner does not contain Slack, Telegram, or provider credential values.",
+            "- Child provisioning scripts stay dry-run unless `-ExecuteProvisioning` is used.",
+            "- Load external credentials into the real Hermes profiles before live "
+            "provisioning or `-RunSmokeChecks`.",
+            "- Use `/setup/runtime-preflight.md` before running this script.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def activation_runner_powershell(
+    agents: list[dict],
+    setup_values: dict[str, str],
+    schedules: list[dict],
+) -> str:
+    profile_lines = "\n".join(_profile_runner_block(agent) for agent in agents)
+    cron_lines = "\n".join(f"    {command}" for command in cron_commands(setup_values, schedules))
+    if not cron_lines:
+        cron_lines = '    Write-Host "No active schedules to install."'
+    cron_status_lines = "\n".join(
+        _cron_status_post_line(schedule)
+        for schedule in schedules
+        if schedule.get("active", 1)
+    )
+    if not cron_status_lines:
+        cron_status_lines = '    Write-Host "No active schedule status to post."'
+    smoke_lines = "\n".join(
+        f'  Invoke-DashboardPost "/setup/profile-smoke/{agent["id"]}"' for agent in agents
+    )
+    return f"""# Hermes Company OS local activation runner
+# Generated by the dashboard. Review before running.
+# This script contains no Slack tokens, Telegram bot tokens, or provider keys.
+
+param(
+  [string]$DashboardBaseUrl = "http://127.0.0.1:8002",
+  [switch]$SkipProfiles,
+  [switch]$InstallHermes,
+  [switch]$SkipProfileAudit,
+  [switch]$SkipKanban,
+  [switch]$RunSlackProvisioning,
+  [switch]$RunTelegramProvisioning,
+  [switch]$SendTelegramTest,
+  [switch]$RunScheduleProvisioning,
+  [switch]$RunLlmProvisioning,
+  [switch]$RunLlmFinalization,
+  [switch]$ExecuteProvisioning,
+  [switch]$InstallCron,
+  [switch]$RunSmokeChecks,
+  [string]$TelegramChatId = ""
+)
+
+$ErrorActionPreference = "Stop"
+
+function Invoke-Step {{
+  param(
+    [string]$Name,
+    [scriptblock]$Action
+  )
+  Write-Host ""
+  Write-Host "==> $Name"
+  & $Action
+}}
+
+function Invoke-DashboardPost {{
+  param([string]$Path)
+  $uri = "$DashboardBaseUrl$Path"
+  Invoke-WebRequest -UseBasicParsing -Method Post -Uri $uri | Out-Null
+}}
+
+function Invoke-DashboardFormPost {{
+  param(
+    [string]$Path,
+    [hashtable]$Fields
+  )
+  $uri = "$DashboardBaseUrl$Path"
+  $curlArguments = @("-sS", "-o", "NUL", "-w", "%{{http_code}}", "-X", "POST")
+  $tempFiles = @()
+  try {{
+    foreach ($item in $Fields.GetEnumerator()) {{
+      $tempFile = New-TemporaryFile
+      Set-Content -LiteralPath $tempFile -Value ([string]$item.Value) -Encoding UTF8
+      $tempFiles += $tempFile
+      $curlArguments += "--data-urlencode"
+      $curlArguments += "$($item.Key)@$tempFile"
+    }}
+    $curlArguments += $uri
+    $statusCode = & curl.exe @curlArguments
+    if ($LASTEXITCODE -ne 0 -or $statusCode -notmatch "^(2|3)\\d\\d$") {{
+      throw "Dashboard form post failed for $Path with HTTP $statusCode"
+    }}
+  }} finally {{
+    foreach ($tempFile in $tempFiles) {{
+      Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+    }}
+  }}
+}}
+
+function Add-ExecuteArgument {{
+  param([string[]]$Arguments)
+  $resolved = @($Arguments)
+  if ($ExecuteProvisioning) {{
+    $resolved += "-Execute"
+  }}
+  return $resolved
+}}
+
+function Invoke-DownloadedScript {{
+  param(
+    [string]$Name,
+    [string]$Route,
+    [string[]]$Arguments
+  )
+  $scriptPath = Join-Path $env:TEMP "hermes-company-os-$Name.ps1"
+  Invoke-WebRequest -UseBasicParsing `
+    -Uri "$DashboardBaseUrl$Route" `
+    -OutFile $scriptPath
+  $resolvedArguments = @("-DashboardBaseUrl", $DashboardBaseUrl) + @($Arguments)
+  & $scriptPath @resolvedArguments
+}}
+
+Invoke-Step "Check Hermes CLI" {{
+  if (-not (Get-Command hermes -ErrorAction SilentlyContinue)) {{
+    if ($InstallHermes) {{
+      Write-Host "Hermes CLI was not found. Running guarded install helper..."
+      $scriptPath = Join-Path $env:TEMP "hermes-company-os-hermes-install.ps1"
+      Invoke-WebRequest -UseBasicParsing `
+        -Uri "$DashboardBaseUrl/setup/hermes-install.ps1" `
+        -OutFile $scriptPath
+      & $scriptPath -RunInstall
+    }} else {{
+      throw "Hermes CLI was not found. Run /setup/hermes-install.ps1 or rerun with -InstallHermes."
+    }}
+  }}
+  if (-not (Get-Command hermes -ErrorAction SilentlyContinue)) {{
+    throw "Hermes CLI still is not on PATH. Open a new shell and rerun this runner."
+  }}
+  hermes --version
+}}
+
+if (-not $SkipProfiles) {{
+{profile_lines}
+}} else {{
+  Write-Host "Skipping profile application because -SkipProfiles was supplied."
+}}
+
+if (-not $SkipProfileAudit) {{
+  Invoke-Step "Audit profile installation and update dashboard" {{
+    $scriptPath = Join-Path $env:TEMP "hermes-company-os-profile-installation.ps1"
+    Invoke-WebRequest -UseBasicParsing `
+      -Uri "$DashboardBaseUrl/setup/profile-installation.ps1" `
+      -OutFile $scriptPath
+    $auditOutput = & $scriptPath
+    $auditText = $auditOutput -join "`n"
+    Write-Host $auditText
+    $auditBody = @{{ audit_text = $auditText }}
+    Invoke-DashboardFormPost `
+      -Path "/setup/profile-installation-audit" `
+      -Fields $auditBody
+  }}
+}} else {{
+  Write-Host "Skipping profile installation audit because -SkipProfileAudit was supplied."
+}}
+
+if ($RunSlackProvisioning) {{
+  Invoke-Step "Run Slack provisioning bridge" {{
+    $arguments = Add-ExecuteArgument `
+      -Arguments @("-CreateChannels", "-InviteBots", "-PostDashboardInputs")
+    Invoke-DownloadedScript `
+      -Name "slack-provisioning" `
+      -Route "/setup/slack-provisioning.ps1" `
+      -Arguments $arguments
+  }}
+}} else {{
+  Write-Host "Skipping Slack provisioning bridge. Rerun with -RunSlackProvisioning."
+}}
+
+if ($RunTelegramProvisioning) {{
+  Invoke-Step "Run Telegram provisioning bridge" {{
+    $arguments = Add-ExecuteArgument -Arguments @("-CheckBot", "-RegisterCommands")
+    if ($SendTelegramTest) {{
+      $arguments += "-SendTest"
+      $arguments += "-PostDashboardStatus"
+      if (-not [string]::IsNullOrWhiteSpace($TelegramChatId)) {{
+        $arguments += "-ChatId"
+        $arguments += $TelegramChatId
+      }}
+    }}
+    Invoke-DownloadedScript `
+      -Name "telegram-provisioning" `
+      -Route "/setup/telegram-provisioning.ps1" `
+      -Arguments $arguments
+  }}
+}} else {{
+  Write-Host "Skipping Telegram provisioning bridge. Rerun with -RunTelegramProvisioning."
+}}
+
+if (-not $SkipKanban) {{
+  Invoke-Step "Initialize and verify Hermes Kanban" {{
+    hermes kanban init
+    $kanbanBody = @{{
+      status = "verified"
+      evidence = "Activation runner confirmed hermes kanban init."
+    }}
+    Invoke-DashboardFormPost `
+      -Path "/setup/kanban-checks/kanban-board-initialized" `
+      -Fields $kanbanBody
+    hermes kanban diagnostics --json
+    Invoke-DashboardPost "/setup/kanban/diagnostics"
+  }}
+}} else {{
+  Write-Host "Skipping Kanban because -SkipKanban was supplied."
+}}
+
+if ($RunScheduleProvisioning) {{
+  Invoke-Step "Run schedule provisioning bridge" {{
+    $arguments = Add-ExecuteArgument -Arguments @("-PrintSchedules")
+    Invoke-DownloadedScript `
+      -Name "schedule-provisioning" `
+      -Route "/setup/schedule-provisioning.ps1" `
+      -Arguments $arguments
+  }}
+}} else {{
+  Write-Host "Skipping schedule provisioning bridge. Rerun with -RunScheduleProvisioning."
+}}
+
+if ($InstallCron) {{
+  Invoke-Step "Install active standup cron jobs" {{
+{cron_lines}
+    chief-of-staff cron list
+{cron_status_lines}
+  }}
+}} else {{
+  Write-Host "Skipping cron install. Rerun with -InstallCron after messaging works."
+}}
+
+if ($RunLlmProvisioning) {{
+  Invoke-Step "Run LLM provisioning bridge" {{
+    $arguments = Add-ExecuteArgument `
+      -Arguments @("-PrintProfiles", "-DownloadStarters", "-RunModelPicker")
+    Invoke-DownloadedScript `
+      -Name "llm-provisioning" `
+      -Route "/setup/llm-provisioning.ps1" `
+      -Arguments $arguments
+  }}
+}} else {{
+  Write-Host "Skipping LLM provisioning bridge. Rerun with -RunLlmProvisioning last."
+}}
+
+if ($RunLlmFinalization) {{
+  Invoke-Step "Run LLM finalization bridge" {{
+    $arguments = @("-PostDashboardStatus")
+    if ($RunSmokeChecks) {{
+      $arguments += "-RunSmokeChecks"
+    }}
+    Invoke-DownloadedScript `
+      -Name "llm-finalize" `
+      -Route "/setup/llm-finalize.ps1" `
+      -Arguments $arguments
+  }}
+}} else {{
+  Write-Host "Skipping LLM finalization bridge. Rerun with -RunLlmFinalization last."
+}}
+
+if ($RunSmokeChecks -and -not $RunLlmFinalization) {{
+  Invoke-Step "Run dashboard profile smoke checks" {{
+{smoke_lines}
+  }}
+}} elseif ($RunSmokeChecks) {{
+  Write-Host "Profile smoke checks were delegated to the LLM finalization bridge."
+}} else {{
+  Write-Host "Skipping smoke checks. Rerun with -RunSmokeChecks after LLM credentials exist."
+}}
+
+Write-Host ""
+Write-Host "Activation runner finished."
+Write-Host "Review /setup/runtime-preflight.md and /setup/readiness-report.md."
+"""
+
+
+def _profile_runner_block(agent: dict) -> str:
+    return f"""  Invoke-Step "Apply {agent['name']} profile starter" {{
+    $scriptPath = Join-Path $env:TEMP "hermes-company-os-{agent['id']}-profile-apply.ps1"
+    Invoke-WebRequest -UseBasicParsing `
+      -Uri "$DashboardBaseUrl/setup/profile-apply/{agent['id']}.ps1" `
+      -OutFile $scriptPath
+    & $scriptPath
+  }}"""
+
+
+def _cron_status_post_line(schedule: dict) -> str:
+    check_id = f"{schedule['id']}-cron-installed"
+    schedule_name = str(schedule["name"]).replace('"', "'")
+    evidence = f"Activation runner confirmed cron install/list for {schedule_name}."
+    return f"""    try {{
+      $scheduleBody = @{{ status = "verified"; evidence = "{evidence}" }}
+      Invoke-DashboardFormPost `
+        -Path "/setup/schedule-checks/{check_id}" `
+        -Fields $scheduleBody
+      Write-Host "DASHBOARD verified {check_id}"
+    }} catch {{
+      Write-Host "DASHBOARD skipped {check_id}: $($_.Exception.Message)"
+    }}"""

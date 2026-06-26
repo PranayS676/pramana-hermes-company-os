@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Founder command center</small>
+          </div>
+        </div>
+        <nav>
+          <a class="active" href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
+          <a href="#founder-decisions"><i data-lucide="gavel"></i> Decisions</a>
+          <a href="#agents"><i data-lucide="users-round"></i> Agents</a>
+          <a href="#standups"><i data-lucide="calendar-clock"></i> Standups</a>
+          <a href="#runs"><i data-lucide="activity"></i> Runs</a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Slack primary. Telegram urgent.</p>
+            <h1>AI company operating board</h1>
+          </div>
+          <div class="status-strip">
+            <span><i data-lucide="message-square"></i> {{ settings.slack_standup }}</span>
+            <span><i data-lucide="send"></i> {{ settings.telegram_urgent_label }}</span>
+          </div>
+        </section>
+
+        <section class="metric-grid" aria-label="Operating summary">
+          <div class="metric">
+            <span>{{ agents|length }}</span>
+            <small>Hermes profiles</small>
+          </div>
+          <div class="metric">
+            <span>{{ schedules|length }}</span>
+            <small>daily standups</small>
+          </div>
+          <div class="metric">
+            <span>{{ tasks|length }}</span>
+            <small>planning tasks</small>
+          </div>
+          <div class="metric">
+            <span>{{ documents|length }}</span>
+            <small>documents</small>
+          </div>
+          <div class="metric">
+            <span>{{ projects|length }}</span>
+            <small>company projects</small>
+          </div>
+          <div class="metric">
+            <span>{{ founder_actions.founder_decisions.open }}</span>
+            <small>open decisions</small>
+          </div>
+        </section>
+
+        <section
+          class="activation-overview {% if founder_actions.activation_summary.ready %}ready{% else %}not-ready{% endif %}"
+          aria-label="Activation readiness"
+        >
+          <div class="activation-summary-copy">
+            <span class="status-pill {% if founder_actions.activation_summary.ready %}ready{% else %}needs_setup{% endif %}">
+              {% if founder_actions.activation_summary.ready %}live ready{% else %}setup needed{% endif %}
+            </span>
+            <strong>Activation gate</strong>
+            <p>{{ founder_actions.next_best_action }}</p>
+          </div>
+          <div class="activation-stats" aria-label="Activation check summary">
+            <span>
+              <strong>{{ founder_actions.activation_summary.blocking }}</strong>
+              <small>blocking</small>
+            </span>
+            <span>
+              <strong>{{ founder_actions.activation_summary.needs_setup }}</strong>
+              <small>needs setup</small>
+            </span>
+            <span>
+              <strong>{{ founder_actions.activation_summary.deferred }}</strong>
+              <small>deferred</small>
+            </span>
+            <span>
+              <strong>{{ founder_actions.activation_summary.ready_checks }}/{{ founder_actions.activation_summary.total }}</strong>
+              <small>ready checks</small>
+            </span>
+          </div>
+          <div class="activation-links">
+            <a class="primary-button link-button" href="/setup#inputs">
+              <i data-lucide="clipboard-list"></i> Inputs
+            </a>
+            <a class="primary-button link-button" href="/setup/input-ledger.md">
+              <i data-lucide="clipboard-question"></i> Input ledger
+            </a>
+            <a class="primary-button link-button" href="/setup/founder-next-actions.md">
+              <i data-lucide="list-todo"></i> Next actions
+            </a>
+            <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
+              <i data-lucide="rocket"></i> Kickoff gate
+            </a>
+          </div>
+        </section>
+
+        <section class="workspace-grid">
+          <div class="panel full" id="founder-decisions">
+            <div class="panel-header">
+              <h2>Founder Decision Queue</h2>
+              <a href="/setup/founder-decisions.md">Export</a>
+            </div>
+            <section class="notice-band compact">
+              <strong>{{ founder_actions.founder_decisions.open }} open</strong>
+              <span>
+                {{ founder_actions.founder_decisions.urgent_open }} urgent.
+                Slack is primary; Telegram is urgent-only after credentials exist.
+              </span>
+            </section>
+            <div class="decision-grid">
+              <form class="stacked-form" method="post" action="/decisions">
+                <label>
+                  Title
+                  <input name="title" required placeholder="Approve first idea go/no-go">
+                </label>
+                <label>
+                  Owner
+                  <select name="owner_agent_id">
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}" {% if agent.id == "chief-of-staff" %}selected{% endif %}>{{ agent.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Urgency
+                  <select name="urgency">
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+                <label>
+                  Source
+                  <input name="source" value="manual">
+                </label>
+                <label>
+                  Slack channel
+                  <input name="slack_channel" value="#decisions">
+                </label>
+                <label>
+                  Telegram policy
+                  <input name="telegram_policy" value="Telegram only if this blocks founder progress.">
+                </label>
+                <label class="form-span">
+                  Context
+                  <textarea name="context" rows="4" required placeholder="What decision is needed and what work is blocked?"></textarea>
+                </label>
+                <button class="primary-button" type="submit">
+                  <i data-lucide="plus"></i> Add decision
+                </button>
+              </form>
+
+              <div class="item-list">
+                {% for decision in founder_decisions %}
+                <div class="decision-row list-row {{ decision.status }}">
+                  <div class="decision-title-line">
+                    <span class="status-pill {{ decision.status }}">{{ decision.status }}</span>
+                    <span class="status-pill {{ decision.urgency }}">{{ decision.urgency }}</span>
+                    <strong>{{ decision.title }}</strong>
+                  </div>
+                  <small>
+                    {{ decision.owner_name }} - {{ decision.slack_channel }} -
+                    {{ decision.telegram_policy }}
+                  </small>
+                  <p>{{ decision.context }}</p>
+                  {% if decision.decision %}
+                  <p><strong>Decision:</strong> {{ decision.decision }}</p>
+                  {% endif %}
+                  <form class="decision-update-form" method="post" action="/decisions/{{ decision.id }}">
+                    <select name="status" aria-label="Decision status">
+                      {% for status in ["needed", "approved", "rejected", "blocked", "deferred"] %}
+                      <option value="{{ status }}" {% if decision.status == status %}selected{% endif %}>{{ status }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="decision"
+                      value="{{ decision.decision }}"
+                      placeholder="Record approval, rejection, deferral, or blocker note"
+                    >
+                    <button class="icon-button" type="submit" title="Save decision">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+                {% else %}
+                <p class="empty-state">No founder decisions yet.</p>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="panel wide" id="agents">
+            <div class="panel-header">
+              <h2>Agent Profiles</h2>
+            </div>
+            <div class="agent-table">
+              {% for agent in agents %}
+              <a class="agent-row" href="/agents/{{ agent.id }}">
+                <span class="role-dot role-{{ agent.role|lower|replace(' ', '-') }}"></span>
+                <span>
+                  <strong>{{ agent.name }}</strong>
+                  <small>{{ agent.role }}</small>
+                </span>
+                <span>{{ agent.slack_channel }}</span>
+                <span>{{ agent.hermes_command }}</span>
+                <i data-lucide="chevron-right"></i>
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel" id="standups">
+            <div class="panel-header">
+              <h2>Standups</h2>
+            </div>
+            {% if standup_run_blocker %}
+            <p class="empty-state">
+              {{ standup_run_blocker }} Manual standup runs stay locked until the
+              Chief of Staff profile passes final LLM verification.
+            </p>
+            {% endif %}
+            <div class="schedule-list">
+              {% for schedule in schedules %}
+              <form class="schedule-item" method="post" action="/standups/{{ schedule.id }}/run">
+                <div>
+                  <strong>{{ "%02d"|format(schedule.hour) }}:{{ "%02d"|format(schedule.minute) }}</strong>
+                  <small>{{ schedule.name }} - {{ schedule.timezone }}</small>
+                </div>
+                <button
+                  title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
+                  type="submit"
+                  class="icon-button"
+                  {% if standup_run_blocker %}disabled{% endif %}
+                >
+                  <i data-lucide="play"></i>
+                </button>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>New Planning Task</h2>
+            </div>
+            <form class="stacked-form" method="post" action="/tasks">
+              <label>
+                Title
+                <input name="title" required placeholder="Rank three startup concepts">
+              </label>
+              <label>
+                Owner
+                <select name="owner_agent_id">
+                  {% for agent in agents %}
+                  <option value="{{ agent.id }}">{{ agent.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Priority
+                <select name="priority">
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label>
+                Summary
+                <textarea name="summary" rows="4" placeholder="What should this agent produce?"></textarea>
+              </label>
+              <button class="primary-button" type="submit">
+                <i data-lucide="plus"></i> Add task
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide">
+            <div class="panel-header">
+              <h2>Tasks</h2>
+            </div>
+            <div class="item-list">
+              {% for task in tasks %}
+              <div class="list-row">
+                <div>
+                  <strong>{{ task.title }}</strong>
+                  <small>
+                    {{ task.owner_name }} - {{ task.status }} - {{ task.priority }}
+                    {% if task.kanban_task_id %} - Kanban {{ task.kanban_task_id }}{% endif %}
+                  </small>
+                </div>
+                <p>{{ task.summary }}</p>
+                {% if not task.kanban_task_id %}
+                {% if kanban_task_push_blocker %}
+                <a class="primary-button link-button" href="/setup#kanban-verification">
+                  <i data-lucide="shield-alert"></i> Kanban prerequisites needed
+                </a>
+                <small>{{ kanban_task_push_blocker }}</small>
+                {% else %}
+                <form method="post" action="/tasks/{{ task.id }}/kanban">
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="list-plus"></i> Push to Kanban
+                  </button>
+                </form>
+                {% endif %}
+                {% endif %}
+              </div>
+              {% else %}
+              <p class="empty-state">No planning tasks yet.</p>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>New Document</h2>
+            </div>
+            <form class="stacked-form" method="post" action="/documents">
+              <label>
+                Title
+                <input name="title" required placeholder="Founder brief">
+              </label>
+              <label>
+                Type
+                <select name="doc_type">
+                  <option value="brief">Brief</option>
+                  <option value="prd">PRD</option>
+                  <option value="research">Research</option>
+                  <option value="architecture">Architecture</option>
+                </select>
+              </label>
+              <label>
+                Owner
+                <select name="owner_agent_id">
+                  {% for agent in agents %}
+                  <option value="{{ agent.id }}">{{ agent.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Body
+                <textarea name="body" rows="5" placeholder="Draft notes or founder context"></textarea>
+              </label>
+              <button class="primary-button" type="submit">
+                <i data-lucide="file-plus-2"></i> Save draft
+              </button>
+            </form>
+          </div>
+
+          <div class="panel" id="runs">
+            <div class="panel-header">
+              <h2>Recent Hermes Runs</h2>
+            </div>
+            <div class="item-list compact">
+              {% for run in runs %}
+              <div class="run-row {{ run.status }}">
+                <div>
+                  <strong>{{ run.agent_name }}</strong>
+                  <small>{{ run.run_type }} - {{ run.status }}</small>
+                </div>
+                <p>{{ run.error or run.output }}</p>
+              </div>
+              {% else %}
+              <p class="empty-state">No Hermes runs yet.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

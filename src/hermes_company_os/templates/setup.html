@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Setup - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Infrastructure setup</small>
+          </div>
+        </div>
+        <nav>
+          <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a class="active" href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a href="#profiles"><i data-lucide="users-round"></i> Profiles</a>
+          <a href="#integrations"><i data-lucide="plug"></i> Integrations</a>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Before idea phase</p>
+            <h1>Company infrastructure readiness</h1>
+          </div>
+          <a class="primary-button link-button" href="/setup/bootstrap.ps1">
+            <i data-lucide="download"></i> Bootstrap script
+          </a>
+          <a class="primary-button link-button" href="/setup/profile-artifacts.md">
+            <i data-lucide="file-text"></i> Profile artifacts
+          </a>
+          <a class="primary-button link-button" href="/setup/profile-live-assets.md">
+            <i data-lucide="file-cog"></i> Live starter assets
+          </a>
+          <a class="primary-button link-button" href="/setup/team-topology.md">
+            <i data-lucide="network"></i> Team topology
+          </a>
+          <a class="primary-button link-button" href="/setup/profile-acceptance.md">
+            <i data-lucide="clipboard-check"></i> Profile acceptance
+          </a>
+          <a class="primary-button link-button" href="/setup/inputs-needed.md">
+            <i data-lucide="clipboard-list"></i> Inputs needed
+          </a>
+          <a class="primary-button link-button" href="/setup/founder-input-request.md">
+            <i data-lucide="messages-square"></i> Founder input request
+          </a>
+          <a class="primary-button link-button" href="/setup/founder-inputs.ps1">
+            <i data-lucide="square-terminal"></i> Input collector
+          </a>
+          <a class="primary-button link-button" href="/setup/first-run.ps1">
+            <i data-lucide="play"></i> First run helper
+          </a>
+          <a class="primary-button link-button" href="/setup/progress-board.md">
+            <i data-lucide="columns-3"></i> Progress board
+          </a>
+          <a class="primary-button link-button" href="/setup/founder-next-actions.md">
+            <i data-lucide="list-todo"></i> Founder next actions
+          </a>
+          <a class="primary-button link-button" href="/setup/readiness-report.md">
+            <i data-lucide="shield-check"></i> Readiness report
+          </a>
+          <a class="primary-button link-button" href="/setup/company-manifest.md">
+            <i data-lucide="package-check"></i> Company manifest
+          </a>
+          <a class="primary-button link-button" href="/setup/company-launch-drill.md">
+            <i data-lucide="clipboard-check"></i> Launch drill
+          </a>
+          <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
+            <i data-lucide="rocket"></i> Kickoff readiness
+          </a>
+          <a class="primary-button link-button" href="/setup/runtime-preflight.md">
+            <i data-lucide="terminal"></i> Runtime preflight
+          </a>
+          <a class="primary-button link-button" href="/setup/hermes-runtime.md">
+            <i data-lucide="plug-zap"></i> Hermes runtime
+          </a>
+          <a class="primary-button link-button" href="/setup/hermes-install.ps1">
+            <i data-lucide="download"></i> Hermes install helper
+          </a>
+          <a class="primary-button link-button" href="/setup/secret-audit.ps1">
+            <i data-lucide="key-round"></i> Secret audit
+          </a>
+          <a class="primary-button link-button" href="/setup/activation-checklist.md">
+            <i data-lucide="list-checks"></i> Activation checklist
+          </a>
+          <a class="primary-button link-button" href="/setup/activation-sequence.md">
+            <i data-lucide="route"></i> Activation sequence
+          </a>
+          <a class="primary-button link-button" href="/setup/activation-runner.ps1">
+            <i data-lucide="square-terminal"></i> Activation runner
+          </a>
+          <a class="primary-button link-button" href="/setup/live-verification.md">
+            <i data-lucide="badge-check"></i> Live verification
+          </a>
+        </section>
+
+        <section class="notice-band">
+          <strong>Hermes version check</strong>
+          <span>{{ hermes_version }}</span>
+        </section>
+
+        <section class="notice-band">
+          <strong>Preflight inputs</strong>
+          <span>{{ input_completion.completed }} of {{ input_completion.required }} required non-secret inputs captured</span>
+        </section>
+
+        <section class="notice-band">
+          <strong>Activation gate</strong>
+          <span>
+            {% if activation_summary.ready %}ready{% else %}not ready{% endif %}
+            -
+            {{ activation_summary.blocking }} blocking,
+            {{ activation_summary.needs_setup }} needs setup,
+            {{ activation_summary.deferred }} deferred
+          </span>
+        </section>
+
+        <section class="notice-band">
+          <strong>External setup plans</strong>
+          <span>
+            <a href="/setup/slack-plan.md">Slack plan</a>
+            <a href="/setup/slack-manifests.json">Slack manifests</a>
+            <a href="/setup/slack-provisioning.md">Slack provisioning</a>
+            <a href="/setup/slack-provisioning.json">Slack provisioning JSON</a>
+            <a href="/setup/slack-provisioning.ps1">Slack provisioning script</a>
+            <a href="/setup/slack-channel-template.md">Slack channel template</a>
+            <a href="/setup/slack-channel-template.json">Slack channel JSON</a>
+            <a href="/setup/slack-bot-user-map.json">Slack bot user map</a>
+            <a href="/setup/slack-bot-user-map-template.md">Slack bot user template</a>
+            <a href="/setup/slack-bot-user-map-template.json">Slack bot user template JSON</a>
+            <a href="/setup/slack-workspace.md">Slack workspace matrix</a>
+            <a href="/setup/slack-invite-matrix.json">Slack invite JSON</a>
+            <a href="/setup/slack-invite-matrix.csv">Slack invite CSV</a>
+            <a href="/setup/telegram-plan.md">Telegram plan</a>
+            <a href="/setup/telegram-botfather.md">Telegram BotFather</a>
+            <a href="/setup/telegram-recipient-template.md">Telegram recipient template</a>
+            <a href="/setup/telegram-recipient-template.json">Telegram recipient JSON</a>
+            <a href="/setup/telegram-provisioning.md">Telegram provisioning</a>
+            <a href="/setup/telegram-provisioning.json">Telegram provisioning JSON</a>
+            <a href="/setup/telegram-provisioning.ps1">Telegram provisioning script</a>
+            <a href="/setup/telegram-policy.md">Telegram urgent policy</a>
+            <a href="/setup/telegram-policy.json">Telegram policy JSON</a>
+            <a href="/setup/messaging-drill.md">Messaging drill</a>
+            <a href="/setup/messaging-drill.json">Messaging drill JSON</a>
+            <a href="/setup/gateway-operations.md">Gateway operations</a>
+            <a href="/setup/gateway-operations.json">Gateway operations JSON</a>
+            <a href="/setup/gateway-operations.ps1">Gateway operations script</a>
+            <a href="/setup/llm-plan.md">LLM plan</a>
+            <a href="/setup/llm-credentials.md">LLM credentials</a>
+            <a href="/setup/llm-provisioning.md">LLM provisioning</a>
+            <a href="/setup/llm-provisioning.json">LLM provisioning JSON</a>
+            <a href="/setup/llm-provisioning.ps1">LLM provisioning script</a>
+            <a href="/setup/llm-provider-presets.md">LLM provider presets</a>
+            <a href="/setup/llm-provider-presets.json">LLM provider presets JSON</a>
+            <a href="/setup/llm-preference-template.md">LLM preference template</a>
+            <a href="/setup/llm-preference-template.json">LLM preference JSON</a>
+            <a href="/setup/llm-finalize.md">LLM finalization plan</a>
+            <a href="/setup/llm-finalize.ps1">LLM finalization runner</a>
+            <a href="/setup/llm-smoke.md">LLM smoke drill</a>
+            <a href="/setup/llm-smoke.json">LLM smoke JSON</a>
+            <a href="/setup/company-manifest.md">Company manifest</a>
+            <a href="/setup/company-manifest.json">Company manifest JSON</a>
+            <a href="/setup/company-launch-drill.md">Company launch drill</a>
+            <a href="/setup/company-launch-drill.json">Company launch drill JSON</a>
+            <a href="/setup/kickoff-readiness.md">Kickoff readiness</a>
+            <a href="/setup/kickoff-readiness.json">Kickoff readiness JSON</a>
+            <a href="/setup/team-topology.md">Team topology</a>
+            <a href="/setup/team-topology.json">Team topology JSON</a>
+            <a href="/setup/delegation-playbook.md">Delegation playbook</a>
+            <a href="/setup/delegation-playbook.json">Delegation playbook JSON</a>
+            <a href="/setup/profile-installation.md">Profile installation audit</a>
+            <a href="/setup/profile-installation.json">Profile installation JSON</a>
+            <a href="/setup/profile-installation.ps1">Profile installation script</a>
+            <a href="/setup/profile-live-assets.md">Profile live starter assets</a>
+            <a href="/setup/profile-live-assets.json">Profile live starter JSON</a>
+            <a href="/setup/profile-live-assets.ps1">Profile live starter script</a>
+            <a href="/setup/profile-acceptance.md">Profile acceptance suite</a>
+            <a href="/setup/profile-acceptance.json">Profile acceptance JSON</a>
+            <a href="/setup/profile-acceptance-template.md">Profile acceptance template</a>
+            <a href="/setup/profile-acceptance-template.json">Profile acceptance template JSON</a>
+            <a href="/setup/secret-audit.md">Secret audit plan</a>
+            <a href="/setup/secret-audit.ps1">Secret audit script</a>
+            <a href="/setup/hermes-runtime.md">Hermes runtime connect</a>
+            <a href="/setup/hermes-runtime.json">Hermes runtime JSON</a>
+            <a href="/setup/hermes-install.ps1">Hermes install helper</a>
+            <a href="/setup/runtime-preflight.md">Runtime preflight</a>
+            <a href="/setup/runtime-preflight.json">Runtime preflight JSON</a>
+            <a href="/setup/runtime-preflight.ps1">Runtime preflight script</a>
+            <a href="/setup/schedule-provisioning.md">Schedule provisioning</a>
+            <a href="/setup/schedule-provisioning.json">Schedule provisioning JSON</a>
+            <a href="/setup/schedule-provisioning.ps1">Schedule provisioning script</a>
+            <a href="/setup/schedule-config-template.md">Schedule config template</a>
+            <a href="/setup/schedule-config-template.json">Schedule config JSON</a>
+            <a href="/setup/schedule-verification-template.md">Schedule verification template</a>
+            <a href="/setup/schedule-verification-template.json">Schedule verification template JSON</a>
+            <a href="/setup/standup-preview.md">Standup preview</a>
+            <a href="/setup/standup-preview.json">Standup preview JSON</a>
+            <a href="/setup/standup-runbook.md">Standup runbook</a>
+            <a href="/setup/standup-cron.ps1">Standup cron</a>
+            <a href="/setup/idea-intake.md">Idea intake packet</a>
+            <a href="/setup/idea-intake.json">Idea intake JSON</a>
+            <a href="/setup/project-workflow.md">Project workflow handoff</a>
+            <a href="/setup/project-workflow.json">Project workflow JSON</a>
+            <a href="/setup/kanban-provisioning.md">Kanban provisioning</a>
+            <a href="/setup/kanban-provisioning.json">Kanban provisioning JSON</a>
+            <a href="/setup/kanban-provisioning.ps1">Kanban provisioning script</a>
+            <a href="/setup/kanban-verification-template.md">Kanban verification template</a>
+            <a href="/setup/kanban-verification-template.json">Kanban verification template JSON</a>
+            <a href="/setup/kanban-runbook.md">Kanban runbook</a>
+            <a href="/setup/kanban-diagnostics.ps1">Kanban diagnostics</a>
+            <a href="/setup/activation-sequence.md">Activation sequence</a>
+            <a href="/setup/activation-runner.md">Activation runner plan</a>
+            <a href="/setup/activation-runner.ps1">Activation runner script</a>
+            <a href="/setup/live-verification.md">Live verification</a>
+            <a href="/setup/verification-evidence.md">Verification evidence</a>
+            <a href="/setup/verification-evidence.json">Verification evidence JSON</a>
+            <a href="/setup/profile-personalization-template.md">Profile personalization template</a>
+            <a href="/setup/profile-personalization-template.json">Profile personalization JSON</a>
+            <a href="/setup/founder-handoff.md">Founder return packet</a>
+            <a href="/setup/founder-handoff.json">Founder return JSON</a>
+            <a href="/setup/founder-input-request.md">Founder input request</a>
+            <a href="/setup/founder-input-request.json">Founder input JSON</a>
+            <a href="/setup/founder-inputs.ps1">Founder input collector</a>
+            <a href="/setup/first-run.md">First run helper</a>
+            <a href="/setup/first-run.json">First run JSON</a>
+            <a href="/setup/first-run.ps1">First run script</a>
+            <a href="/setup/progress-board.md">Progress board</a>
+            <a href="/setup/progress-board.json">Progress board JSON</a>
+            <a href="/setup/input-ledger.md">Founder input ledger</a>
+            <a href="/setup/input-ledger.json">Founder input ledger JSON</a>
+            <a href="/setup/credential-loading.md">Credential loading sequence</a>
+            <a href="/setup/credential-loading.json">Credential loading JSON</a>
+            <a href="/setup/credential-status-template.md">Credential status template</a>
+            <a href="/setup/credential-status-template.json">Credential status JSON</a>
+            <a href="/setup/founder-next-actions.md">Founder next actions</a>
+            <a href="/setup/founder-next-actions.json">Founder next actions JSON</a>
+            <a href="/setup/founder-decisions.md">Founder decision queue</a>
+            <a href="/setup/founder-decisions.json">Founder decision queue JSON</a>
+          </span>
+        </section>
+
+        <section class="readiness-grid" aria-label="Readiness checks">
+          {% for item in readiness %}
+          <div class="readiness-card {{ item.status }}">
+            <span class="status-pill">{{ item.status }}</span>
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.detail }}</small>
+          </div>
+          {% endfor %}
+        </section>
+
+        <section class="workspace-grid">
+          <div class="panel wide" id="input-import">
+            <div class="panel-header">
+              <h2>Founder Reply Import</h2>
+              <a href="/setup/founder-input-request.md">Request packet</a>
+            </div>
+            {% if input_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Input import</strong>
+              <span>
+                {{ input_import_summary.imported }} imported,
+                {{ input_import_summary.deferred }} deferred,
+                {{ input_import_summary.unknown }} unknown,
+                {{ input_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/founder-input-reply">
+              <label>
+                Paste non-secret reply template
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder="founder_name=&#10;slack_workspace_name=&#10;founder_slack_member_id=U..."
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only known non-secret setup keys. Tokens, API keys, OAuth payloads,
+                and secret environment assignments are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import safe inputs
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="profile-personalization-import">
+            <div class="panel-header">
+              <h2>Profile Personalization Import</h2>
+              <a href="/setup/profile-personalization-template.md">Reply template</a>
+            </div>
+            {% if profile_personalization_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Profile import</strong>
+              <span>
+                {{ profile_personalization_import_summary.imported }} imported,
+                {{ profile_personalization_import_summary.invalid }} invalid,
+                {{ profile_personalization_import_summary.unknown }} unknown,
+                {{ profile_personalization_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-personalization-reply">
+              <label>
+                Paste profile personalization JSON
+                <textarea
+                  name="reply_text"
+                  rows="10"
+                  placeholder='{"profiles":[{"id":"engineering-manager","description":"...","capabilities":["architecture","testing"]}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports no-secret starter profile metadata only. Omitted fields keep
+                their current values; regenerated profile artifacts reflect imported changes.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import profile personalization
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="slack-channel-import">
+            <div class="panel-header">
+              <h2>Slack Channel ID Import</h2>
+              <a href="/setup/slack-channel-template.md">Reply template</a>
+            </div>
+            {% if slack_channel_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Slack channel import</strong>
+              <span>
+                {{ slack_channel_import_summary.imported }} imported,
+                {{ slack_channel_import_summary.invalid }} invalid,
+                {{ slack_channel_import_summary.unknown }} unknown,
+                {{ slack_channel_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/slack-channel-reply">
+              <label>
+                Paste Slack channel ID map
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"channel_ids":{"slack_channel_founder_command":"C012ABCDEF","slack_channel_engineering":"C045GHIJKL"}}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only non-secret Slack channel IDs for workspace setup.
+                Slack bot tokens, app tokens, OAuth payloads, and request logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Slack channels
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="slack-bot-user-import">
+            <div class="panel-header">
+              <h2>Slack Bot User ID Import</h2>
+              <a href="/setup/slack-bot-user-map-template.md">Reply template</a>
+            </div>
+            {% if slack_bot_user_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Slack bot user import</strong>
+              <span>
+                {{ slack_bot_user_import_summary.imported }} imported,
+                {{ slack_bot_user_import_summary.invalid }} invalid,
+                {{ slack_bot_user_import_summary.unknown }} unknown,
+                {{ slack_bot_user_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/slack-bot-user-map-reply">
+              <label>
+                Paste Slack bot user ID map
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"bot_user_ids":{"chief-of-staff":"U012ABCDEF","engineering-manager":"U045GHIJKL"}}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only non-secret Slack bot user IDs for separate profile bots.
+                Slack bot tokens, app tokens, OAuth payloads, and request logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Slack bot users
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="telegram-recipient-import">
+            <div class="panel-header">
+              <h2>Telegram Recipient ID Import</h2>
+              <a href="/setup/telegram-recipient-template.md">Reply template</a>
+            </div>
+            {% if telegram_recipient_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Telegram recipient import</strong>
+              <span>
+                {{ telegram_recipient_import_summary.imported }} imported,
+                {{ telegram_recipient_import_summary.invalid }} invalid,
+                {{ telegram_recipient_import_summary.unknown }} unknown,
+                {{ telegram_recipient_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/telegram-recipient-reply">
+              <label>
+                Paste Telegram recipient IDs
+                <textarea
+                  name="reply_text"
+                  rows="6"
+                  placeholder='{"founder_telegram_user_id":"123456789","telegram_home_channel":"-1001234567890"}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only numeric Telegram recipient IDs. BotFather tokens,
+                API URLs, request headers, screenshots, and message logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Telegram recipients
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="inputs">
+            <div class="panel-header">
+              <h2>Deferred Setup Inputs</h2>
+            </div>
+            <form class="setup-input-grid" method="post" action="/setup/inputs">
+              {% for input in setup_inputs %}
+              <label class="setup-input {{ input.group_name }}">
+                <span>
+                  {{ input.label }}
+                  {% if input.required %}<em>required</em>{% endif %}
+                </span>
+                <input
+                  name="{{ input.key }}"
+                  value="{{ input.value }}"
+                  placeholder="{% if input.secret_policy == 'secret_external' %}deferred external secret/config{% else %}enter {{ input.label|lower }}{% endif %}"
+                >
+                <small>{{ input.group_name }} - {{ input.help_text }}</small>
+              </label>
+              {% endfor %}
+              <button class="primary-button" type="submit">
+                <i data-lucide="save"></i> Save inputs
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide">
+            <div class="panel-header">
+              <h2>Setup Plan</h2>
+            </div>
+            <div class="setup-timeline">
+              {% for step in setup_steps %}
+              <div class="timeline-row">
+                <span class="status-pill {{ step.status }}">{{ step.status }}</span>
+                <div>
+                  <strong>{{ step.name }}</strong>
+                  <small>{{ step.phase }} - {{ step.owner }}</small>
+                  <p>{{ step.description }}</p>
+                  <code>{{ step.command }}</code>
+                  <a href="{{ step.docs_url }}" target="_blank" rel="noreferrer">Docs</a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="schedule-config-import">
+            <div class="panel-header">
+              <h2>Schedule Configuration Import</h2>
+              <a href="/setup/schedule-config-template.md">Reply template</a>
+            </div>
+            {% if schedule_config_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Schedule config import</strong>
+              <span>
+                {{ schedule_config_import_summary.imported }} imported,
+                {{ schedule_config_import_summary.invalid }} invalid,
+                {{ schedule_config_import_summary.unknown }} unknown,
+                {{ schedule_config_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/schedule-config-reply">
+              <label>
+                Paste schedule configuration JSON or lines
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"schedules":[{"id":"morning-standup","hour":9,"minute":0,"timezone":"America/New_York","slack_channel":"#agent-standup","active":true}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports standup metadata only. Omitted fields keep current values;
+                cron verification remains separate from configuration.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import schedule config
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="schedules">
+            <div class="panel-header">
+              <h2>Standup Schedules</h2>
+            </div>
+            <div class="setup-timeline">
+              {% for schedule in schedules %}
+              <form class="timeline-row" method="post" action="/setup/schedules/{{ schedule.id }}">
+                <span class="status-pill {% if schedule.active %}configured{% else %}deferred{% endif %}">
+                  {% if schedule.active %}active{% else %}paused{% endif %}
+                </span>
+                <div class="setup-input-grid">
+                  <label class="setup-input">
+                    <span>Name</span>
+                    <input name="name" value="{{ schedule.name }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Hour</span>
+                    <input name="hour" type="number" min="0" max="23" value="{{ schedule.hour }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Minute</span>
+                    <input name="minute" type="number" min="0" max="59" value="{{ schedule.minute }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Timezone</span>
+                    <input name="timezone" value="{{ schedule.timezone }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Slack channel</span>
+                    <input name="slack_channel" value="{{ schedule.slack_channel }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Telegram policy</span>
+                    <input name="telegram_policy" value="{{ schedule.telegram_policy }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Active</span>
+                    <input name="active" type="checkbox" {% if schedule.active %}checked{% endif %}>
+                  </label>
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="save"></i> Save schedule
+                  </button>
+                </div>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="llm-presets">
+            <div class="panel-header">
+              <h2>LLM Provider Presets</h2>
+              <a href="/setup/llm-provider-presets.md">Preset plan</a>
+            </div>
+            <div class="setup-timeline">
+              {% for preset in llm_presets %}
+              <div class="timeline-row">
+                <span class="status-pill {{ preset.status }}">{{ preset.status }}</span>
+                <div>
+                  <strong>{{ preset.label }}</strong>
+                  <p>{{ preset.description }}</p>
+                  <small>{{ preset.auth_method }} - {{ preset.profiles|length }} profiles</small>
+                  <form method="post" action="/setup/llm-provider-presets/{{ preset.id }}">
+                    <button class="primary-button" type="submit">
+                      <i data-lucide="wand-sparkles"></i> Apply preset
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="llm-preference-import">
+            <div class="panel-header">
+              <h2>LLM Preference Import</h2>
+              <a href="/setup/llm-preference-template.md">Reply template</a>
+            </div>
+            {% if llm_preference_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>LLM preference import</strong>
+              <span>
+                {{ llm_preference_import_summary.imported }} imported,
+                {{ llm_preference_import_summary.invalid }} invalid,
+                {{ llm_preference_import_summary.unknown }} unknown,
+                {{ llm_preference_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/llm-preference-reply">
+              <label>
+                Paste LLM preference JSON
+                <textarea
+                  name="reply_text"
+                  rows="10"
+                  placeholder='{"preferences":[{"agent_id":"research-agent","provider":"openrouter","model":"anthropic/claude-sonnet-4","status":"needs_secret"}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports provider/model metadata only. API keys stay outside the dashboard,
+                and `verified` remains reserved for profile smoke checks.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import LLM preferences
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="models">
+            <div class="panel-header">
+              <h2>LLM Profile Preferences</h2>
+            </div>
+            <div class="setup-timeline">
+              {% for preference in model_preferences %}
+              <form
+                class="timeline-row"
+                method="post"
+                action="/setup/model-preferences/{{ preference.agent_id }}"
+              >
+                <span class="status-pill {{ preference.status }}">{{ preference.status }}</span>
+                <div class="setup-input-grid">
+                  <label class="setup-input">
+                    <span>Profile</span>
+                    <input value="{{ preference.agent_name }}" disabled>
+                  </label>
+                  <label class="setup-input">
+                    <span>Provider</span>
+                    <input name="provider" value="{{ preference.provider }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Model</span>
+                    <input name="model" value="{{ preference.model }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Fallback provider</span>
+                    <input name="fallback_provider" value="{{ preference.fallback_provider }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Fallback model</span>
+                    <input name="fallback_model" value="{{ preference.fallback_model }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Auth method</span>
+                    <input name="auth_method" value="{{ preference.auth_method }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Status</span>
+                    <select name="status">
+                      {% for option in ["planned", "needs_secret", "ready_for_verification"] %}
+                      <option value="{{ option }}" {% if preference.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                      {% if preference.status == "verified" %}
+                      <option value="ready_for_verification">verified by smoke check</option>
+                      {% endif %}
+                    </select>
+                  </label>
+                  <label class="setup-input">
+                    <span>Notes</span>
+                    <input name="notes" value="{{ preference.notes }}">
+                  </label>
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="save"></i> Save model preference
+                  </button>
+                </div>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="profile-installation-tracking">
+            <div class="panel-header">
+              <h2>Profile Installation Tracking</h2>
+              <a href="/setup/profile-installation.md">Installation audit</a>
+            </div>
+            {% if profile_installation_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Profile audit import</strong>
+              <span>
+                {{ profile_installation_import_summary.imported }} imported,
+                {{ profile_installation_import_summary.incomplete }} incomplete,
+                {{ profile_installation_import_summary.unknown }} unknown,
+                {{ profile_installation_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-installation-audit">
+              <label>
+                Paste profile-installation.ps1 output
+                <textarea
+                  name="audit_text"
+                  rows="7"
+                  placeholder="FOUND chief-of-staff profile directory&#10;FOUND chief-of-staff command alias&#10;MISSING engineering-manager SOUL.md"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only no-secret FOUND/MISSING/DEFER audit lines. Missing required
+                identity files, starter files, command aliases, or profile directories mark
+                the matching profile installation blocked.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import audit output
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in profile_installation_checks %}
+              <div class="integration-row" id="profile-installation-tracking-{{ check.id }}">
+                <div>
+                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  <strong>{{ check.agent_name }} - {{ check.label }}</strong>
+                  <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/profile-installation-checks/{{ check.id }}">
+                    <select name="status">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret installation evidence">
+                    <button class="icon-button" title="Save installation status" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="profile-smoke">
+            <div class="panel-header">
+              <h2>Profile Smoke Checks</h2>
+            </div>
+            <div class="setup-timeline">
+              {% for preference in model_preferences %}
+              {% set smoke_run = profile_smoke_runs.get(preference.agent_id) %}
+              {% set smoke_blocker = profile_smoke_blockers.get(preference.agent_id, "") %}
+              <div class="timeline-row">
+                <span class="status-pill {% if smoke_run %}{{ smoke_run.status }}{% else %}deferred{% endif %}">
+                  {% if smoke_run %}{{ smoke_run.status }}{% else %}not run{% endif %}
+                </span>
+                <div>
+                  <strong>{{ preference.agent_name }}</strong>
+                  <small>{{ preference.hermes_command }} - {{ preference.provider }} / {{ preference.model }}</small>
+                  {% if smoke_run %}
+                  <p>{{ smoke_run.error or smoke_run.output }}</p>
+                  <small>Last checked {{ smoke_run.created_at }}</small>
+                  {% else %}
+                  <p>Run after the profile command, model config, and external credential are ready.</p>
+                  {% endif %}
+                  {% if smoke_blocker %}
+                  <p>{{ smoke_blocker }}</p>
+                  {% endif %}
+                  <form method="post" action="/setup/profile-smoke/{{ preference.agent_id }}">
+                    <button
+                      class="primary-button"
+                      type="submit"
+                      {% if smoke_blocker %}disabled title="{{ smoke_blocker }}"{% endif %}
+                    >
+                      <i data-lucide="activity"></i> Run smoke check
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="profile-acceptance-tracking">
+            <div class="panel-header">
+              <h2>Profile Acceptance Tracking</h2>
+              <a href="/setup/profile-acceptance.md">Acceptance suite</a>
+              <a href="/setup/profile-acceptance-template.md">Reply template</a>
+            </div>
+            {% if profile_acceptance_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Acceptance import</strong>
+              <span>
+                {{ profile_acceptance_import_summary.imported }} imported,
+                {{ profile_acceptance_import_summary.invalid }} invalid,
+                {{ profile_acceptance_import_summary.unknown }} unknown,
+                {{ profile_acceptance_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-acceptance-reply">
+              <label>
+                Paste profile acceptance reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="engineering-manager-acceptance-1=verified | Architecture and testing answer accepted"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. `verified` checks still require
+                the matching profile smoke check to pass first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import acceptance checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in profile_acceptance_checks %}
+              <div class="integration-row" id="profile-acceptance-tracking-{{ check.id }}">
+                <div>
+                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  <strong>{{ check.agent_name }} - {{ check.title }}</strong>
+                  <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% set acceptance_blocker = profile_acceptance_blockers.get(check.id, "") %}
+                  {% if acceptance_blocker %}
+                  <p>{{ acceptance_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/profile-acceptance-checks/{{ check.id }}">
+                    <select name="status">
+                      {% for option in ["needed", "verified", "failed", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret acceptance evidence">
+                    <button class="icon-button" title="Save acceptance status" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="messaging-verification">
+            <div class="panel-header">
+              <h2>Messaging Verification</h2>
+              <a href="/setup/messaging-verification-template.md">Reply template</a>
+            </div>
+            {% if messaging_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Messaging import</strong>
+              <span>
+                {{ messaging_import_summary.imported }} imported,
+                {{ messaging_import_summary.invalid }} invalid,
+                {{ messaging_import_summary.unknown }} unknown,
+                {{ messaging_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/messaging-verification-reply">
+              <label>
+                Paste messaging verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="research-agent-slack-dm=verified | Founder DM reply observed"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Live `verified` checks still require
+                matching external credential status to be loaded first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import messaging checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in messaging_checks %}
+              <div class="integration-row">
+                <div>
+                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.platform }} - {{ check.owner_name }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% set credential_blocker = messaging_credential_blockers.get(check.id, "") %}
+                  {% if credential_blocker %}
+                  <p>{{ credential_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/messaging-checks/{{ check.id }}">
+                    <select name="status">
+                      {% for option in ["needed", "loaded", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
+                    <button class="icon-button" title="Save verification" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="credential-status-import">
+            <div class="panel-header">
+              <h2>Credential Status Import</h2>
+              <a href="/setup/credential-status-template.md">Status template</a>
+            </div>
+            {% if credential_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Credential import</strong>
+              <span>
+                {{ credential_import_summary.imported }} imported,
+                {{ credential_import_summary.invalid }} invalid,
+                {{ credential_import_summary.unknown }} unknown,
+                {{ credential_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/credential-status-reply">
+              <label>
+                Paste credential status reply
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder="chief-of-staff-slack-bot-token=loaded | Loaded externally into profile .env"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Updates status metadata only. Do not paste bot tokens, API keys, OAuth
+                payloads, request headers, private endpoints, or raw logs.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import credential statuses
+              </button>
+            </form>
+          </div>
+
+          <div class="panel wide" id="secret-status">
+            <div class="panel-header">
+              <h2>External Secret Status</h2>
+            </div>
+            <div class="integration-table">
+              {% for secret in secret_requirements %}
+              <div class="integration-row">
+                <div>
+                  <span class="status-pill {{ secret.status }}">{{ secret.status }}</span>
+                  <strong>{{ secret.label }}</strong>
+                  <small>
+                    {{ secret.category }}
+                    {% if secret.owner_name %} - {{ secret.owner_name }}{% endif %}
+                  </small>
+                  <p>{{ secret.destination }} - {{ secret.environment_key }}</p>
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/secret-requirements/{{ secret.id }}">
+                    <select name="status">
+                      {% if secret.category == "llm" %}
+                      {% set secret_status_options = ["needed", "loaded", "deferred"] %}
+                      {% else %}
+                      {% set secret_status_options = ["needed", "loaded", "verified", "deferred"] %}
+                      {% endif %}
+                      {% for option in secret_status_options %}
+                      <option value="{{ option }}" {% if secret.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                      {% if secret.category == "llm" and secret.status == "verified" %}
+                      <option value="loaded">verified by smoke check</option>
+                      {% endif %}
+                    </select>
+                    <input name="notes" value="{{ secret.notes }}" placeholder="no secret values">
+                    <button class="icon-button" title="Save status" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel" id="profiles">
+            <div class="panel-header">
+              <h2>Profile Commands</h2>
+            </div>
+            <div class="command-list">
+              {% for command in profile_commands %}
+              <div class="command-row">
+                <strong>{{ command.agent }}</strong>
+                <code>{{ command.create }}</code>
+                <code>{{ command.gateway_setup }}</code>
+                <code>{{ command.gateway_start }}</code>
+                <a href="/setup/profile-soul/{{ command.profile_id }}.md">SOUL.md</a>
+                <a href="/setup/profile-manifest/{{ command.profile_id }}.json">Profile manifest</a>
+                <a href="/setup/profile-apply/{{ command.profile_id }}.ps1">Profile apply script</a>
+                <a href="/setup/profile-env/{{ command.profile_id }}.env">Profile .env template</a>
+                <a href="/setup/profile-llm-env/{{ command.profile_id }}.env">Profile LLM .env starter</a>
+                <a href="/setup/profile-config/{{ command.profile_id }}.yaml">Profile config.yaml starter</a>
+                <a href="/setup/profile-live-config/{{ command.profile_id }}.yaml">Live config.yaml</a>
+                <a href="/setup/profile-live-context/{{ command.profile_id }}.md">Live context</a>
+                <a href="/setup/profile-live-prompts/{{ command.profile_id }}.md">Live prompts</a>
+                <a href="/setup/profile-live-rules/{{ command.profile_id }}.md">Live rules</a>
+                <a href="/setup/slack-manifest/{{ command.profile_id }}.json">Slack manifest starter</a>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Activation Commands</h2>
+            </div>
+            <div class="command-list">
+              {% for command in activation_commands %}
+              <div class="command-row">
+                <strong>{{ command.agent }}</strong>
+                {% for env_line in command.env %}
+                <code>{{ env_line }}</code>
+                {% endfor %}
+                <code>{{ command.model }}</code>
+                <a href="{{ command.config_template }}">Model config starter</a>
+                <code>{{ command.setup }}</code>
+                <code>{{ command.start }}</code>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Standup Cron</h2>
+            </div>
+            <div class="command-list">
+              {% for command in cron_commands %}
+              <code>{{ command }}</code>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="schedule-verification">
+            <div class="panel-header">
+              <h2>Schedule Verification</h2>
+              <a href="/setup/schedule-verification-template.md">Reply template</a>
+            </div>
+            {% if schedule_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Schedule import</strong>
+              <span>
+                {{ schedule_import_summary.imported }} imported,
+                {{ schedule_import_summary.invalid }} invalid,
+                {{ schedule_import_summary.unknown }} unknown,
+                {{ schedule_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/schedule-verification-reply">
+              <label>
+                Paste schedule verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="morning-standup-manual-run=verified | Manual run posted to Slack"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Manual standup verification
+                still requires Chief of Staff LLM, Slack, and Telegram checks first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import schedule checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in schedule_checks %}
+              <div class="integration-row">
+                <div>
+                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  <strong>{{ check.label }}</strong>
+                  <small>
+                    {{ "%02d"|format(check.schedule_hour) }}:{{ "%02d"|format(check.schedule_minute) }}
+                    - {{ check.schedule_timezone }}
+                    {% if not check.schedule_active %} - paused{% endif %}
+                  </small>
+                  <p>{{ check.instructions }}</p>
+                  {% set prerequisite_blocker = schedule_prerequisite_blockers.get(check.id, "") %}
+                  {% if prerequisite_blocker %}
+                  <p>{{ prerequisite_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/schedule-checks/{{ check.id }}">
+                    <select name="status">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
+                    <button class="icon-button" title="Save verification" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="kanban-verification">
+            <div class="panel-header">
+              <h2>Kanban Verification</h2>
+              <a href="/setup/kanban-verification-template.md">Reply template</a>
+              <form method="post" action="/setup/kanban/diagnostics">
+                <button class="primary-button" type="submit">
+                  <i data-lucide="radar"></i> Kanban diagnostics
+                </button>
+              </form>
+            </div>
+            {% if kanban_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Kanban import</strong>
+              <span>
+                {{ kanban_import_summary.imported }} imported,
+                {{ kanban_import_summary.invalid }} invalid,
+                {{ kanban_import_summary.unknown }} unknown,
+                {{ kanban_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/kanban-verification-reply">
+              <label>
+                Paste Kanban verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="kanban-board-initialized=verified | Board initialized locally"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Use diagnostics and task-create
+                checks for live Hermes Kanban behavior.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Kanban checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in kanban_checks %}
+              <div class="integration-row">
+                <div>
+                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.check_type }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/kanban-checks/{{ check.id }}">
+                    <select name="status">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
+                    <button class="icon-button" title="Save verification" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide" id="integrations">
+            <div class="panel-header">
+              <h2>Integrations</h2>
+            </div>
+            <div class="integration-table">
+              {% for integration in integrations %}
+              <div class="integration-row">
+                <div>
+                  <span class="status-pill {{ integration.status }}">{{ integration.status }}</span>
+                  <strong>{{ integration.name }}</strong>
+                  <small>{{ integration.category }}{% if integration.owner_name %} - {{ integration.owner_name }}{% endif %}</small>
+                  <p>{{ integration.setup_notes }}</p>
+                  <details>
+                    <summary>Required inputs</summary>
+                    <ul>
+                      {% for required in integration.required_inputs %}
+                      <li>{{ required }}</li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                </div>
+                <div class="integration-actions">
+                  <code>{{ integration.validation_command }}</code>
+                  <form method="post" action="/setup/integrations/{{ integration.id }}">
+                    <select name="status">
+                      {% for option in ["needs_input", "needs_setup", "ready", "configured", "deferred"] %}
+                      <option value="{{ option }}" {% if integration.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="icon-button" title="Save status" type="submit">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                  <a href="{{ integration.docs_url }}" target="_blank" rel="noreferrer">Docs</a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

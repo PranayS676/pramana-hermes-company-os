@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ agent.name }} - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <main class="agent-page">
+      <a class="back-link" href="/"><i data-lucide="arrow-left"></i> Dashboard</a>
+      <section class="agent-hero">
+        <div>
+          <p class="eyebrow">{{ agent.role }}</p>
+          <h1>{{ agent.name }}</h1>
+          <p>{{ agent.description }}</p>
+        </div>
+        <div class="agent-meta">
+          <span><i data-lucide="message-square"></i> {{ agent.slack_channel }}</span>
+          <span><i data-lucide="terminal"></i> {{ agent.hermes_command }}</span>
+        </div>
+      </section>
+
+      <section class="agent-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Identity</h2>
+          </div>
+          <p class="soul">{{ agent.soul }}</p>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Capabilities</h2>
+          </div>
+          <div class="chip-list">
+            {% for capability in agent.capabilities %}
+            <span>{{ capability }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel wide">
+          <div class="panel-header">
+            <h2>Profile Exports</h2>
+          </div>
+          <div class="command-list">
+            <a href="/setup/profile-soul/{{ agent.id }}.md">SOUL.md</a>
+            <a href="/setup/profile-manifest/{{ agent.id }}.json">Profile manifest</a>
+            <a href="/setup/profile-apply/{{ agent.id }}.ps1">Profile apply script</a>
+            <a href="/setup/profile-env/{{ agent.id }}.env">Gateway .env template</a>
+            <a href="/setup/profile-llm-env/{{ agent.id }}.env">LLM .env starter</a>
+            <a href="/setup/profile-config/{{ agent.id }}.yaml">config.yaml starter</a>
+            <a href="/setup/slack-manifest/{{ agent.id }}.json">Slack manifest starter</a>
+          </div>
+        </div>
+        <div class="panel wide">
+          <div class="panel-header">
+            <h2>Edit Starter Profile</h2>
+          </div>
+          <form class="stacked-form" method="post" action="/agents/{{ agent.id }}/profile">
+            <label>
+              Description
+              <textarea name="description" rows="3" required>{{ agent.description }}</textarea>
+            </label>
+            <label>
+              SOUL.md starter
+              <textarea name="soul" rows="8" required>{{ agent.soul }}</textarea>
+            </label>
+            <label>
+              Capabilities
+              <textarea name="capabilities" rows="7" required>{% for capability in agent.capabilities %}{{ capability }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+            </label>
+            <button class="primary-button" type="submit">
+              <i data-lucide="save"></i> Save starter profile
+            </button>
+          </form>
+        </div>
+        <div class="panel wide">
+          <div class="panel-header">
+            <h2>Runtime Routing</h2>
+          </div>
+          <form class="stacked-form" method="post" action="/agents/{{ agent.id }}/routing">
+            <label>
+              Slack home channel
+              <input name="slack_channel" value="{{ agent.slack_channel }}" required>
+            </label>
+            <label>
+              Hermes command
+              <input name="hermes_command" value="{{ agent.hermes_command }}" required>
+            </label>
+            <label>
+              Telegram escalation policy
+              <textarea name="telegram_policy" rows="4" required>{{ agent.telegram_policy }}</textarea>
+            </label>
+            <button class="primary-button" type="submit">
+              <i data-lucide="route"></i> Save routing
+            </button>
+          </form>
+        </div>
+        <div class="panel wide">
+          <div class="panel-header">
+            <h2>Run Real Hermes Profile</h2>
+          </div>
+          {% if live_run_blocker %}
+          <p class="empty-state">
+            {{ live_run_blocker }} Normal profile runs stay locked until final LLM
+            verification passes.
+          </p>
+          <a class="primary-button link-button" href="/setup#profile-smoke">
+            <i data-lucide="shield-check"></i> Open profile smoke checks
+          </a>
+          {% else %}
+          <form class="stacked-form" method="post" action="/agents/{{ agent.id }}/run">
+            <label>
+              Founder request
+              <textarea name="founder_request" rows="7" required placeholder="Ask this profile for a planning or documentation output."></textarea>
+            </label>
+            <button class="primary-button" type="submit">
+              <i data-lucide="send"></i> Send to Hermes
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

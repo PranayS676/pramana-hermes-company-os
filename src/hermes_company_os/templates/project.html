@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ project.name }} - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <main class="agent-page">
+      <a class="back-link" href="/projects"><i data-lucide="arrow-left"></i> Projects</a>
+      <section class="agent-hero">
+        <div>
+          <p class="eyebrow">{{ project.status }}</p>
+          <h1>{{ project.name }}</h1>
+          <p>{{ project.founder_idea }}</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Generated Company Workflow</h2>
+          {% if kanban_ready %}
+          <form method="post" action="/projects/{{ project.id }}/kanban">
+            <button class="primary-button" type="submit">
+              <i data-lucide="list-plus"></i>
+              Push workflow to Kanban
+            </button>
+          </form>
+          {% else %}
+          <a class="primary-button link-button" href="/setup#kanban-verification">
+            <i data-lucide="shield-alert"></i>
+            Kanban verification needed
+          </a>
+          {% endif %}
+        </div>
+        {% if kanban_blocker %}
+        <p class="empty-state">
+          {{ kanban_blocker }} Use one dashboard task push as the task-create drill,
+          then return here when the Kanban gate is ready.
+        </p>
+        {% endif %}
+        <p class="empty-state">
+          {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
+        </p>
+        <div class="integration-table">
+          {% for item in workflow_items %}
+          <div class="integration-row">
+            <div>
+              <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+              <strong>{{ item.title }}</strong>
+              <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
+              {% if item.kanban_task_id %}
+              <p>Hermes Kanban task: {{ item.kanban_task_id }}</p>
+              {% endif %}
+            </div>
+            <div class="integration-actions">
+              <code>Task: {{ item.task_id }}</code>
+              <code>Document: {{ item.document_id }}</code>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

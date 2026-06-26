@@ -1,0 +1,3882 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from pathlib import Path
+
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from hermes_company_os.activation import (
+    activation_commands,
+    cron_commands,
+    missing_required_inputs,
+)
+from hermes_company_os.activation_report import (
+    activation_checks,
+    activation_report_markdown,
+    activation_summary,
+)
+from hermes_company_os.activation_runner import (
+    activation_runner_markdown,
+    activation_runner_powershell,
+)
+from hermes_company_os.activation_sequence import activation_sequence_markdown
+from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
+from hermes_company_os.company_launch_drill import (
+    company_launch_drill_json,
+    company_launch_drill_markdown,
+)
+from hermes_company_os.company_manifest import (
+    company_manifest_json,
+    company_manifest_markdown,
+)
+from hermes_company_os.config_templates import (
+    profile_config_template,
+    profile_live_config_template,
+)
+from hermes_company_os.credential_loading_sequence import (
+    credential_loading_json,
+    credential_loading_markdown,
+)
+from hermes_company_os.credential_status_import import (
+    credential_status_import_redirect,
+    credential_status_template_json,
+    credential_status_template_markdown,
+    parse_credential_status_reply,
+)
+from hermes_company_os.database import initialize_database
+from hermes_company_os.delegation_playbook import (
+    delegation_playbook_json,
+    delegation_playbook_markdown,
+)
+from hermes_company_os.env_templates import profile_env_template
+from hermes_company_os.first_run import (
+    first_run_json,
+    first_run_markdown,
+    first_run_powershell,
+)
+from hermes_company_os.founder_decisions import (
+    RESOLVED_DECISION_STATUSES,
+    founder_decisions_json,
+    founder_decisions_markdown,
+)
+from hermes_company_os.founder_handoff import (
+    founder_handoff_json,
+    founder_handoff_markdown,
+)
+from hermes_company_os.founder_input_import import (
+    founder_input_import_redirect,
+    parse_founder_input_reply,
+)
+from hermes_company_os.founder_inputs import (
+    founder_input_collector_powershell,
+    founder_input_request_json,
+    founder_input_request_markdown,
+)
+from hermes_company_os.founder_next_actions import (
+    founder_next_actions_json,
+    founder_next_actions_markdown,
+    founder_next_actions_payload,
+)
+from hermes_company_os.gateway_operations import (
+    gateway_operations_json,
+    gateway_operations_markdown,
+    gateway_operations_powershell,
+)
+from hermes_company_os.hermes_client import HermesClient
+from hermes_company_os.hermes_runtime import (
+    hermes_install_powershell,
+    hermes_runtime_json,
+    hermes_runtime_markdown,
+)
+from hermes_company_os.idea_intake import idea_intake_json, idea_intake_markdown
+from hermes_company_os.input_ledger import input_ledger_json, input_ledger_markdown
+from hermes_company_os.kanban_artifacts import (
+    kanban_diagnostics_powershell,
+    kanban_runbook_markdown,
+)
+from hermes_company_os.kanban_client import KanbanClient
+from hermes_company_os.kanban_provisioning import (
+    kanban_provisioning_json,
+    kanban_provisioning_markdown,
+    kanban_provisioning_powershell,
+)
+from hermes_company_os.kanban_verification_import import (
+    kanban_verification_import_redirect,
+    kanban_verification_template_json,
+    kanban_verification_template_markdown,
+    parse_kanban_verification_reply,
+)
+from hermes_company_os.kickoff_readiness import (
+    kickoff_readiness_json,
+    kickoff_readiness_markdown,
+    kickoff_readiness_payload,
+)
+from hermes_company_os.live_verification import live_verification_markdown
+from hermes_company_os.llm_artifacts import (
+    llm_credentials_plan_markdown,
+    profile_llm_env_template,
+)
+from hermes_company_os.llm_finalization import (
+    llm_finalization_markdown,
+    llm_finalization_powershell,
+)
+from hermes_company_os.llm_preference_import import (
+    llm_preference_import_redirect,
+    llm_preference_template_json,
+    llm_preference_template_markdown,
+    parse_llm_preference_reply,
+)
+from hermes_company_os.llm_provider_presets import (
+    llm_preset_preferences,
+    llm_provider_presets_json,
+    llm_provider_presets_markdown,
+    llm_provider_presets_payload,
+)
+from hermes_company_os.llm_provisioning import (
+    llm_provisioning_json,
+    llm_provisioning_markdown,
+    llm_provisioning_powershell,
+)
+from hermes_company_os.llm_smoke_artifacts import (
+    llm_smoke_json,
+    llm_smoke_markdown,
+)
+from hermes_company_os.messaging_drill_artifacts import (
+    messaging_drill_json,
+    messaging_drill_markdown,
+)
+from hermes_company_os.messaging_verification_import import (
+    messaging_verification_import_redirect,
+    messaging_verification_template_json,
+    messaging_verification_template_markdown,
+    parse_messaging_verification_reply,
+)
+from hermes_company_os.profile_acceptance import (
+    profile_acceptance_json,
+    profile_acceptance_markdown,
+)
+from hermes_company_os.profile_acceptance_import import (
+    parse_profile_acceptance_reply,
+    profile_acceptance_import_redirect,
+    profile_acceptance_template_json,
+    profile_acceptance_template_markdown,
+)
+from hermes_company_os.profile_artifacts import (
+    profile_apply_powershell,
+    profile_artifacts_markdown,
+    profile_manifest_json,
+    profile_soul_markdown,
+)
+from hermes_company_os.profile_installation import (
+    profile_installation_json,
+    profile_installation_markdown,
+    profile_installation_powershell,
+)
+from hermes_company_os.profile_installation_import import (
+    parse_profile_installation_audit,
+    profile_installation_import_redirect,
+)
+from hermes_company_os.profile_live_assets import (
+    profile_live_assets_json,
+    profile_live_assets_markdown,
+    profile_live_assets_powershell,
+    profile_live_context_markdown,
+    profile_live_prompts_markdown,
+    profile_live_rules_markdown,
+)
+from hermes_company_os.profile_personalization_import import (
+    parse_profile_personalization_reply,
+    profile_personalization_import_redirect,
+    profile_personalization_template_json,
+    profile_personalization_template_markdown,
+)
+from hermes_company_os.progress_board import (
+    progress_board_json,
+    progress_board_markdown,
+)
+from hermes_company_os.project_workflow_artifacts import (
+    project_workflow_json,
+    project_workflow_markdown,
+)
+from hermes_company_os.prompts import build_agent_prompt, build_standup_prompt
+from hermes_company_os.readiness import ReadinessService
+from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.runtime_preflight import (
+    runtime_preflight_checks,
+    runtime_preflight_json,
+    runtime_preflight_markdown,
+    runtime_preflight_powershell,
+)
+from hermes_company_os.schedule_config_import import (
+    parse_schedule_config_reply,
+    schedule_config_import_redirect,
+    schedule_config_template_json,
+    schedule_config_template_markdown,
+)
+from hermes_company_os.schedule_provisioning import (
+    schedule_provisioning_json,
+    schedule_provisioning_markdown,
+    schedule_provisioning_powershell,
+)
+from hermes_company_os.schedule_verification_import import (
+    parse_schedule_verification_reply,
+    schedule_verification_import_redirect,
+    schedule_verification_template_json,
+    schedule_verification_template_markdown,
+)
+from hermes_company_os.secret_audit import (
+    secret_audit_markdown,
+    secret_audit_powershell,
+    secret_audit_requirements,
+)
+from hermes_company_os.secret_guard import assert_no_secret_values
+from hermes_company_os.settings import Settings
+from hermes_company_os.setup_artifacts import (
+    activation_checklist_markdown,
+    inputs_needed_markdown,
+    llm_setup_plan_markdown,
+    slack_setup_plan_markdown,
+    telegram_setup_plan_markdown,
+)
+from hermes_company_os.slack_bot_user_import import (
+    parse_slack_bot_user_reply,
+    slack_bot_user_import_redirect,
+    slack_bot_user_template_json,
+    slack_bot_user_template_markdown,
+)
+from hermes_company_os.slack_channel_import import (
+    parse_slack_channel_reply,
+    slack_channel_import_redirect,
+    slack_channel_template_json,
+    slack_channel_template_markdown,
+)
+from hermes_company_os.slack_manifest import (
+    slack_app_manifest_json,
+    slack_app_manifests_bundle_json,
+)
+from hermes_company_os.slack_provisioning import (
+    slack_bot_user_map_template_json,
+    slack_provisioning_json,
+    slack_provisioning_markdown,
+    slack_provisioning_powershell,
+)
+from hermes_company_os.slack_workspace import (
+    slack_invite_matrix_csv,
+    slack_invite_matrix_json,
+    slack_workspace_markdown,
+)
+from hermes_company_os.smoke_checks import append_smoke_note, profile_smoke_prompt
+from hermes_company_os.standup_artifacts import (
+    standup_cron_powershell,
+    standup_runbook_markdown,
+)
+from hermes_company_os.standup_preview import (
+    standup_preview_json,
+    standup_preview_markdown,
+)
+from hermes_company_os.team_topology import team_topology_json, team_topology_markdown
+from hermes_company_os.telegram_artifacts import telegram_botfather_setup_markdown
+from hermes_company_os.telegram_policy import (
+    telegram_policy_json,
+    telegram_policy_markdown,
+)
+from hermes_company_os.telegram_provisioning import (
+    telegram_provisioning_json,
+    telegram_provisioning_markdown,
+    telegram_provisioning_powershell,
+)
+from hermes_company_os.telegram_recipient_import import (
+    parse_telegram_recipient_reply,
+    telegram_recipient_import_redirect,
+    telegram_recipient_template_json,
+    telegram_recipient_template_markdown,
+)
+from hermes_company_os.verification_evidence import (
+    verification_evidence_json,
+    verification_evidence_markdown,
+)
+
+PACKAGE_ROOT = Path(__file__).parent
+
+
+def reject_secret_values(values: dict[str, str]) -> None:
+    try:
+        assert_no_secret_values(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def kanban_project_push_blocker(repository: CompanyRepository) -> str:
+    if repository.kanban_verification_ready():
+        return ""
+    open_checks = [
+        item for item in repository.list_kanban_checks() if item["status"] != "verified"
+    ]
+    if not open_checks:
+        return "Kanban verification checks are not available."
+    labels = ", ".join(item["label"] for item in open_checks[:3])
+    suffix = "" if len(open_checks) <= 3 else f", plus {len(open_checks) - 3} more"
+    return (
+        "Complete Kanban verification before pushing a full project workflow. "
+        f"Open checks: {labels}{suffix}."
+    )
+
+
+def kanban_task_push_blocker(repository: CompanyRepository) -> str:
+    prerequisite_checks = [
+        item
+        for item in repository.list_kanban_checks()
+        if item["check_type"] != "task_create"
+    ]
+    open_checks = [item for item in prerequisite_checks if item["status"] != "verified"]
+    if not open_checks:
+        return ""
+    labels = ", ".join(item["label"] for item in open_checks)
+    return (
+        "Complete Kanban initialization and diagnostics before running the task-create "
+        f"drill. Open checks: {labels}."
+    )
+
+
+def profile_live_run_blocker(repository: CompanyRepository, agent_id: str) -> str:
+    preference = repository.get_model_preference(agent_id)
+    if preference is None:
+        return "Create a model preference before running this Hermes profile."
+    if preference["status"] != "verified":
+        return (
+            f"Run the profile smoke check for {preference['agent_name']} after loading "
+            f"LLM credentials. Current model status: {preference['status']}."
+        )
+    llm_secret = next(
+        (
+            item
+            for item in repository.list_secret_requirements()
+            if item["owner_agent_id"] == agent_id and item["category"] == "llm"
+        ),
+        None,
+    )
+    if llm_secret is not None and llm_secret["status"] != "verified":
+        return (
+            f"Mark {llm_secret['label']} verified after loading provider credentials "
+            "outside this dashboard."
+        )
+    return ""
+
+
+def messaging_check_credential_blocker(
+    repository: CompanyRepository,
+    check: dict,
+) -> str:
+    requirements = [
+        item
+        for item in repository.list_secret_requirements()
+        if item["owner_agent_id"] == check["owner_agent_id"]
+        and item["category"] == check["platform"]
+    ]
+    open_requirements = [
+        item for item in requirements if item["status"] not in {"loaded", "verified"}
+    ]
+    if not open_requirements:
+        return ""
+    labels = ", ".join(item["label"] for item in open_requirements)
+    return (
+        f"Mark external {check['platform']} credential status loaded before verifying "
+        f"`{check['label']}`. Open credentials: {labels}."
+    )
+
+
+def refresh_messaging_integration_status(
+    repository: CompanyRepository,
+    platform: str,
+) -> None:
+    if not repository.messaging_platform_verified(platform):
+        return
+    for integration in repository.list_integrations():
+        if integration["category"] == platform:
+            repository.update_integration_status(integration["id"], "configured")
+
+
+def schedule_check_prerequisite_blocker(
+    repository: CompanyRepository,
+    check: dict,
+) -> str:
+    if check["check_type"] == "manual_run":
+        live_run_blocker = profile_live_run_blocker(repository, "chief-of-staff")
+        if live_run_blocker:
+            return (
+                "Complete Chief of Staff LLM verification before marking a manual "
+                f"standup run verified. {live_run_blocker}"
+            )
+        if not repository.messaging_platform_verified("slack"):
+            return "Complete Slack messaging verification before marking manual standups verified."
+        if not repository.messaging_platform_verified("telegram"):
+            return (
+                "Complete Telegram urgent-alert verification before marking manual "
+                "standups verified."
+            )
+    if check["check_type"] == "cron_installed":
+        manual_check = repository.get_schedule_check(f"{check['schedule_id']}-manual-run")
+        if manual_check is not None and manual_check["status"] != "verified":
+            return (
+                f"Verify the manual dashboard run for {check['schedule_name']} before "
+                "marking cron installed."
+            )
+    return ""
+
+
+def staged_schedule_check_prerequisite_blocker(
+    repository: CompanyRepository,
+    check: dict,
+    updates: dict[str, dict],
+) -> str:
+    if check["check_type"] != "cron_installed":
+        return schedule_check_prerequisite_blocker(repository, check)
+    manual_check_id = f"{check['schedule_id']}-manual-run"
+    manual_check = repository.get_schedule_check(manual_check_id)
+    manual_update = updates.get(manual_check_id, {})
+    manual_will_be_verified = manual_update.get("status") == "verified"
+    if (
+        manual_check is not None
+        and manual_check["status"] != "verified"
+        and not manual_will_be_verified
+    ):
+        return (
+            f"Verify the manual dashboard run for {check['schedule_name']} before "
+            "marking cron installed."
+        )
+    return ""
+
+
+def profile_acceptance_prerequisite_blocker(
+    repository: CompanyRepository,
+    check: dict,
+) -> str:
+    preference = repository.get_model_preference(check["agent_id"])
+    if preference is None or preference["status"] != "verified":
+        return (
+            "Run the matching profile smoke check successfully before marking "
+            "role acceptance verified."
+        )
+    return ""
+
+
+def profile_installation_prerequisite_blocker(
+    repository: CompanyRepository,
+    agent_id: str,
+) -> str:
+    if not repository.agent_profile_installation_verified(agent_id):
+        return (
+            "Verify this Hermes profile installation before running its profile "
+            "smoke check."
+        )
+    return ""
+
+
+def reject_manual_llm_verified_status(category: str, status: str) -> None:
+    if category == "llm" and status == "verified":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "LLM credentials are marked verified only by a successful profile "
+                "smoke check. Use loaded or ready_for_verification before smoke checks."
+            ),
+        )
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    resolved_settings = settings or Settings.from_env()
+    database_path = resolved_settings.resolved_database_path()
+    initialize_database(database_path)
+
+    app = FastAPI(title="Hermes Company OS")
+    app.state.settings = resolved_settings
+    app.state.repository = CompanyRepository(database_path)
+    app.state.hermes_client = HermesClient(resolved_settings)
+    app.state.kanban_client = KanbanClient()
+    app.state.readiness_service = ReadinessService(database_path)
+
+    templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
+    app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
+
+    @app.get("/health")
+    def health() -> dict:
+        return {"status": "ok"}
+
+    @app.get("/")
+    def dashboard(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        agents = repository.list_agents()
+        schedules = repository.list_schedules()
+        integrations = repository.list_integrations()
+        setup_inputs = repository.list_setup_inputs()
+        model_preferences = repository.list_model_preferences()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                agents,
+                integrations,
+            )
+        ]
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return templates.TemplateResponse(
+            request,
+            "dashboard.html",
+            {
+                "agents": agents,
+                "schedules": schedules,
+                "tasks": repository.list_tasks(),
+                "documents": repository.list_documents(),
+                "runs": repository.list_runs(),
+                "projects": repository.list_projects(),
+                "founder_decisions": founder_decisions,
+                "founder_actions": founder_next_actions_payload(
+                    activation_checks=checks,
+                    setup_inputs=setup_inputs,
+                    secret_requirements=secret_requirements,
+                    messaging_checks=messaging_checks,
+                    schedule_checks=schedule_checks,
+                    kanban_checks=kanban_checks,
+                    model_preferences=model_preferences,
+                    integrations=integrations,
+                    runtime_checks=runtime_checks,
+                    profile_acceptance_checks=profile_acceptance_checks,
+                    profile_installation_checks=profile_installation_checks,
+                    founder_decisions=founder_decisions,
+                ),
+                "standup_run_blocker": profile_live_run_blocker(
+                    repository,
+                    "chief-of-staff",
+                ),
+                "kanban_task_push_blocker": kanban_task_push_blocker(repository),
+                "settings": request.app.state.settings,
+            },
+        )
+
+    @app.get("/setup")
+    def setup(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        agents = repository.list_agents()
+        integrations = repository.list_integrations()
+        setup_inputs = repository.list_setup_inputs()
+        setup_values = repository.setup_input_map()
+        model_preferences = repository.list_model_preferences()
+        messaging_checks = repository.list_messaging_checks()
+        schedules = repository.list_schedules()
+        secret_requirements = repository.list_secret_requirements()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        readiness_service: ReadinessService = request.app.state.readiness_service
+        return templates.TemplateResponse(
+            request,
+            "setup.html",
+            {
+                "agents": agents,
+                "integrations": integrations,
+                "setup_steps": repository.list_setup_steps(),
+                "setup_inputs": setup_inputs,
+                "schedules": schedules,
+                "model_preferences": model_preferences,
+                "llm_presets": llm_provider_presets_payload(
+                    agents=agents,
+                    model_preferences=model_preferences,
+                )["presets"],
+                "secret_requirements": secret_requirements,
+                "messaging_checks": messaging_checks,
+                "messaging_credential_blockers": {
+                    check["id"]: messaging_check_credential_blocker(repository, check)
+                    for check in messaging_checks
+                },
+                "schedule_checks": schedule_checks,
+                "schedule_prerequisite_blockers": {
+                    check["id"]: schedule_check_prerequisite_blocker(repository, check)
+                    for check in schedule_checks
+                },
+                "kanban_checks": kanban_checks,
+                "profile_installation_checks": profile_installation_checks,
+                "profile_acceptance_checks": profile_acceptance_checks,
+                "profile_acceptance_blockers": {
+                    check["id"]: profile_acceptance_prerequisite_blocker(
+                        repository,
+                        check,
+                    )
+                    for check in profile_acceptance_checks
+                },
+                "profile_smoke_blockers": {
+                    preference["agent_id"]: profile_installation_prerequisite_blocker(
+                        repository,
+                        preference["agent_id"],
+                    )
+                    for preference in model_preferences
+                },
+                "profile_smoke_runs": repository.latest_runs_by_type("profile-smoke"),
+                "activation_summary": activation_summary(checks),
+                "input_completion": repository.setup_input_completion(),
+                "missing_inputs": missing_required_inputs(setup_inputs),
+                "readiness": readiness_service.check(agents, integrations),
+                "hermes_version": readiness_service.hermes_version(),
+                "profile_commands": profile_setup_commands(agents),
+                "activation_commands": activation_commands(agents, setup_values),
+                "cron_commands": cron_commands(setup_values, schedules),
+                "input_import_summary": {
+                    "imported": request.query_params.get("input_imported"),
+                    "unknown": request.query_params.get("input_unknown"),
+                    "deferred": request.query_params.get("input_deferred"),
+                    "ignored": request.query_params.get("input_ignored"),
+                },
+                "credential_import_summary": {
+                    "imported": request.query_params.get("credential_imported"),
+                    "unknown": request.query_params.get("credential_unknown"),
+                    "invalid": request.query_params.get("credential_invalid"),
+                    "ignored": request.query_params.get("credential_ignored"),
+                },
+                "messaging_import_summary": {
+                    "imported": request.query_params.get("messaging_imported"),
+                    "unknown": request.query_params.get("messaging_unknown"),
+                    "invalid": request.query_params.get("messaging_invalid"),
+                    "ignored": request.query_params.get("messaging_ignored"),
+                },
+                "slack_channel_import_summary": {
+                    "imported": request.query_params.get("slack_channel_imported"),
+                    "unknown": request.query_params.get("slack_channel_unknown"),
+                    "invalid": request.query_params.get("slack_channel_invalid"),
+                    "ignored": request.query_params.get("slack_channel_ignored"),
+                },
+                "slack_bot_user_import_summary": {
+                    "imported": request.query_params.get("slack_bot_user_imported"),
+                    "unknown": request.query_params.get("slack_bot_user_unknown"),
+                    "invalid": request.query_params.get("slack_bot_user_invalid"),
+                    "ignored": request.query_params.get("slack_bot_user_ignored"),
+                },
+                "telegram_recipient_import_summary": {
+                    "imported": request.query_params.get(
+                        "telegram_recipient_imported"
+                    ),
+                    "unknown": request.query_params.get("telegram_recipient_unknown"),
+                    "invalid": request.query_params.get("telegram_recipient_invalid"),
+                    "ignored": request.query_params.get("telegram_recipient_ignored"),
+                },
+                "schedule_config_import_summary": {
+                    "imported": request.query_params.get("schedule_config_imported"),
+                    "unknown": request.query_params.get("schedule_config_unknown"),
+                    "invalid": request.query_params.get("schedule_config_invalid"),
+                    "ignored": request.query_params.get("schedule_config_ignored"),
+                },
+                "schedule_import_summary": {
+                    "imported": request.query_params.get("schedule_imported"),
+                    "unknown": request.query_params.get("schedule_unknown"),
+                    "invalid": request.query_params.get("schedule_invalid"),
+                    "ignored": request.query_params.get("schedule_ignored"),
+                },
+                "kanban_import_summary": {
+                    "imported": request.query_params.get("kanban_imported"),
+                    "unknown": request.query_params.get("kanban_unknown"),
+                    "invalid": request.query_params.get("kanban_invalid"),
+                    "ignored": request.query_params.get("kanban_ignored"),
+                },
+                "profile_acceptance_import_summary": {
+                    "imported": request.query_params.get(
+                        "profile_acceptance_imported"
+                    ),
+                    "unknown": request.query_params.get("profile_acceptance_unknown"),
+                    "invalid": request.query_params.get("profile_acceptance_invalid"),
+                    "ignored": request.query_params.get("profile_acceptance_ignored"),
+                },
+                "profile_installation_import_summary": {
+                    "imported": request.query_params.get("profile_installation_imported"),
+                    "unknown": request.query_params.get("profile_installation_unknown"),
+                    "incomplete": request.query_params.get(
+                        "profile_installation_incomplete"
+                    ),
+                    "ignored": request.query_params.get("profile_installation_ignored"),
+                },
+                "profile_personalization_import_summary": {
+                    "imported": request.query_params.get(
+                        "profile_personalization_imported"
+                    ),
+                    "unknown": request.query_params.get(
+                        "profile_personalization_unknown"
+                    ),
+                    "invalid": request.query_params.get(
+                        "profile_personalization_invalid"
+                    ),
+                    "ignored": request.query_params.get(
+                        "profile_personalization_ignored"
+                    ),
+                },
+                "llm_preference_import_summary": {
+                    "imported": request.query_params.get("llm_preference_imported"),
+                    "unknown": request.query_params.get("llm_preference_unknown"),
+                    "invalid": request.query_params.get("llm_preference_invalid"),
+                    "ignored": request.query_params.get("llm_preference_ignored"),
+                },
+                "settings": request.app.state.settings,
+            },
+        )
+
+    @app.get("/setup/bootstrap.ps1")
+    def bootstrap_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            powershell_bootstrap(
+                repository.list_agents(),
+                repository.setup_input_map(),
+                repository.list_schedules(),
+                repository.model_preference_map(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/profile-env/{agent_id}.env")
+    def profile_env(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_env_template(agent, repository.setup_input_map()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/profile-config/{agent_id}.yaml")
+    def profile_config(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_config_template(
+                agent,
+                repository.setup_input_map(),
+                repository.get_model_preference(agent_id),
+            ),
+            media_type="text/yaml",
+        )
+
+    @app.get("/setup/profile-live-config/{agent_id}.yaml")
+    def profile_live_config(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_live_config_template(
+                agent,
+                repository.setup_input_map(),
+                repository.get_model_preference(agent_id),
+            ),
+            media_type="text/yaml",
+        )
+
+    @app.get("/setup/profile-llm-env/{agent_id}.env")
+    def profile_llm_env(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_llm_env_template(agent, repository.get_model_preference(agent_id)),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/profile-artifacts.md")
+    def profile_artifacts(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_artifacts_markdown(repository.list_agents()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-personalization-template.md")
+    def profile_personalization_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_personalization_template_markdown(repository.list_agents()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-personalization-template.json")
+    def profile_personalization_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_personalization_template_json(repository.list_agents()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-installation.md")
+    def profile_installation_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_installation_markdown(
+                agents=repository.list_agents(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-installation.json")
+    def profile_installation_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_installation_json(
+                agents=repository.list_agents(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-installation.ps1")
+    def profile_installation_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_installation_powershell(repository.list_agents()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/profile-live-assets.md")
+    def profile_live_assets_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_live_assets_markdown(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-live-assets.json")
+    def profile_live_assets_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_live_assets_json(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-live-assets.ps1")
+    def profile_live_assets_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_live_assets_powershell(repository.list_agents()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/profile-live-context/{agent_id}.md")
+    def profile_live_context(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_live_context_markdown(
+                agent=agent,
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+                schedules=repository.list_schedules(),
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-live-prompts/{agent_id}.md")
+    def profile_live_prompts(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_live_prompts_markdown(
+                agent,
+                repository.get_model_preference(agent_id),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-live-rules/{agent_id}.md")
+    def profile_live_rules(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_live_rules_markdown(agent),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/team-topology.md")
+    def team_topology_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            team_topology_markdown(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/team-topology.json")
+    def team_topology_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            team_topology_json(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/delegation-playbook.md")
+    def delegation_playbook_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            delegation_playbook_markdown(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+                workflow_templates=repository.list_workflow_templates(),
+                schedules=repository.list_schedules(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/delegation-playbook.json")
+    def delegation_playbook_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            delegation_playbook_json(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+                workflow_templates=repository.list_workflow_templates(),
+                schedules=repository.list_schedules(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-acceptance.md")
+    def profile_acceptance_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_acceptance_markdown(
+                repository.list_agents(),
+                repository.list_profile_acceptance_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-acceptance.json")
+    def profile_acceptance_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_acceptance_json(
+                repository.list_agents(),
+                repository.list_profile_acceptance_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-acceptance-template.md")
+    def profile_acceptance_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_acceptance_template_markdown(
+                repository.list_profile_acceptance_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-acceptance-template.json")
+    def profile_acceptance_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            profile_acceptance_template_json(
+                repository.list_profile_acceptance_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-soul/{agent_id}.md")
+    def profile_soul(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_soul_markdown(agent),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/profile-manifest/{agent_id}.json")
+    def profile_manifest(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_manifest_json(agent),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/profile-apply/{agent_id}.ps1")
+    def profile_apply_script(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            profile_apply_powershell(agent),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/inputs-needed.md")
+    def inputs_needed(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            inputs_needed_markdown(
+                repository.list_setup_inputs(),
+                repository.list_agents(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/first-run.md")
+    def first_run_report() -> PlainTextResponse:
+        return PlainTextResponse(
+            first_run_markdown(),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/first-run.json")
+    def first_run_export() -> PlainTextResponse:
+        return PlainTextResponse(
+            first_run_json(),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/first-run.ps1")
+    def first_run_script() -> PlainTextResponse:
+        return PlainTextResponse(
+            first_run_powershell(),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/progress-board.md")
+    def progress_board_report(request: Request) -> PlainTextResponse:
+        repository: CompanyRepository = request.app.state.repository
+        integrations = repository.list_integrations()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        return PlainTextResponse(
+            progress_board_markdown(
+                setup_inputs=repository.list_setup_inputs(),
+                runtime_checks=runtime_checks,
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+                founder_decisions=repository.list_founder_decisions(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/progress-board.json")
+    def progress_board_export(request: Request) -> PlainTextResponse:
+        repository: CompanyRepository = request.app.state.repository
+        integrations = repository.list_integrations()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        return PlainTextResponse(
+            progress_board_json(
+                setup_inputs=repository.list_setup_inputs(),
+                runtime_checks=runtime_checks,
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+                founder_decisions=repository.list_founder_decisions(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/founder-input-request.md")
+    def founder_input_request(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_input_request_markdown(
+                repository.list_setup_inputs(),
+                repository.list_secret_requirements(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/founder-input-request.json")
+    def founder_input_request_schema(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_input_request_json(
+                repository.list_setup_inputs(),
+                repository.list_secret_requirements(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/founder-inputs.ps1")
+    def founder_input_collector(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_input_collector_powershell(repository.list_setup_inputs()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/input-ledger.md")
+    def input_ledger(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            input_ledger_markdown(
+                setup_inputs=repository.list_setup_inputs(),
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                integrations=repository.list_integrations(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/input-ledger.json")
+    def input_ledger_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            input_ledger_json(
+                setup_inputs=repository.list_setup_inputs(),
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                integrations=repository.list_integrations(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/founder-handoff.md")
+    def founder_handoff_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_handoff_markdown(
+                setup_inputs=repository.list_setup_inputs(),
+                secret_requirements=repository.list_secret_requirements(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/founder-handoff.json")
+    def founder_handoff_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_handoff_json(
+                setup_inputs=repository.list_setup_inputs(),
+                secret_requirements=repository.list_secret_requirements(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/founder-decisions.md")
+    def founder_decisions_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_decisions_markdown(repository.list_founder_decisions()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/founder-decisions.json")
+    def founder_decisions_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            founder_decisions_json(repository.list_founder_decisions()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/credential-loading.md")
+    def credential_loading_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            credential_loading_markdown(
+                secret_requirements=repository.list_secret_requirements(),
+                model_preferences=repository.list_model_preferences(),
+                integrations=repository.list_integrations(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/credential-loading.json")
+    def credential_loading_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            credential_loading_json(
+                secret_requirements=repository.list_secret_requirements(),
+                model_preferences=repository.list_model_preferences(),
+                integrations=repository.list_integrations(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/credential-status-template.md")
+    def credential_status_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            credential_status_template_markdown(repository.list_secret_requirements()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/credential-status-template.json")
+    def credential_status_schema(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            credential_status_template_json(repository.list_secret_requirements()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/founder-next-actions.md")
+    def founder_next_actions_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            founder_next_actions_markdown(
+                activation_checks=checks,
+                setup_inputs=setup_inputs,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                runtime_checks=runtime_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/founder-next-actions.json")
+    def founder_next_actions_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            founder_next_actions_json(
+                activation_checks=checks,
+                setup_inputs=setup_inputs,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                runtime_checks=runtime_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-plan.md")
+    def slack_setup_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_setup_plan_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/slack-manifest/{agent_id}.json")
+    def slack_app_manifest(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return PlainTextResponse(
+            slack_app_manifest_json(agent, repository.setup_input_map()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-manifests.json")
+    def slack_app_manifests(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_app_manifests_bundle_json(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-provisioning.md")
+    def slack_provisioning_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_provisioning_markdown(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/slack-provisioning.json")
+    def slack_provisioning_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_provisioning_json(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-provisioning.ps1")
+    def slack_provisioning_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_provisioning_powershell(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/slack-channel-template.md")
+    def slack_channel_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_channel_template_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/slack-channel-template.json")
+    def slack_channel_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_channel_template_json(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-bot-user-map.json")
+    def slack_bot_user_map(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_bot_user_map_template_json(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-bot-user-map-template.md")
+    def slack_bot_user_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_bot_user_template_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/slack-bot-user-map-template.json")
+    def slack_bot_user_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_bot_user_template_json(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-workspace.md")
+    def slack_workspace(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_workspace_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/slack-invite-matrix.json")
+    def slack_invite_matrix(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_invite_matrix_json(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/slack-invite-matrix.csv")
+    def slack_invite_matrix_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            slack_invite_matrix_csv(
+                repository.list_agents(),
+                repository.setup_input_map(),
+            ),
+            media_type="text/csv",
+        )
+
+    @app.get("/setup/telegram-plan.md")
+    def telegram_setup_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_setup_plan_markdown(repository.setup_input_map()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/telegram-botfather.md")
+    def telegram_botfather_setup(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_botfather_setup_markdown(repository.setup_input_map()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/telegram-recipient-template.md")
+    def telegram_recipient_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_recipient_template_markdown(repository.setup_input_map()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/telegram-recipient-template.json")
+    def telegram_recipient_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_recipient_template_json(repository.setup_input_map()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/telegram-provisioning.md")
+    def telegram_provisioning_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_provisioning_markdown(
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/telegram-provisioning.json")
+    def telegram_provisioning_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_provisioning_json(
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/telegram-provisioning.ps1")
+    def telegram_provisioning_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_provisioning_powershell(
+                setup_values=repository.setup_input_map(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/telegram-policy.md")
+    def telegram_policy(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_policy_markdown(
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/telegram-policy.json")
+    def telegram_policy_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            telegram_policy_json(
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/messaging-drill.md")
+    def messaging_drill_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            messaging_drill_markdown(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+                messaging_checks=repository.list_messaging_checks(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/messaging-drill.json")
+    def messaging_drill_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            messaging_drill_json(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+                messaging_checks=repository.list_messaging_checks(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/messaging-verification-template.md")
+    def messaging_verification_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            messaging_verification_template_markdown(
+                repository.list_messaging_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/messaging-verification-template.json")
+    def messaging_verification_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            messaging_verification_template_json(
+                repository.list_messaging_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/gateway-operations.md")
+    def gateway_operations_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            gateway_operations_markdown(
+                agents=repository.list_agents(),
+                messaging_checks=repository.list_messaging_checks(),
+                integrations=repository.list_integrations(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/gateway-operations.json")
+    def gateway_operations_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            gateway_operations_json(
+                agents=repository.list_agents(),
+                messaging_checks=repository.list_messaging_checks(),
+                integrations=repository.list_integrations(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/gateway-operations.ps1")
+    def gateway_operations_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            gateway_operations_powershell(repository.list_agents()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/llm-plan.md")
+    def llm_setup_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_setup_plan_markdown(repository.list_model_preferences()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-credentials.md")
+    def llm_credentials_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_credentials_plan_markdown(repository.list_model_preferences()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-provisioning.md")
+    def llm_provisioning_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_provisioning_markdown(
+                model_preferences=repository.list_model_preferences(),
+                secret_requirements=repository.list_secret_requirements(),
+                integrations=repository.list_integrations(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-provisioning.json")
+    def llm_provisioning_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_provisioning_json(
+                model_preferences=repository.list_model_preferences(),
+                secret_requirements=repository.list_secret_requirements(),
+                integrations=repository.list_integrations(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/llm-provisioning.ps1")
+    def llm_provisioning_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_provisioning_powershell(repository.list_model_preferences()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/llm-provider-presets.md")
+    def llm_provider_presets_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_provider_presets_markdown(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-provider-presets.json")
+    def llm_provider_presets_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_provider_presets_json(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/llm-preference-template.md")
+    def llm_preference_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_preference_template_markdown(repository.list_model_preferences()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-preference-template.json")
+    def llm_preference_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_preference_template_json(repository.list_model_preferences()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/llm-finalize.md")
+    def llm_finalization_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_finalization_markdown(repository.list_model_preferences()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-finalize.ps1")
+    def llm_finalization_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_finalization_powershell(repository.list_model_preferences()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/llm-smoke.md")
+    def llm_smoke_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_smoke_markdown(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/llm-smoke.json")
+    def llm_smoke_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            llm_smoke_json(
+                agents=repository.list_agents(),
+                model_preferences=repository.list_model_preferences(),
+                secret_requirements=repository.list_secret_requirements(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/secret-audit.md")
+    def secret_audit_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        requirements = secret_audit_requirements(
+            repository.list_secret_requirements(),
+            repository.list_model_preferences(),
+        )
+        return PlainTextResponse(
+            secret_audit_markdown(requirements),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/secret-audit.ps1")
+    def secret_audit_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        requirements = secret_audit_requirements(
+            repository.list_secret_requirements(),
+            repository.list_model_preferences(),
+        )
+        return PlainTextResponse(
+            secret_audit_powershell(requirements),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/readiness-report.md")
+    def activation_readiness_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        checks = activation_checks(
+            repository.list_setup_inputs(),
+            repository.list_schedules(),
+            repository.list_model_preferences(),
+            repository.list_integrations(),
+            repository.list_secret_requirements(),
+            repository.list_messaging_checks(),
+            repository.list_schedule_checks(),
+            repository.list_kanban_checks(),
+            repository.list_profile_acceptance_checks(),
+            repository.list_profile_installation_checks(),
+        )
+        return PlainTextResponse(
+            activation_report_markdown(checks),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/company-manifest.md")
+    def company_manifest_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            company_manifest_markdown(
+                agents=repository.list_agents(),
+                setup_inputs=setup_inputs,
+                schedules=schedules,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/company-manifest.json")
+    def company_manifest_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            company_manifest_json(
+                agents=repository.list_agents(),
+                setup_inputs=setup_inputs,
+                schedules=schedules,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/company-launch-drill.md")
+    def company_launch_drill_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            company_launch_drill_markdown(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+                schedules=schedules,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                setup_inputs=setup_inputs,
+                runtime_checks=runtime_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/company-launch-drill.json")
+    def company_launch_drill_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        founder_decisions = repository.list_founder_decisions()
+        runtime_checks = [
+            asdict(check)
+            for check in runtime_preflight_checks(
+                request.app.state.settings,
+                repository.list_agents(),
+                integrations,
+            )
+        ]
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        return PlainTextResponse(
+            company_launch_drill_json(
+                agents=repository.list_agents(),
+                relationships=repository.list_agent_relationships(),
+                schedules=schedules,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                setup_inputs=setup_inputs,
+                runtime_checks=runtime_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+                profile_installation_checks=profile_installation_checks,
+                founder_decisions=founder_decisions,
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/kickoff-readiness.md")
+    def kickoff_readiness_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        agents = repository.list_agents()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        runtime_checks = runtime_preflight_checks(
+            request.app.state.settings,
+            agents,
+            integrations,
+        )
+        return PlainTextResponse(
+            kickoff_readiness_markdown(
+                agents=agents,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                runtime_checks=runtime_checks,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                profile_installation_checks=profile_installation_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/kickoff-readiness.json")
+    def kickoff_readiness_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        agents = repository.list_agents()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        runtime_checks = runtime_preflight_checks(
+            request.app.state.settings,
+            agents,
+            integrations,
+        )
+        return PlainTextResponse(
+            kickoff_readiness_json(
+                agents=agents,
+                workflow_templates=repository.list_workflow_templates(),
+                activation_checks=checks,
+                runtime_checks=runtime_checks,
+                secret_requirements=secret_requirements,
+                messaging_checks=messaging_checks,
+                schedule_checks=schedule_checks,
+                kanban_checks=kanban_checks,
+                model_preferences=model_preferences,
+                integrations=integrations,
+                profile_installation_checks=profile_installation_checks,
+                profile_acceptance_checks=profile_acceptance_checks,
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/activation-checklist.md")
+    def activation_checklist(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            activation_checklist_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/activation-sequence.md")
+    def activation_sequence(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        checks = activation_checks(
+            repository.list_setup_inputs(),
+            repository.list_schedules(),
+            repository.list_model_preferences(),
+            repository.list_integrations(),
+            repository.list_secret_requirements(),
+            repository.list_messaging_checks(),
+            repository.list_schedule_checks(),
+            repository.list_kanban_checks(),
+            repository.list_profile_acceptance_checks(),
+            repository.list_profile_installation_checks(),
+        )
+        return PlainTextResponse(
+            activation_sequence_markdown(
+                checks,
+                repository.list_setup_inputs(),
+                repository.list_secret_requirements(),
+                repository.list_messaging_checks(),
+                repository.list_schedule_checks(),
+                repository.list_kanban_checks(),
+                repository.list_model_preferences(),
+                repository.list_integrations(),
+                repository.list_profile_installation_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/activation-runner.md")
+    def activation_runner(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            activation_runner_markdown(
+                repository.list_agents(),
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/activation-runner.ps1")
+    def activation_runner_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            activation_runner_powershell(
+                repository.list_agents(),
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/live-verification.md")
+    def live_verification(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            live_verification_markdown(
+                repository.list_secret_requirements(),
+                repository.list_messaging_checks(),
+                repository.list_schedule_checks(),
+                repository.list_kanban_checks(),
+                repository.list_model_preferences(),
+                repository.list_integrations(),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/verification-evidence.md")
+    def verification_evidence_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            verification_evidence_markdown(
+                agents=repository.list_agents(),
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                profile_smoke_runs=repository.latest_runs_by_type("profile-smoke"),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+                founder_decisions=repository.list_founder_decisions(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/verification-evidence.json")
+    def verification_evidence_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            verification_evidence_json(
+                agents=repository.list_agents(),
+                secret_requirements=repository.list_secret_requirements(),
+                messaging_checks=repository.list_messaging_checks(),
+                schedule_checks=repository.list_schedule_checks(),
+                kanban_checks=repository.list_kanban_checks(),
+                model_preferences=repository.list_model_preferences(),
+                profile_smoke_runs=repository.latest_runs_by_type("profile-smoke"),
+                profile_installation_checks=repository.list_profile_installation_checks(),
+                profile_acceptance_checks=repository.list_profile_acceptance_checks(),
+                founder_decisions=repository.list_founder_decisions(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/runtime-preflight.md")
+    def runtime_preflight_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        checks = runtime_preflight_checks(
+            request.app.state.settings,
+            repository.list_agents(),
+            repository.list_integrations(),
+        )
+        return PlainTextResponse(
+            runtime_preflight_markdown(checks),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/runtime-preflight.json")
+    def runtime_preflight_report_json(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        checks = runtime_preflight_checks(
+            request.app.state.settings,
+            repository.list_agents(),
+            repository.list_integrations(),
+        )
+        return PlainTextResponse(
+            runtime_preflight_json(checks),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/runtime-preflight.ps1")
+    def runtime_preflight_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            runtime_preflight_powershell(repository.list_agents()),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/hermes-runtime.md")
+    def hermes_runtime_report() -> PlainTextResponse:
+        return PlainTextResponse(
+            hermes_runtime_markdown(),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/hermes-runtime.json")
+    def hermes_runtime_export() -> PlainTextResponse:
+        return PlainTextResponse(
+            hermes_runtime_json(),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/hermes-install.ps1")
+    def hermes_install_script() -> PlainTextResponse:
+        return PlainTextResponse(
+            hermes_install_powershell(),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/schedule-provisioning.md")
+    def schedule_provisioning_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_provisioning_markdown(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+                schedules=repository.list_schedules(),
+                schedule_checks=repository.list_schedule_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/schedule-provisioning.json")
+    def schedule_provisioning_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_provisioning_json(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+                schedules=repository.list_schedules(),
+                schedule_checks=repository.list_schedule_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/schedule-provisioning.ps1")
+    def schedule_provisioning_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_provisioning_powershell(
+                agents=repository.list_agents(),
+                setup_values=repository.setup_input_map(),
+                schedules=repository.list_schedules(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/schedule-config-template.md")
+    def schedule_config_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_config_template_markdown(repository.list_schedules()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/schedule-config-template.json")
+    def schedule_config_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_config_template_json(repository.list_schedules()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/schedule-verification-template.md")
+    def schedule_verification_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_verification_template_markdown(
+                repository.list_schedule_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/schedule-verification-template.json")
+    def schedule_verification_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            schedule_verification_template_json(
+                repository.list_schedule_checks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/standup-runbook.md")
+    def standup_runbook(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            standup_runbook_markdown(
+                repository.setup_input_map(),
+                repository.list_schedules(),
+                repository.list_schedule_checks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/standup-preview.md")
+    def standup_preview_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        settings: Settings = request.app.state.settings
+        return PlainTextResponse(
+            standup_preview_markdown(
+                schedules=repository.list_schedules(),
+                agents=repository.list_agents(),
+                tasks=repository.list_tasks(),
+                documents=repository.list_documents(),
+                slack_founder_command=settings.slack_founder_command,
+                slack_alerts=settings.slack_alerts,
+                telegram_urgent_label=settings.telegram_urgent_label,
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/standup-preview.json")
+    def standup_preview_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        settings: Settings = request.app.state.settings
+        return PlainTextResponse(
+            standup_preview_json(
+                schedules=repository.list_schedules(),
+                agents=repository.list_agents(),
+                tasks=repository.list_tasks(),
+                documents=repository.list_documents(),
+                slack_founder_command=settings.slack_founder_command,
+                slack_alerts=settings.slack_alerts,
+                telegram_urgent_label=settings.telegram_urgent_label,
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/standup-cron.ps1")
+    def standup_cron_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            standup_cron_powershell(
+                repository.setup_input_map(),
+                repository.list_schedules(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/kanban-runbook.md")
+    def kanban_runbook(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_runbook_markdown(
+                repository.list_kanban_checks(),
+                repository.list_workflow_templates(),
+                repository.list_tasks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/kanban-provisioning.md")
+    def kanban_provisioning_plan(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_provisioning_markdown(
+                workflow_templates=repository.list_workflow_templates(),
+                kanban_checks=repository.list_kanban_checks(),
+                tasks=repository.list_tasks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/kanban-provisioning.json")
+    def kanban_provisioning_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_provisioning_json(
+                workflow_templates=repository.list_workflow_templates(),
+                kanban_checks=repository.list_kanban_checks(),
+                tasks=repository.list_tasks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/kanban-provisioning.ps1")
+    def kanban_provisioning_script(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_provisioning_powershell(
+                workflow_templates=repository.list_workflow_templates(),
+            ),
+            media_type="text/plain",
+        )
+
+    @app.get("/setup/kanban-verification-template.md")
+    def kanban_verification_template(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_verification_template_markdown(repository.list_kanban_checks()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/kanban-verification-template.json")
+    def kanban_verification_template_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            kanban_verification_template_json(repository.list_kanban_checks()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/project-workflow.md")
+    def project_workflow_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            project_workflow_markdown(
+                workflow_templates=repository.list_workflow_templates(),
+                kanban_checks=repository.list_kanban_checks(),
+                tasks=repository.list_tasks(),
+            ),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/project-workflow.json")
+    def project_workflow_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            project_workflow_json(
+                workflow_templates=repository.list_workflow_templates(),
+                kanban_checks=repository.list_kanban_checks(),
+                tasks=repository.list_tasks(),
+            ),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/idea-intake.md")
+    def idea_intake_report(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            idea_intake_markdown(repository.list_workflow_templates()),
+            media_type="text/markdown",
+        )
+
+    @app.get("/setup/idea-intake.json")
+    def idea_intake_export(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        return PlainTextResponse(
+            idea_intake_json(repository.list_workflow_templates()),
+            media_type="application/json",
+        )
+
+    @app.get("/setup/kanban-diagnostics.ps1")
+    def kanban_diagnostics_script():
+        return PlainTextResponse(
+            kanban_diagnostics_powershell(),
+            media_type="text/plain",
+        )
+
+    @app.post("/setup/inputs")
+    async def update_setup_inputs(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        form = await request.form()
+        values = {key: str(value) for key, value in form.items()}
+        reject_secret_values(values)
+        repository.update_setup_inputs(values)
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/founder-input-reply")
+    def import_founder_input_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_founder_input_reply(reply_text, repository.list_setup_inputs())
+        if summary["values"]:
+            repository.update_setup_inputs(summary["values"])
+        return RedirectResponse(founder_input_import_redirect(summary), status_code=303)
+
+    @app.post("/setup/slack-channel-reply")
+    def import_slack_channel_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_slack_channel_reply(reply_text)
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_channel_ids"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Slack channel IDs for: "
+                + ", ".join(summary["invalid_channel_ids"]),
+            )
+        if summary["values"]:
+            repository.update_setup_inputs(summary["values"])
+        return RedirectResponse(slack_channel_import_redirect(summary), status_code=303)
+
+    @app.post("/setup/slack-bot-user-map-reply")
+    def import_slack_bot_user_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_slack_bot_user_reply(reply_text, repository.list_agents())
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_user_ids"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Slack bot user IDs for: "
+                + ", ".join(summary["invalid_user_ids"]),
+            )
+        if summary["values"]:
+            repository.update_setup_inputs(summary["values"])
+        return RedirectResponse(slack_bot_user_import_redirect(summary), status_code=303)
+
+    @app.post("/setup/telegram-recipient-reply")
+    def import_telegram_recipient_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_telegram_recipient_reply(reply_text)
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_keys"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Telegram recipient IDs for: "
+                + ", ".join(summary["invalid_keys"]),
+            )
+        if summary["values"]:
+            repository.update_setup_inputs(summary["values"])
+        return RedirectResponse(
+            telegram_recipient_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/schedule-config-reply")
+    def import_schedule_config_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_schedule_config_reply(reply_text, repository.list_schedules())
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_fields"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid schedule configuration fields: "
+                + ", ".join(summary["invalid_fields"]),
+            )
+        for schedule_id, update in summary["updates"].items():
+            repository.update_schedule(
+                schedule_id=schedule_id,
+                name=update["name"],
+                hour=update["hour"],
+                minute=update["minute"],
+                timezone=update["timezone"],
+                slack_channel=update["slack_channel"],
+                telegram_policy=update["telegram_policy"],
+                active=update["active"],
+            )
+        return RedirectResponse(
+            schedule_config_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/profile-personalization-reply")
+    def import_profile_personalization_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_profile_personalization_reply(
+            reply_text,
+            repository.list_agents(),
+        )
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_profiles"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid profile personalization for: "
+                + ", ".join(summary["invalid_profiles"]),
+            )
+
+        merged_updates = []
+        for agent_id, update in summary["updates"].items():
+            current = repository.get_agent(agent_id)
+            if current is None:
+                continue
+            merged = {
+                "agent_id": agent_id,
+                "description": update.get("description", current["description"]),
+                "soul": update.get("soul", current["soul"]),
+                "capabilities": update.get("capabilities", current["capabilities"]),
+                "slack_channel": update.get("slack_channel", current["slack_channel"]),
+                "telegram_policy": update.get(
+                    "telegram_policy",
+                    current["telegram_policy"],
+                ),
+                "hermes_command": update.get(
+                    "hermes_command",
+                    current["hermes_command"],
+                ),
+            }
+            if (
+                not merged["description"].strip()
+                or not merged["soul"].strip()
+                or not merged["capabilities"]
+                or not merged["slack_channel"].strip()
+                or not merged["telegram_policy"].strip()
+                or not merged["hermes_command"].strip()
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Incomplete profile personalization for: {agent_id}",
+                )
+            reject_secret_values(
+                {
+                    "description": merged["description"],
+                    "soul": merged["soul"],
+                    "capabilities": "\n".join(merged["capabilities"]),
+                    "slack_channel": merged["slack_channel"],
+                    "telegram_policy": merged["telegram_policy"],
+                    "hermes_command": merged["hermes_command"],
+                }
+            )
+            merged_updates.append(merged)
+
+        for merged in merged_updates:
+            repository.update_agent_profile(
+                agent_id=merged["agent_id"],
+                description=merged["description"],
+                soul=merged["soul"],
+                capabilities=merged["capabilities"],
+            )
+            repository.update_agent_routing(
+                agent_id=merged["agent_id"],
+                slack_channel=merged["slack_channel"],
+                telegram_policy=merged["telegram_policy"],
+                hermes_command=merged["hermes_command"],
+            )
+
+        return RedirectResponse(
+            profile_personalization_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/llm-preference-reply")
+    def import_llm_preference_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_llm_preference_reply(
+            reply_text,
+            repository.list_model_preferences(),
+        )
+        if summary["parse_error"]:
+            raise HTTPException(status_code=400, detail=summary["parse_error"])
+        if summary["invalid_preferences"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid LLM preference for: "
+                + ", ".join(summary["invalid_preferences"]),
+            )
+
+        merged_updates = []
+        for agent_id, update in summary["updates"].items():
+            current = repository.get_model_preference(agent_id)
+            if current is None:
+                continue
+            merged = {
+                "agent_id": agent_id,
+                "provider": update.get("provider", current["provider"]),
+                "model": update.get("model", current["model"]),
+                "fallback_provider": update.get(
+                    "fallback_provider",
+                    current["fallback_provider"],
+                ),
+                "fallback_model": update.get(
+                    "fallback_model",
+                    current["fallback_model"],
+                ),
+                "auth_method": update.get("auth_method", current["auth_method"]),
+                "status": update.get(
+                    "status",
+                    (
+                        "ready_for_verification"
+                        if current["status"] == "verified"
+                        else current["status"]
+                    ),
+                ),
+                "notes": update.get("notes", current["notes"]),
+            }
+            if (
+                not merged["provider"].strip()
+                or not merged["model"].strip()
+                or not merged["auth_method"].strip()
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Incomplete LLM preference for: {agent_id}",
+                )
+            reject_secret_values(
+                {
+                    "provider": merged["provider"],
+                    "model": merged["model"],
+                    "fallback_provider": merged["fallback_provider"],
+                    "fallback_model": merged["fallback_model"],
+                    "auth_method": merged["auth_method"],
+                    "notes": merged["notes"],
+                }
+            )
+            merged_updates.append(merged)
+
+        for merged in merged_updates:
+            repository.update_model_preference(
+                agent_id=merged["agent_id"],
+                provider=merged["provider"],
+                model=merged["model"],
+                fallback_provider=merged["fallback_provider"],
+                fallback_model=merged["fallback_model"],
+                auth_method=merged["auth_method"],
+                status=merged["status"],
+                notes=merged["notes"],
+            )
+
+        return RedirectResponse(
+            llm_preference_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/credential-status-reply")
+    def import_credential_status_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_credential_status_reply(
+            reply_text,
+            repository.list_secret_requirements(),
+        )
+        if summary["invalid_statuses"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid credential status for: "
+                + ", ".join(summary["invalid_statuses"]),
+            )
+        for requirement_id, update in summary["updates"].items():
+            current = repository.get_secret_requirement(requirement_id)
+            if current is None:
+                continue
+            reject_manual_llm_verified_status(current["category"], update["status"])
+            repository.update_secret_requirement(
+                requirement_id=requirement_id,
+                status=update["status"],
+                notes=update["notes"] or current["notes"],
+            )
+        return RedirectResponse(
+            credential_status_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/messaging-verification-reply")
+    def import_messaging_verification_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_messaging_verification_reply(
+            reply_text,
+            repository.list_messaging_checks(),
+        )
+        if summary["invalid_statuses"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid messaging status for: "
+                + ", ".join(summary["invalid_statuses"]),
+            )
+        for check_id, update in summary["updates"].items():
+            check = repository.get_messaging_check(check_id)
+            if check is None:
+                continue
+            if update["status"] == "verified":
+                credential_blocker = messaging_check_credential_blocker(
+                    repository,
+                    check,
+                )
+                if credential_blocker:
+                    raise HTTPException(status_code=409, detail=credential_blocker)
+        touched_platforms = set()
+        for check_id, update in summary["updates"].items():
+            check = repository.get_messaging_check(check_id)
+            if check is None:
+                continue
+            reject_secret_values({"evidence": update["evidence"]})
+            repository.update_messaging_check(
+                check_id=check_id,
+                status=update["status"],
+                evidence=update["evidence"] or check["evidence"],
+            )
+            touched_platforms.add(check["platform"])
+        for platform in touched_platforms:
+            refresh_messaging_integration_status(repository, platform)
+        return RedirectResponse(
+            messaging_verification_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/profile-acceptance-reply")
+    def import_profile_acceptance_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_profile_acceptance_reply(
+            reply_text,
+            repository.list_profile_acceptance_checks(),
+        )
+        if summary["invalid_statuses"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid profile acceptance status for: "
+                + ", ".join(summary["invalid_statuses"]),
+            )
+        for check_id, update in summary["updates"].items():
+            check = repository.get_profile_acceptance_check(check_id)
+            if check is None:
+                continue
+            if update["status"] == "verified":
+                prerequisite_blocker = profile_acceptance_prerequisite_blocker(
+                    repository,
+                    check,
+                )
+                if prerequisite_blocker:
+                    raise HTTPException(status_code=409, detail=prerequisite_blocker)
+        for check_id, update in summary["updates"].items():
+            check = repository.get_profile_acceptance_check(check_id)
+            if check is None:
+                continue
+            reject_secret_values({"evidence": update["evidence"]})
+            repository.update_profile_acceptance_check(
+                check_id=check_id,
+                status=update["status"],
+                evidence=update["evidence"] or check["evidence"],
+            )
+        return RedirectResponse(
+            profile_acceptance_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/schedule-verification-reply")
+    def import_schedule_verification_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_schedule_verification_reply(
+            reply_text,
+            repository.list_schedule_checks(),
+        )
+        if summary["invalid_statuses"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid schedule verification status for: "
+                + ", ".join(summary["invalid_statuses"]),
+            )
+        for check_id, update in summary["updates"].items():
+            check = repository.get_schedule_check(check_id)
+            if check is None:
+                continue
+            if update["status"] == "verified":
+                prerequisite_blocker = staged_schedule_check_prerequisite_blocker(
+                    repository,
+                    check,
+                    summary["updates"],
+                )
+                if prerequisite_blocker:
+                    raise HTTPException(status_code=409, detail=prerequisite_blocker)
+        for check_id, update in summary["updates"].items():
+            check = repository.get_schedule_check(check_id)
+            if check is None:
+                continue
+            reject_secret_values({"evidence": update["evidence"]})
+            repository.update_schedule_check(
+                check_id=check_id,
+                status=update["status"],
+                evidence=update["evidence"] or check["evidence"],
+            )
+        if repository.active_schedule_verification_ready():
+            repository.update_integration_status("standup-cron", "configured")
+        return RedirectResponse(
+            schedule_verification_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/kanban-verification-reply")
+    def import_kanban_verification_reply(
+        request: Request,
+        reply_text: str = Form(...),
+    ):
+        reject_secret_values({"reply_text": reply_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_kanban_verification_reply(
+            reply_text,
+            repository.list_kanban_checks(),
+        )
+        if summary["invalid_statuses"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Kanban verification status for: "
+                + ", ".join(summary["invalid_statuses"]),
+            )
+        for check_id, update in summary["updates"].items():
+            check = repository.get_kanban_check(check_id)
+            if check is None:
+                continue
+            reject_secret_values({"evidence": update["evidence"]})
+            repository.update_kanban_check(
+                check_id=check_id,
+                status=update["status"],
+                evidence=update["evidence"] or check["evidence"],
+            )
+        if repository.kanban_verification_ready():
+            repository.update_integration_status("hermes-kanban", "configured")
+        return RedirectResponse(
+            kanban_verification_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/profile-installation-audit")
+    def import_profile_installation_audit(
+        request: Request,
+        audit_text: str = Form(...),
+    ):
+        reject_secret_values({"audit_text": audit_text})
+        repository: CompanyRepository = request.app.state.repository
+        summary = parse_profile_installation_audit(
+            audit_text,
+            repository.list_profile_installation_checks(),
+        )
+        for check_id, update in summary["updates"].items():
+            repository.update_profile_installation_check(
+                check_id=check_id,
+                status=update["status"],
+                evidence=update["evidence"],
+            )
+        return RedirectResponse(
+            profile_installation_import_redirect(summary),
+            status_code=303,
+        )
+
+    @app.post("/setup/integrations/{integration_id}")
+    def update_integration(
+        request: Request,
+        integration_id: str,
+        status: str = Form(...),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        allowed = {"needs_input", "needs_setup", "ready", "configured", "deferred"}
+        if status not in allowed:
+            raise HTTPException(status_code=400, detail="Invalid integration status")
+        repository.update_integration_status(integration_id, status)
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/schedules/{schedule_id}")
+    def update_schedule(
+        request: Request,
+        schedule_id: str,
+        name: str = Form(...),
+        hour: int = Form(...),
+        minute: int = Form(...),
+        timezone: str = Form(...),
+        slack_channel: str = Form(...),
+        telegram_policy: str = Form(...),
+        active: str | None = Form(None),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_schedule(schedule_id) is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise HTTPException(status_code=400, detail="Invalid schedule time")
+        if not name.strip() or not timezone.strip() or not slack_channel.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Name, timezone, and Slack channel required",
+            )
+        reject_secret_values(
+            {
+                "name": name,
+                "timezone": timezone,
+                "slack_channel": slack_channel,
+                "telegram_policy": telegram_policy,
+            }
+        )
+        repository.update_schedule(
+            schedule_id=schedule_id,
+            name=name,
+            hour=hour,
+            minute=minute,
+            timezone=timezone,
+            slack_channel=slack_channel,
+            telegram_policy=telegram_policy,
+            active=active == "on",
+        )
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/model-preferences/{agent_id}")
+    def update_model_preference(
+        request: Request,
+        agent_id: str,
+        provider: str = Form(...),
+        model: str = Form(...),
+        fallback_provider: str = Form(""),
+        fallback_model: str = Form(""),
+        auth_method: str = Form("deferred_profile_secret"),
+        status: str = Form("planned"),
+        notes: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_agent(agent_id) is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        allowed_statuses = {"planned", "needs_secret", "ready_for_verification", "verified"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid model preference status")
+        if status == "verified":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "LLM profile status is marked verified only by a successful "
+                    "profile smoke check."
+                ),
+            )
+        if not provider.strip() or not model.strip():
+            raise HTTPException(status_code=400, detail="Provider and model are required")
+        reject_secret_values(
+            {
+                "provider": provider,
+                "model": model,
+                "fallback_provider": fallback_provider,
+                "fallback_model": fallback_model,
+                "auth_method": auth_method,
+                "notes": notes,
+            }
+        )
+        repository.update_model_preference(
+            agent_id=agent_id,
+            provider=provider,
+            model=model,
+            fallback_provider=fallback_provider,
+            fallback_model=fallback_model,
+            auth_method=auth_method,
+            status=status,
+            notes=notes,
+        )
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/llm-provider-presets/{preset_id}")
+    def apply_llm_provider_preset(request: Request, preset_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        try:
+            preferences = llm_preset_preferences(preset_id, repository.list_agents())
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="LLM provider preset not found") from exc
+        for preference in preferences:
+            reject_secret_values(
+                {
+                    "provider": preference["provider"],
+                    "model": preference["model"],
+                    "fallback_provider": preference["fallback_provider"],
+                    "fallback_model": preference["fallback_model"],
+                    "auth_method": preference["auth_method"],
+                    "notes": preference["notes"],
+                }
+            )
+            repository.update_model_preference(
+                agent_id=preference["agent_id"],
+                provider=preference["provider"],
+                model=preference["model"],
+                fallback_provider=preference["fallback_provider"],
+                fallback_model=preference["fallback_model"],
+                auth_method=preference["auth_method"],
+                status=preference["status"],
+                notes=preference["notes"],
+            )
+        return RedirectResponse("/setup#models", status_code=303)
+
+    @app.post("/setup/secret-requirements/{requirement_id}")
+    def update_secret_requirement(
+        request: Request,
+        requirement_id: str,
+        status: str = Form(...),
+        notes: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        requirement = repository.get_secret_requirement(requirement_id)
+        if requirement is None:
+            raise HTTPException(status_code=404, detail="Secret requirement not found")
+        allowed_statuses = {"needed", "loaded", "verified", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid secret status")
+        reject_manual_llm_verified_status(requirement["category"], status)
+        reject_secret_values({"notes": notes})
+        repository.update_secret_requirement(
+            requirement_id=requirement_id,
+            status=status,
+            notes=notes,
+        )
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/messaging-checks/{check_id}")
+    def update_messaging_check(
+        request: Request,
+        check_id: str,
+        status: str = Form(...),
+        evidence: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        check = repository.get_messaging_check(check_id)
+        if check is None:
+            raise HTTPException(status_code=404, detail="Messaging check not found")
+        allowed_statuses = {"needed", "loaded", "verified", "blocked", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid messaging check status")
+        reject_secret_values({"evidence": evidence})
+        if status == "verified":
+            credential_blocker = messaging_check_credential_blocker(repository, check)
+            if credential_blocker:
+                raise HTTPException(status_code=409, detail=credential_blocker)
+        repository.update_messaging_check(
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+        )
+        refresh_messaging_integration_status(repository, check["platform"])
+        return RedirectResponse("/setup#messaging-verification", status_code=303)
+
+    @app.post("/setup/schedule-checks/{check_id}")
+    def update_schedule_check(
+        request: Request,
+        check_id: str,
+        status: str = Form(...),
+        evidence: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_schedule_check(check_id) is None:
+            raise HTTPException(status_code=404, detail="Schedule check not found")
+        allowed_statuses = {"needed", "verified", "blocked", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid schedule check status")
+        reject_secret_values({"evidence": evidence})
+        check = repository.get_schedule_check(check_id)
+        if status == "verified" and check is not None:
+            prerequisite_blocker = schedule_check_prerequisite_blocker(repository, check)
+            if prerequisite_blocker:
+                raise HTTPException(status_code=409, detail=prerequisite_blocker)
+        repository.update_schedule_check(
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+        )
+        if repository.active_schedule_verification_ready():
+            repository.update_integration_status("standup-cron", "configured")
+        return RedirectResponse("/setup#schedule-verification", status_code=303)
+
+    @app.post("/setup/kanban-checks/{check_id}")
+    def update_kanban_check(
+        request: Request,
+        check_id: str,
+        status: str = Form(...),
+        evidence: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_kanban_check(check_id) is None:
+            raise HTTPException(status_code=404, detail="Kanban check not found")
+        allowed_statuses = {"needed", "verified", "blocked", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid Kanban check status")
+        reject_secret_values({"evidence": evidence})
+        repository.update_kanban_check(
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+        )
+        if repository.kanban_verification_ready():
+            repository.update_integration_status("hermes-kanban", "configured")
+        return RedirectResponse("/setup#kanban-verification", status_code=303)
+
+    @app.post("/setup/profile-installation-checks/{check_id}")
+    def update_profile_installation_check(
+        request: Request,
+        check_id: str,
+        status: str = Form(...),
+        evidence: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_profile_installation_check(check_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Profile installation check not found",
+            )
+        allowed_statuses = {"needed", "verified", "blocked", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid profile installation status",
+            )
+        reject_secret_values({"evidence": evidence})
+        repository.update_profile_installation_check(
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+        )
+        return RedirectResponse(
+            "/setup#profile-installation-tracking",
+            status_code=303,
+        )
+
+    @app.post("/setup/profile-acceptance-checks/{check_id}")
+    def update_profile_acceptance_check(
+        request: Request,
+        check_id: str,
+        status: str = Form(...),
+        evidence: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        check = repository.get_profile_acceptance_check(check_id)
+        if check is None:
+            raise HTTPException(status_code=404, detail="Profile acceptance check not found")
+        allowed_statuses = {"needed", "verified", "failed", "blocked", "deferred"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid profile acceptance status")
+        reject_secret_values({"evidence": evidence})
+        if status == "verified":
+            prerequisite_blocker = profile_acceptance_prerequisite_blocker(
+                repository,
+                check,
+            )
+            if prerequisite_blocker:
+                raise HTTPException(status_code=409, detail=prerequisite_blocker)
+        repository.update_profile_acceptance_check(
+            check_id=check_id,
+            status=status,
+            evidence=evidence,
+        )
+        return RedirectResponse("/setup#profile-acceptance-tracking", status_code=303)
+
+    @app.post("/setup/kanban/diagnostics")
+    def kanban_diagnostics(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent("chief-of-staff")
+        if agent is None:
+            raise HTTPException(status_code=500, detail="Chief of Staff profile is missing")
+        run_id = repository.create_run(
+            agent_id=agent["id"],
+            run_type="kanban-diagnostics",
+            prompt="hermes kanban diagnostics --json",
+        )
+        result = request.app.state.kanban_client.diagnostics()
+        repository.complete_run(run_id, output=result.output, error=result.error)
+        if result.ok:
+            repository.update_kanban_check(
+                check_id="kanban-diagnostics-pass",
+                status="verified",
+                evidence="Dashboard Kanban diagnostics passed.",
+            )
+            if repository.kanban_verification_ready():
+                repository.update_integration_status("hermes-kanban", "configured")
+        return RedirectResponse("/setup", status_code=303)
+
+    @app.post("/setup/profile-smoke/{agent_id}")
+    def profile_smoke_check(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        blocker = profile_installation_prerequisite_blocker(repository, agent_id)
+        if blocker:
+            raise HTTPException(status_code=409, detail=blocker)
+        preference = repository.get_model_preference(agent_id)
+        prompt = profile_smoke_prompt(agent, preference)
+        run_id = repository.create_run(
+            agent_id=agent["id"],
+            run_type="profile-smoke",
+            prompt=prompt,
+        )
+        result = request.app.state.hermes_client.run_prompt(agent, prompt)
+        repository.complete_run(run_id, output=result.output, error=result.error)
+        if result.ok and preference is not None:
+            repository.update_model_preference(
+                agent_id=agent_id,
+                provider=preference["provider"],
+                model=preference["model"],
+                fallback_provider=preference["fallback_provider"],
+                fallback_model=preference["fallback_model"],
+                auth_method=preference["auth_method"],
+                status="verified",
+                notes=append_smoke_note(preference["notes"], "passed"),
+            )
+            llm_secret = next(
+                (
+                    item
+                    for item in repository.list_secret_requirements()
+                    if item["owner_agent_id"] == agent_id and item["category"] == "llm"
+                ),
+                None,
+            )
+            if llm_secret is not None:
+                repository.update_agent_secret_requirements(
+                    agent_id=agent_id,
+                    category="llm",
+                    status="verified",
+                    notes=append_smoke_note(llm_secret["notes"], "passed"),
+                )
+            if all(
+                item["status"] == "verified"
+                for item in repository.list_model_preferences()
+            ):
+                repository.update_integration_status("llm-provider", "configured")
+        return RedirectResponse("/setup#profile-smoke", status_code=303)
+
+    @app.post("/decisions")
+    def create_founder_decision(
+        request: Request,
+        title: str = Form(...),
+        urgency: str = Form("routine"),
+        source: str = Form("manual"),
+        owner_agent_id: str = Form("chief-of-staff"),
+        slack_channel: str = Form("#decisions"),
+        telegram_policy: str = Form("Telegram only if this blocks founder progress."),
+        context: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        allowed_urgencies = {"routine", "urgent"}
+        if urgency not in allowed_urgencies:
+            raise HTTPException(status_code=400, detail="Invalid decision urgency")
+        if repository.get_agent(owner_agent_id) is None:
+            raise HTTPException(status_code=404, detail="Decision owner profile not found")
+        if not title.strip() or not context.strip() or not slack_channel.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Title, context, and Slack channel are required",
+            )
+        reject_secret_values(
+            {
+                "title": title,
+                "urgency": urgency,
+                "source": source,
+                "owner_agent_id": owner_agent_id,
+                "slack_channel": slack_channel,
+                "telegram_policy": telegram_policy,
+                "context": context,
+            }
+        )
+        repository.create_founder_decision(
+            title=title,
+            urgency=urgency,
+            source=source,
+            owner_agent_id=owner_agent_id,
+            slack_channel=slack_channel,
+            telegram_policy=telegram_policy,
+            context=context,
+        )
+        return RedirectResponse("/#founder-decisions", status_code=303)
+
+    @app.post("/decisions/{decision_id}")
+    def update_founder_decision(
+        request: Request,
+        decision_id: str,
+        status: str = Form(...),
+        decision: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        current = repository.get_founder_decision(decision_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Founder decision not found")
+        allowed_statuses = RESOLVED_DECISION_STATUSES | {"needed", "blocked"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Invalid founder decision status")
+        if status in RESOLVED_DECISION_STATUSES and not decision.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="A decision note is required before resolving a founder decision",
+            )
+        reject_secret_values({"status": status, "decision": decision})
+        repository.update_founder_decision(
+            decision_id=decision_id,
+            status=status,
+            decision=decision,
+        )
+        return RedirectResponse("/#founder-decisions", status_code=303)
+
+    @app.get("/projects")
+    def projects(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        agents = repository.list_agents()
+        setup_inputs = repository.list_setup_inputs()
+        schedules = repository.list_schedules()
+        model_preferences = repository.list_model_preferences()
+        integrations = repository.list_integrations()
+        secret_requirements = repository.list_secret_requirements()
+        messaging_checks = repository.list_messaging_checks()
+        schedule_checks = repository.list_schedule_checks()
+        kanban_checks = repository.list_kanban_checks()
+        profile_acceptance_checks = repository.list_profile_acceptance_checks()
+        profile_installation_checks = repository.list_profile_installation_checks()
+        checks = activation_checks(
+            setup_inputs,
+            schedules,
+            model_preferences,
+            integrations,
+            secret_requirements,
+            messaging_checks,
+            schedule_checks,
+            kanban_checks,
+            profile_acceptance_checks,
+            profile_installation_checks,
+        )
+        runtime_checks = runtime_preflight_checks(
+            request.app.state.settings,
+            agents,
+            integrations,
+        )
+        return templates.TemplateResponse(
+            request,
+            "projects.html",
+            {
+                "projects": repository.list_projects(),
+                "templates": repository.list_workflow_templates(),
+                "kickoff_readiness": kickoff_readiness_payload(
+                    agents=agents,
+                    workflow_templates=repository.list_workflow_templates(),
+                    activation_checks=checks,
+                    runtime_checks=runtime_checks,
+                    secret_requirements=secret_requirements,
+                    messaging_checks=messaging_checks,
+                    schedule_checks=schedule_checks,
+                    kanban_checks=kanban_checks,
+                    model_preferences=model_preferences,
+                    integrations=integrations,
+                ),
+            },
+        )
+
+    @app.post("/projects")
+    def create_project(
+        request: Request,
+        name: str = Form(...),
+        founder_idea: str = Form(...),
+    ):
+        reject_secret_values({"name": name, "founder_idea": founder_idea})
+        repository: CompanyRepository = request.app.state.repository
+        project_id = repository.create_project_with_workflow(
+            name=name.strip(),
+            founder_idea=founder_idea.strip(),
+        )
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.get("/projects/{project_id}")
+    def project_detail(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        workflow_items = repository.list_project_workflow_items(project_id)
+        kanban_blocker = kanban_project_push_blocker(repository)
+        return templates.TemplateResponse(
+            request,
+            "project.html",
+            {
+                "project": project,
+                "workflow_items": workflow_items,
+                "kanban_linked_count": sum(1 for item in workflow_items if item["kanban_task_id"]),
+                "kanban_ready": not kanban_blocker,
+                "kanban_blocker": kanban_blocker,
+            },
+        )
+
+    @app.post("/projects/{project_id}/kanban")
+    def push_project_workflow_to_kanban(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        kanban_blocker = kanban_project_push_blocker(repository)
+        if kanban_blocker:
+            raise HTTPException(status_code=409, detail=kanban_blocker)
+        workflow_items = repository.list_project_workflow_items(project_id)
+        for item in workflow_items:
+            if item["kanban_task_id"] or not item["task_id"]:
+                continue
+            task = repository.get_task(item["task_id"])
+            if task is None:
+                continue
+            run_id = repository.create_run(
+                agent_id=task["owner_agent_id"],
+                run_type="project-kanban-create",
+                prompt=f"Push project workflow task to Hermes Kanban: {task['title']}",
+            )
+            result = request.app.state.kanban_client.create_task(task)
+            repository.complete_run(run_id, output=result.output, error=result.error)
+            if result.ok and result.task_id:
+                repository.attach_kanban_task(task["id"], result.task_id)
+                repository.update_kanban_check(
+                    check_id="kanban-task-create",
+                    status="verified",
+                    evidence=f"Dashboard task created Hermes Kanban task {result.task_id}.",
+                )
+                if repository.kanban_verification_ready():
+                    repository.update_integration_status("hermes-kanban", "configured")
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.get("/agents/{agent_id}")
+    def agent_detail(request: Request, agent_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return templates.TemplateResponse(
+            request,
+            "agent.html",
+            {
+                "agent": agent,
+                "live_run_blocker": profile_live_run_blocker(repository, agent_id),
+                "settings": request.app.state.settings,
+            },
+        )
+
+    @app.post("/agents/{agent_id}/profile")
+    def update_agent_profile(
+        request: Request,
+        agent_id: str,
+        description: str = Form(...),
+        soul: str = Form(...),
+        capabilities: str = Form(...),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_agent(agent_id) is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        parsed_capabilities = [
+            line.strip()
+            for line in capabilities.replace(",", "\n").splitlines()
+            if line.strip()
+        ]
+        if not description.strip() or not soul.strip() or not parsed_capabilities:
+            raise HTTPException(
+                status_code=400,
+                detail="Description, soul, and at least one capability are required",
+            )
+        reject_secret_values(
+            {
+                "description": description,
+                "soul": soul,
+                "capabilities": "\n".join(parsed_capabilities),
+            }
+        )
+        repository.update_agent_profile(
+            agent_id=agent_id,
+            description=description,
+            soul=soul,
+            capabilities=parsed_capabilities,
+        )
+        return RedirectResponse(f"/agents/{agent_id}", status_code=303)
+
+    @app.post("/agents/{agent_id}/routing")
+    def update_agent_routing(
+        request: Request,
+        agent_id: str,
+        slack_channel: str = Form(...),
+        telegram_policy: str = Form(...),
+        hermes_command: str = Form(...),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_agent(agent_id) is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not slack_channel.strip() or not telegram_policy.strip() or not hermes_command.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Slack channel, Telegram policy, and Hermes command are required",
+            )
+        reject_secret_values(
+            {
+                "slack_channel": slack_channel,
+                "telegram_policy": telegram_policy,
+                "hermes_command": hermes_command,
+            }
+        )
+        repository.update_agent_routing(
+            agent_id=agent_id,
+            slack_channel=slack_channel,
+            telegram_policy=telegram_policy,
+            hermes_command=hermes_command,
+        )
+        return RedirectResponse(f"/agents/{agent_id}", status_code=303)
+
+    @app.post("/tasks")
+    def create_task(
+        request: Request,
+        title: str = Form(...),
+        owner_agent_id: str = Form(...),
+        priority: str = Form("medium"),
+        summary: str = Form(""),
+    ):
+        reject_secret_values({"title": title, "priority": priority, "summary": summary})
+        repository: CompanyRepository = request.app.state.repository
+        repository.assert_agent_exists(owner_agent_id)
+        repository.create_task(
+            title=title.strip(),
+            owner_agent_id=owner_agent_id,
+            priority=priority,
+            summary=summary.strip(),
+        )
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/tasks/{task_id}/kanban")
+    def push_task_to_kanban(request: Request, task_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        task = repository.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        agent = repository.get_agent(task["owner_agent_id"])
+        if agent is None:
+            raise HTTPException(status_code=500, detail="Task owner profile is missing")
+        kanban_blocker = kanban_task_push_blocker(repository)
+        if kanban_blocker:
+            raise HTTPException(status_code=409, detail=kanban_blocker)
+        run_id = repository.create_run(
+            agent_id=agent["id"],
+            run_type="kanban-create",
+            prompt=f"Create Hermes Kanban task for {task['id']}: {task['title']}",
+        )
+        result = request.app.state.kanban_client.create_task(task)
+        repository.complete_run(run_id, output=result.output, error=result.error)
+        if result.ok and result.task_id:
+            repository.attach_kanban_task(task_id, result.task_id)
+            repository.update_kanban_check(
+                check_id="kanban-task-create",
+                status="verified",
+                evidence=f"Dashboard task created Hermes Kanban task {result.task_id}.",
+            )
+            if repository.kanban_verification_ready():
+                repository.update_integration_status("hermes-kanban", "configured")
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/documents")
+    def create_document(
+        request: Request,
+        title: str = Form(...),
+        doc_type: str = Form("brief"),
+        owner_agent_id: str = Form(...),
+        body: str = Form(""),
+    ):
+        reject_secret_values({"title": title, "doc_type": doc_type, "body": body})
+        repository: CompanyRepository = request.app.state.repository
+        repository.assert_agent_exists(owner_agent_id)
+        repository.create_document(
+            title=title.strip(),
+            doc_type=doc_type,
+            owner_agent_id=owner_agent_id,
+            body=body.strip(),
+        )
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/agents/{agent_id}/run")
+    def run_agent(request: Request, agent_id: str, founder_request: str = Form(...)):
+        reject_secret_values({"founder_request": founder_request})
+        repository: CompanyRepository = request.app.state.repository
+        agent = repository.get_agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        live_run_blocker = profile_live_run_blocker(repository, agent_id)
+        if live_run_blocker:
+            raise HTTPException(status_code=409, detail=live_run_blocker)
+        prompt = build_agent_prompt(agent, founder_request.strip())
+        run_id = repository.create_run(agent_id=agent_id, run_type="agent", prompt=prompt)
+        result = request.app.state.hermes_client.run_prompt(agent, prompt)
+        repository.complete_run(run_id, output=result.output, error=result.error)
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/standups/{schedule_id}/run")
+    def run_standup(request: Request, schedule_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        schedule = repository.get_schedule(schedule_id)
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        agent = repository.get_agent("chief-of-staff")
+        if agent is None:
+            raise HTTPException(status_code=500, detail="Chief of Staff profile is missing")
+        live_run_blocker = profile_live_run_blocker(repository, agent["id"])
+        if live_run_blocker:
+            raise HTTPException(status_code=409, detail=live_run_blocker)
+        settings: Settings = request.app.state.settings
+        prompt = build_standup_prompt(
+            schedule=schedule,
+            agents=repository.list_agents(),
+            tasks=repository.list_tasks(),
+            documents=repository.list_documents(),
+            slack_founder_command=settings.slack_founder_command,
+            slack_alerts=settings.slack_alerts,
+            telegram_urgent_label=settings.telegram_urgent_label,
+        )
+        run_id = repository.create_run(agent_id=agent["id"], run_type="standup", prompt=prompt)
+        result = request.app.state.hermes_client.run_prompt(agent, prompt)
+        repository.complete_run(run_id, output=result.output, error=result.error)
+        return RedirectResponse("/", status_code=303)
+
+    return app
+
+
+app = create_app()

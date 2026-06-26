@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Projects - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Company kickoff</small>
+          </div>
+        </div>
+        <nav>
+          <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a class="active" href="/projects"><i data-lucide="rocket"></i> Projects</a>
+        </nav>
+      </aside>
+      <main class="content">
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Idea phase ready</p>
+            <h1>Company kickoff workflows</h1>
+          </div>
+          <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
+            <i data-lucide="shield-check"></i> Kickoff readiness
+          </a>
+          <a class="primary-button link-button" href="/setup/idea-intake.md">
+            <i data-lucide="clipboard-list"></i> Idea intake
+          </a>
+        </section>
+
+        <section class="notice-band">
+          <strong>Kickoff readiness</strong>
+          <span>
+            {{ kickoff_readiness.mode }}
+            -
+            live {% if kickoff_readiness.live_kickoff_ready %}ready{% else %}not ready{% endif %}
+            -
+            {{ kickoff_readiness.next_best_action }}
+          </span>
+        </section>
+
+        <section class="workspace-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>New Company Idea</h2>
+              <a href="/setup/idea-intake.md">Intake packet</a>
+            </div>
+            {% if not kickoff_readiness.live_kickoff_ready %}
+            <p class="empty-state">
+              Draft workflow creation is available now. Treat live agent execution,
+              scheduled standups, and Kanban handoff as blocked until kickoff readiness is ready.
+            </p>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/projects">
+              <label>
+                Project name
+                <input name="name" required placeholder="AI company concept">
+              </label>
+              <label>
+                Founder idea
+                <textarea name="founder_idea" rows="9" required placeholder="Paste the startup idea or rough direction here when ready."></textarea>
+              </label>
+              <button class="primary-button" type="submit">
+                <i data-lucide="rocket"></i> Create workflow
+              </button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Workflow Templates</h2>
+            </div>
+            <div class="item-list compact">
+              {% for template in templates %}
+              <div class="run-row">
+                <div>
+                  <strong>{{ template.name }}</strong>
+                  <small>{{ template.phase }} - {{ template.owner_name }} - {{ template.priority }}</small>
+                </div>
+                <p>{{ template.title_template }}</p>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="panel wide">
+            <div class="panel-header">
+              <h2>Projects</h2>
+            </div>
+            <div class="item-list">
+              {% for project in projects %}
+              <a class="project-row" href="/projects/{{ project.id }}">
+                <div>
+                  <strong>{{ project.name }}</strong>
+                  <small>{{ project.status }} - {{ project.workflow_count }} workflow items</small>
+                </div>
+                <i data-lucide="chevron-right"></i>
+              </a>
+              {% else %}
+              <p class="empty-state">No company projects yet.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>
