@@ -40,6 +40,7 @@ The target system is a founder-led AI company OS:
 - Chief of Staff manages priorities, decisions, blockers, escalation, and operating cadence.
 - Product Manager turns founder intent into scoped PRDs.
 - Research Agent validates market, user, competitor, and evidence quality.
+- UI/UX Research Agent validates founder usability, workflow clarity, and interface quality.
 - Engineering Manager decomposes approved plans into executable work.
 - Backend, Frontend, and Cloud Infrastructure agents execute implementation plans.
 - Test Automation builds repeatable validation coverage.
@@ -60,6 +61,7 @@ The practical target is 80-90 percent operational maturity. The last 10-20 perce
 - Live credentials stay outside the dashboard. The dashboard tracks only status and non-secret evidence.
 - Every agent output must have an owner, source inputs, acceptance criteria, and next decision.
 - Plans should become tasks only after approval. Tasks should become code only after acceptance criteria are clear.
+- UI/UX research should precede UI-heavy implementation so dashboards support real founder decisions instead of decorative polish.
 - Automation should be observable. No invisible autonomous work.
 - The system should degrade safely. Failed agents should create blockers, not silently continue.
 
@@ -117,6 +119,40 @@ Implementation slices:
 Founder approval gate:
 
 - Founder confirms the decision categories and which actions require explicit approval.
+
+### Milestone 1A: UI/UX Research Agent And Experience System
+
+Purpose:
+
+Create a specialist UI/UX Research Agent track before expanding the dashboard into more agentic surfaces. This agent does not exist as a live Hermes profile yet. The first step is doctrine, research method, Codex subagent prompts, and implementation plans.
+
+Deliverables:
+
+- UI/UX Research Agent doctrine.
+- Codex subagent and multi-chat research operating model.
+- Standard research package template.
+- Thread prompts for focused UX research workstreams:
+  - Founder Control Plane UX;
+  - Product Wizard UX;
+  - Agent Work Queue UX;
+  - Observability and audit UX;
+  - Codex project execution UX;
+  - accessibility and responsive UX;
+  - design system and visual polish.
+- Implementation plan docs for Founder Control Plane and UI/UX Research Agent.
+- Founder approval gates before any UI-heavy implementation.
+
+Implementation slices:
+
+1. Add `docs/ui-ux-research/` with index, doctrine, operating model, thread prompts, and research package template.
+2. Add `docs/implementation-plans/` with an implementation-plan index and the first two milestone plans.
+3. Use those docs to spawn parallel Codex research threads only after the package template is approved.
+4. Integrate the research packages centrally before changing dashboard source code.
+5. Add no-secret scans and docs checks to every research and implementation handoff.
+
+Founder approval gate:
+
+- Founder approves the UI/UX Research Agent doctrine, the research package template, and the first set of research threads before implementation begins.
 
 ### Milestone 2: Agent Work Queue
 
@@ -416,14 +452,15 @@ Founder approval gate:
 The safest sequence is:
 
 1. Founder Control Plane.
-2. Agent Work Queue.
-3. Live Hermes Profile Execution.
-4. Company Memory Layer.
-5. Codex Project Execution Mode.
-6. Cross-Agent Review Loop.
-7. Slack/Telegram/Kanban Operating Loop.
-8. Observability And Audit.
-9. Launch And Release Management.
+2. UI/UX Research Agent And Experience System.
+3. Agent Work Queue.
+4. Live Hermes Profile Execution.
+5. Company Memory Layer.
+6. Codex Project Execution Mode.
+7. Cross-Agent Review Loop.
+8. Slack/Telegram/Kanban Operating Loop.
+9. Observability And Audit.
+10. Launch And Release Management.
 
 This order keeps the system founder-safe before making it more autonomous.
 
@@ -435,6 +472,7 @@ Recommended parallelization pattern:
 
 - Backend/data thread: schema, repository APIs, migrations, tests.
 - Agent orchestration thread: prompts, generation services, fake/live adapters.
+- UI/UX research thread: founder workflows, screens, states, accessibility, and design acceptance.
 - UI thread: founder surfaces, queue views, review pages, status dashboards.
 - QA thread: acceptance tests, route tests, no-secret scans, regression suite.
 - Documentation thread: operating model, setup docs, demo script, founder guide.
@@ -450,6 +488,7 @@ Every milestone should include:
 - Secret guard tests for every stored text field and generated artifact.
 - Fake-client tests for live integrations.
 - UI route assertions for founder-visible gates.
+- UX acceptance checks for task completion, decision clarity, accessibility, and responsive layout.
 - Full `pytest` before merging.
 - Full `ruff check .` before merging.
 - No-secret scan over generated docs, profile assets, project artifacts, and public-demo outputs.
@@ -464,6 +503,7 @@ The system is mature enough for serious founder-led usage when:
 - Approved tasks create agent work items.
 - Agents can run live through Hermes or stay in local demo mode.
 - Founder decisions and blockers are centralized.
+- UI/UX Research Agent doctrine and research packages guide founder-facing surfaces.
 - Agent memory is reusable and reviewable.
 - Approved code plans can spawn Codex workstreams.
 - QA and Test Automation can block launch.
@@ -474,7 +514,10 @@ The system is mature enough for serious founder-led usage when:
 
 ## Immediate Next Step
 
-Build Milestone 1: Founder Control Plane.
+Build Milestone 1 and Milestone 1A as the next planning and implementation pair:
+
+- Milestone 1: Founder Control Plane.
+- Milestone 1A: UI/UX Research Agent And Experience System.
 
 First implementation package:
 
@@ -484,4 +527,11 @@ First implementation package:
 4. Wire Product Wizard approve/revise actions into decision audit records.
 5. Add route, repository, UI, and no-secret tests.
 
-This is the right next step because more autonomy without a stronger founder control plane would make the system harder to trust.
+First documentation package:
+
+1. Add UI/UX Research Agent doctrine.
+2. Add Codex subagent and multi-chat research operating model.
+3. Add thread prompts and research package template.
+4. Add implementation-plan docs for Founder Control Plane and UI/UX Research Agent.
+
+This is the right next step because more autonomy without a stronger founder control plane and stronger UX research process would make the system harder to trust.
