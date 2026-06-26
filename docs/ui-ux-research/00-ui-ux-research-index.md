@@ -16,6 +16,7 @@ The UI/UX Research Agent is not yet a live Hermes profile. It should become one 
 - `02-codex-subagent-research-operating-model.md`: how to run parallel Codex research threads and integrate their packages.
 - `03-ui-ux-research-thread-prompts.md`: ready-to-use prompts for focused UI/UX research threads.
 - `04-research-package-template.md`: standard package format every research thread must produce.
+- `05-research-batch-1-integration.md`: integrated recommendations from the first UI/UX research batch.
 
 Related implementation plans:
 
@@ -36,6 +37,21 @@ Initial research tracks:
 7. Design System and Visual Polish.
 
 Each track should be run as a focused Codex thread or subagent assignment, then integrated centrally.
+
+## Batch 1 Status
+
+Batch 1 packages completed:
+
+- `packages/founder-control-plane-ux.md`
+- `packages/product-wizard-ux.md`
+- `packages/agent-work-queue-ux.md`
+- `packages/accessibility-responsive-ux.md`
+
+Central integration:
+
+- `05-research-batch-1-integration.md`
+
+The integrated recommendation is to build the Founder Control Plane first, while applying the Product Wizard review improvements, read-first agent queue model, and accessibility baseline as acceptance requirements for that milestone.
 
 ## Research Package Contract
 
