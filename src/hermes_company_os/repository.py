@@ -7,6 +7,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from hermes_company_os.database import connect, decode_capabilities, decode_many
+from hermes_company_os.founder_decisions import (
+    RESOLVED_DECISION_STATUSES,
+    SUPPORTED_DECISION_TYPES,
+    founder_only_decision_type,
+    normalize_decision_type,
+)
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 
@@ -600,19 +606,77 @@ class CompanyRepository:
         check = self.get_profile_installation_check(f"{agent_id}-profile-installation")
         return bool(check and check["status"] == "verified")
 
-    def list_founder_decisions(self, limit: int | None = None) -> list[dict]:
+    def list_founder_decisions(
+        self,
+        limit: int | None = None,
+        *,
+        project_id: str = "",
+        stage_id: str = "",
+        artifact_id: str = "",
+        status: str = "",
+        urgency: str = "",
+        decision_type: str = "",
+        owner_agent_id: str = "",
+        include_resolved: bool = True,
+    ) -> list[dict]:
         query = """
             SELECT founder_decisions.*,
                    agents.name AS owner_name,
-                   agents.hermes_command AS owner_command
+                   agents.hermes_command AS owner_command,
+                   company_projects.name AS project_name
             FROM founder_decisions
             JOIN agents ON agents.id = founder_decisions.owner_agent_id
+            LEFT JOIN company_projects
+                ON company_projects.id = founder_decisions.project_id
+        """
+        filters = []
+        parameters: list[object] = []
+        if project_id:
+            filters.append("founder_decisions.project_id = ?")
+            parameters.append(project_id)
+        if stage_id:
+            filters.append("founder_decisions.stage_id = ?")
+            parameters.append(stage_id)
+        if artifact_id:
+            filters.append("founder_decisions.artifact_id = ?")
+            parameters.append(artifact_id)
+        if status:
+            if status == "open":
+                filters.append(
+                    "founder_decisions.status NOT IN ({})".format(
+                        ",".join("?" for _ in RESOLVED_DECISION_STATUSES)
+                    )
+                )
+                parameters.extend(sorted(RESOLVED_DECISION_STATUSES))
+            else:
+                filters.append("founder_decisions.status = ?")
+                parameters.append(status)
+        elif not include_resolved:
+            filters.append(
+                "founder_decisions.status NOT IN ({})".format(
+                    ",".join("?" for _ in RESOLVED_DECISION_STATUSES)
+                )
+            )
+            parameters.extend(sorted(RESOLVED_DECISION_STATUSES))
+        if urgency:
+            filters.append("founder_decisions.urgency = ?")
+            parameters.append(urgency)
+        if decision_type:
+            filters.append("founder_decisions.decision_type = ?")
+            parameters.append(normalize_decision_type(decision_type))
+        if owner_agent_id:
+            filters.append("founder_decisions.owner_agent_id = ?")
+            parameters.append(owner_agent_id)
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += """
             ORDER BY
                 CASE founder_decisions.status
                     WHEN 'blocked' THEN 1
                     WHEN 'needed' THEN 2
                     ELSE 3
                 END,
+                founder_decisions.requires_founder_approval DESC,
                 CASE founder_decisions.urgency
                     WHEN 'urgent' THEN 1
                     ELSE 2
@@ -620,10 +684,9 @@ class CompanyRepository:
                 founder_decisions.updated_at DESC,
                 founder_decisions.title
         """
-        parameters: tuple[int, ...] = ()
         if limit is not None:
             query += " LIMIT ?"
-            parameters = (limit,)
+            parameters.append(limit)
         with connect(self.database_path) as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [dict(row) for row in rows]
@@ -634,9 +697,12 @@ class CompanyRepository:
                 """
                 SELECT founder_decisions.*,
                        agents.name AS owner_name,
-                       agents.hermes_command AS owner_command
+                       agents.hermes_command AS owner_command,
+                       company_projects.name AS project_name
                 FROM founder_decisions
                 JOIN agents ON agents.id = founder_decisions.owner_agent_id
+                LEFT JOIN company_projects
+                    ON company_projects.id = founder_decisions.project_id
                 WHERE founder_decisions.id = ?
                 """,
                 (decision_id,),
@@ -654,30 +720,66 @@ class CompanyRepository:
         telegram_policy: str,
         context: str,
         status: str = "needed",
+        decision_type: str = "operating_decision",
+        project_id: str | None = None,
+        stage_id: str | None = None,
+        artifact_id: str | None = None,
+        evidence: str = "",
+        requires_founder_approval: bool | None = None,
     ) -> str:
+        normalized_type = normalize_decision_type(decision_type)
         self.assert_agent_exists(owner_agent_id)
+        if project_id and self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        assert_no_secret_values(
+            {
+                "title": title,
+                "urgency": urgency,
+                "source": source,
+                "owner_agent_id": owner_agent_id,
+                "slack_channel": slack_channel,
+                "telegram_policy": telegram_policy,
+                "context": context,
+                "evidence": evidence,
+            }
+        )
         decision_id = f"decision-{uuid4().hex[:10]}"
         now = utc_now()
+        founder_required = (
+            founder_only_decision_type(normalized_type)
+            if requires_founder_approval is None
+            else requires_founder_approval
+        )
         with connect(self.database_path) as connection:
             connection.execute(
                 """
                 INSERT INTO founder_decisions (
-                    id, title, status, urgency, source, owner_agent_id,
-                    slack_channel, telegram_policy, context, decision,
+                    id, title, status, urgency, decision_type, source,
+                    owner_agent_id, project_id, stage_id, artifact_id,
+                    slack_channel, telegram_policy, context, evidence, decision,
+                    requires_founder_approval, resolved_at, resolution_note,
                     created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     decision_id,
                     title.strip(),
                     status.strip(),
                     urgency.strip(),
+                    normalized_type,
                     source.strip(),
                     owner_agent_id,
+                    (project_id or "").strip() or None,
+                    (stage_id or "").strip() or None,
+                    (artifact_id or "").strip() or None,
                     slack_channel.strip(),
                     telegram_policy.strip(),
                     context.strip(),
+                    evidence.strip(),
+                    "",
+                    1 if founder_required else 0,
+                    None,
                     "",
                     now,
                     now,
@@ -690,24 +792,84 @@ class CompanyRepository:
         decision_id: str,
         status: str,
         decision: str,
+        *,
+        founder_confirmed: bool = False,
     ) -> None:
-        if self.get_founder_decision(decision_id) is None:
+        current = self.get_founder_decision(decision_id)
+        if current is None:
             raise sqlite3.IntegrityError(f"Unknown founder decision: {decision_id}")
+        if status not in {"needed", "blocked"} | RESOLVED_DECISION_STATUSES:
+            raise ValueError(f"Unsupported founder decision status: {status}")
+        if status in RESOLVED_DECISION_STATUSES and not decision.strip():
+            raise ValueError("A decision note is required before resolving a decision.")
+        if (
+            current["requires_founder_approval"]
+            and status in RESOLVED_DECISION_STATUSES
+            and not founder_confirmed
+        ):
+            raise ValueError(
+                "Founder confirmation is required before resolving this decision."
+            )
+        now = utc_now()
+        resolved_at = now if status in RESOLVED_DECISION_STATUSES else None
+        resolution_note = decision.strip() if status in RESOLVED_DECISION_STATUSES else ""
+        assert_no_secret_values({"status": status, "decision": decision})
         with connect(self.database_path) as connection:
             connection.execute(
                 """
                 UPDATE founder_decisions
-                SET status = ?, decision = ?, updated_at = ?
+                SET status = ?,
+                    decision = ?,
+                    resolved_at = ?,
+                    resolution_note = ?,
+                    updated_at = ?
                 WHERE id = ?
                 """,
-                (status.strip(), decision.strip(), utc_now(), decision_id),
+                (
+                    status.strip(),
+                    decision.strip(),
+                    resolved_at,
+                    resolution_note,
+                    now,
+                    decision_id,
+                ),
             )
+
+    def resolve_project_stage_decisions(
+        self,
+        *,
+        project_id: str,
+        stage_id: str,
+        status: str,
+        decision: str,
+        decision_types: set[str] | None = None,
+    ) -> int:
+        if decision_types:
+            unsupported = decision_types - SUPPORTED_DECISION_TYPES
+            if unsupported:
+                raise ValueError(f"Unsupported founder decision types: {unsupported}")
+        decisions = self.list_founder_decisions(
+            project_id=project_id,
+            stage_id=stage_id,
+            include_resolved=False,
+        )
+        resolved_count = 0
+        for item in decisions:
+            if decision_types and item["decision_type"] not in decision_types:
+                continue
+            self.update_founder_decision(
+                item["id"],
+                status=status,
+                decision=decision,
+                founder_confirmed=True,
+            )
+            resolved_count += 1
+        return resolved_count
 
     def founder_decision_queue_ready(self) -> bool:
         decisions = self.list_founder_decisions()
-        resolved_statuses = {"approved", "rejected", "deferred"}
         return bool(decisions) and all(
-            item["status"] in resolved_statuses and item["decision"].strip()
+            item["status"] in RESOLVED_DECISION_STATUSES and item["decision"].strip()
             for item in decisions
         )
 

@@ -21,7 +21,7 @@
           <a class="active" href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
           <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
           <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
-          <a href="#founder-decisions"><i data-lucide="gavel"></i> Decisions</a>
+          <a href="/decisions"><i data-lucide="gavel"></i> Decisions</a>
           <a href="#agents"><i data-lucide="users-round"></i> Agents</a>
           <a href="#standups"><i data-lucide="calendar-clock"></i> Standups</a>
           <a href="#runs"><i data-lucide="activity"></i> Runs</a>
@@ -116,7 +116,10 @@
           <div class="panel full" id="founder-decisions">
             <div class="panel-header">
               <h2>Founder Decision Queue</h2>
-              <a href="/setup/founder-decisions.md">Export</a>
+              <span class="panel-header-actions">
+                <a href="/decisions">Inbox</a>
+                <a href="/setup/founder-decisions.md">Export</a>
+              </span>
             </div>
             <section class="notice-band compact">
               <strong>{{ founder_actions.founder_decisions.open }} open</strong>
@@ -127,6 +130,8 @@
             </section>
             <div class="decision-grid">
               <form class="stacked-form" method="post" action="/decisions">
+                <input type="hidden" name="return_to" value="/#founder-decisions">
+                <input type="hidden" name="decision_type" value="operating_decision">
                 <label>
                   Title
                   <input name="title" required placeholder="Approve first idea go/no-go">
@@ -183,8 +188,16 @@
                   {% if decision.decision %}
                   <p><strong>Decision:</strong> {{ decision.decision }}</p>
                   {% endif %}
+                  {% if decision.project_id %}
+                  <p>
+                    <strong>Project:</strong>
+                    <a href="/projects/{{ decision.project_id }}">{{ decision.project_name }}</a>
+                    {% if decision.stage_id %} - {{ decision.stage_id }}{% endif %}
+                  </p>
+                  {% endif %}
                   <form class="decision-update-form" method="post" action="/decisions/{{ decision.id }}">
-                    <select name="status" aria-label="Decision status">
+                    <input type="hidden" name="return_to" value="/#founder-decisions">
+                    <select name="status" aria-label="Status for {{ decision.title }}">
                       {% for status in ["needed", "approved", "rejected", "blocked", "deferred"] %}
                       <option value="{{ status }}" {% if decision.status == status %}selected{% endif %}>{{ status }}</option>
                       {% endfor %}
@@ -192,11 +205,18 @@
                     <input
                       name="decision"
                       value="{{ decision.decision }}"
+                      aria-label="Decision note for {{ decision.title }}"
                       placeholder="Record approval, rejection, deferral, or blocker note"
                     >
-                    <button class="icon-button" type="submit" title="Save decision">
+                    <button class="icon-button" type="submit" aria-label="Save {{ decision.title }}">
                       <i data-lucide="save"></i>
                     </button>
+                    {% if decision.requires_founder_approval %}
+                    <label class="checkbox-label decision-confirmation">
+                      <input type="checkbox" name="founder_confirmed" value="confirmed">
+                      Founder confirmed
+                    </label>
+                    {% endif %}
                   </form>
                 </div>
                 {% else %}

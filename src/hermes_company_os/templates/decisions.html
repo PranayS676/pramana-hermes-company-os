@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Founder Decisions - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Founder control plane</small>
+          </div>
+        </div>
+        <nav>
+          <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
+          <a class="active" href="/decisions"><i data-lucide="gavel"></i> Decisions</a>
+        </nav>
+      </aside>
+
+      <main class="content decision-workspace">
+        <section class="topbar workspace-topbar">
+          <div>
+            <p class="eyebrow">Founder approval layer</p>
+            <h1>Decision inbox</h1>
+            <p class="page-subtitle">
+              Project approvals, blockers, revision requests, accepted risks, external actions,
+              and launch gates stay visible before work moves forward.
+            </p>
+          </div>
+          <div class="topbar-actions">
+            <a class="secondary-button link-button-muted" href="/setup/founder-decisions.md">
+              <i data-lucide="file-text"></i> Export
+            </a>
+            <a class="primary-button link-button" href="/projects">
+              <i data-lucide="rocket"></i> Projects
+            </a>
+          </div>
+        </section>
+
+        <section class="metric-grid" aria-label="Decision summary">
+          <div class="metric">
+            <span>{{ summary.open }}</span>
+            <small>open decisions</small>
+          </div>
+          <div class="metric">
+            <span>{{ summary.urgent_open }}</span>
+            <small>urgent open</small>
+          </div>
+          <div class="metric">
+            <span>{{ summary.founder_only_open }}</span>
+            <small>founder-only open</small>
+          </div>
+          <div class="metric">
+            <span>{{ summary.project_linked }}</span>
+            <small>project linked</small>
+          </div>
+        </section>
+
+        <section class="panel decision-filter-panel">
+          <form class="decision-filter-bar" method="get" action="/decisions" aria-label="Filter decisions">
+            <label>
+              Status
+              <select name="status">
+                <option value="" {% if not filters.status %}selected{% endif %}>All</option>
+                <option value="open" {% if filters.status == "open" %}selected{% endif %}>Open</option>
+                {% for status in statuses %}
+                <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Urgency
+              <select name="urgency">
+                <option value="" {% if not filters.urgency %}selected{% endif %}>All</option>
+                <option value="routine" {% if filters.urgency == "routine" %}selected{% endif %}>routine</option>
+                <option value="urgent" {% if filters.urgency == "urgent" %}selected{% endif %}>urgent</option>
+              </select>
+            </label>
+            <label>
+              Type
+              <select name="decision_type">
+                <option value="" {% if not filters.decision_type %}selected{% endif %}>All</option>
+                {% for type_id, label in decision_types.items() %}
+                <option value="{{ type_id }}" {% if filters.decision_type == type_id %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Project
+              <select name="project_id">
+                <option value="" {% if not filters.project_id %}selected{% endif %}>All</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}" {% if filters.project_id == project.id %}selected{% endif %}>{{ project.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Owner
+              <select name="owner_agent_id">
+                <option value="" {% if not filters.owner_agent_id %}selected{% endif %}>All</option>
+                {% for agent in agents %}
+                <option value="{{ agent.id }}" {% if filters.owner_agent_id == agent.id %}selected{% endif %}>{{ agent.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button class="primary-button" type="submit">
+              <i data-lucide="filter"></i> Apply
+            </button>
+          </form>
+        </section>
+
+        <section class="decision-inbox-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Create decision</h2>
+                <p class="panel-kicker">Store only non-secret context and evidence.</p>
+              </div>
+            </div>
+            <form class="stacked-form" method="post" action="/decisions">
+              <input type="hidden" name="return_to" value="/decisions">
+              <label>
+                Title
+                <input name="title" required placeholder="Approve research artifact">
+              </label>
+              <label>
+                Type
+                <select name="decision_type">
+                  {% for type_id, label in decision_types.items() %}
+                  <option value="{{ type_id }}" {% if type_id == "artifact_approval" %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Owner
+                <select name="owner_agent_id">
+                  {% for agent in agents %}
+                  <option value="{{ agent.id }}" {% if agent.id == "chief-of-staff" %}selected{% endif %}>{{ agent.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Urgency
+                <select name="urgency">
+                  <option value="routine">routine</option>
+                  <option value="urgent">urgent</option>
+                </select>
+              </label>
+              <label>
+                Project
+                <select name="project_id">
+                  <option value="">No project</option>
+                  {% for project in projects %}
+                  <option value="{{ project.id }}">{{ project.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Stage
+                <input name="stage_id" placeholder="research">
+              </label>
+              <label>
+                Artifact
+                <input name="artifact_id" placeholder="artifact id">
+              </label>
+              <label>
+                Slack channel
+                <input name="slack_channel" value="#decisions">
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="requires_founder_approval" value="on">
+                Founder-only resolution
+              </label>
+              <label>
+                Source
+                <input name="source" value="manual">
+              </label>
+              <label class="form-span">
+                Context
+                <textarea name="context" rows="4" required placeholder="What decision is needed and what work is blocked?"></textarea>
+              </label>
+              <label class="form-span">
+                Evidence
+                <textarea name="evidence" rows="3" placeholder="Link the non-secret artifact, stage, test evidence, or blocker context."></textarea>
+              </label>
+              <label class="form-span">
+                Telegram policy
+                <input name="telegram_policy" value="Telegram only if this blocks founder progress.">
+              </label>
+              <button class="primary-button form-span" type="submit">
+                <i data-lucide="plus"></i> Add decision
+              </button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Inbox</h2>
+                <p class="panel-kicker">{{ decisions|length }} decisions match the current filters.</p>
+              </div>
+            </div>
+            <div class="item-list">
+              {% for decision in decisions %}
+              <article class="decision-row list-row {{ decision.status }}">
+                <div class="decision-title-line">
+                  <span class="status-pill {{ decision.status }}">{{ decision.status }}</span>
+                  <span class="status-pill {{ decision.urgency }}">{{ decision.urgency }}</span>
+                  {% if decision.requires_founder_approval %}
+                  <span class="status-pill needed">founder-only</span>
+                  {% endif %}
+                  <strong>
+                    <a href="/decisions/{{ decision.id }}">{{ decision.title }}</a>
+                  </strong>
+                </div>
+                <div class="decision-meta-grid">
+                  <span>Type <strong>{{ decision_types.get(decision.decision_type, decision.decision_type) }}</strong></span>
+                  <span>Owner <strong>{{ decision.owner_name }}</strong></span>
+                  {% if decision.project_id %}
+                  <span>Project <a href="/projects/{{ decision.project_id }}">{{ decision.project_name }}</a></span>
+                  {% endif %}
+                  {% if decision.stage_id %}
+                  <span>Stage <strong>{{ decision.stage_id }}</strong></span>
+                  {% endif %}
+                  {% if decision.artifact_id %}
+                  <span>Artifact <strong>{{ decision.artifact_id }}</strong></span>
+                  {% endif %}
+                </div>
+                <p>{{ decision.context }}</p>
+                {% if decision.evidence %}
+                <p><strong>Evidence:</strong> {{ decision.evidence }}</p>
+                {% endif %}
+                {% if decision.decision %}
+                <p><strong>Decision:</strong> {{ decision.decision }}</p>
+                {% endif %}
+                <form class="decision-update-form" method="post" action="/decisions/{{ decision.id }}">
+                  <input type="hidden" name="return_to" value="{{ request.url.path }}">
+                  <select name="status" aria-label="Status for {{ decision.title }}">
+                    {% for status in statuses %}
+                    <option value="{{ status }}" {% if decision.status == status %}selected{% endif %}>{{ status }}</option>
+                    {% endfor %}
+                  </select>
+                  <input
+                    name="decision"
+                    value="{{ decision.decision }}"
+                    aria-label="Decision note for {{ decision.title }}"
+                    placeholder="Record approval, rejection, deferral, or blocker note"
+                  >
+                  <button class="icon-button" type="submit" aria-label="Save {{ decision.title }}">
+                    <i data-lucide="save"></i>
+                  </button>
+                  {% if decision.requires_founder_approval %}
+                  <label class="checkbox-label decision-confirmation">
+                    <input type="checkbox" name="founder_confirmed" value="confirmed">
+                    Founder confirmed
+                  </label>
+                  {% endif %}
+                </form>
+              </article>
+              {% else %}
+              <p class="empty-state">No founder decisions match these filters.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

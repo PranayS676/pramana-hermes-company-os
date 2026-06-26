@@ -223,12 +223,20 @@ def initialize_database(database_path: Path) -> None:
                 title TEXT NOT NULL,
                 status TEXT NOT NULL,
                 urgency TEXT NOT NULL,
+                decision_type TEXT NOT NULL DEFAULT 'operating_decision',
                 source TEXT NOT NULL,
                 owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                project_id TEXT,
+                stage_id TEXT,
+                artifact_id TEXT,
                 slack_channel TEXT NOT NULL,
                 telegram_policy TEXT NOT NULL,
                 context TEXT NOT NULL,
+                evidence TEXT NOT NULL DEFAULT '',
                 decision TEXT NOT NULL,
+                requires_founder_approval INTEGER NOT NULL DEFAULT 0,
+                resolved_at TEXT,
+                resolution_note TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -332,6 +340,25 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE company_projects ADD COLUMN intake_json TEXT NOT NULL DEFAULT '{}'"
         )
+    decision_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(founder_decisions)").fetchall()
+    }
+    decision_column_defaults = {
+        "decision_type": "TEXT NOT NULL DEFAULT 'operating_decision'",
+        "project_id": "TEXT",
+        "stage_id": "TEXT",
+        "artifact_id": "TEXT",
+        "evidence": "TEXT NOT NULL DEFAULT ''",
+        "requires_founder_approval": "INTEGER NOT NULL DEFAULT 0",
+        "resolved_at": "TEXT",
+        "resolution_note": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, definition in decision_column_defaults.items():
+        if column not in decision_columns:
+            connection.execute(
+                f"ALTER TABLE founder_decisions ADD COLUMN {column} {definition}"
+            )
 
 
 def seed_defaults(connection: sqlite3.Connection) -> None:

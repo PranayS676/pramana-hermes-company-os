@@ -91,6 +91,26 @@
         </div>
       </section>
 
+      <section class="project-decision-strip" aria-label="Project founder decisions">
+        <div>
+          <span class="status-pill {% if founder_decision_items %}needed{% else %}ready{% endif %}">
+            {{ founder_decision_items|length }} project decisions
+          </span>
+          <strong>Project decisions</strong>
+          <small>
+            {% if founder_decision_items %}
+            Review project-linked approvals, revisions, blockers, and launch gates.
+            {% else %}
+            No founder decision is currently linked to this project.
+            {% endif %}
+          </small>
+        </div>
+        <a class="secondary-button link-button-muted" href="/decisions?project_id={{ project.id }}">
+          <i data-lucide="gavel"></i>
+          Open project decisions
+        </a>
+      </section>
+
       <section class="stage-timeline-panel">
         <div class="panel-header inline-panel-header">
           <div>
@@ -276,10 +296,10 @@
               </div>
               {% if founder_decision_items %}
               {% for decision in founder_decision_items %}
-              <div class="readiness-line">
+              <a class="readiness-line linked-readiness-line" href="/decisions/{{ decision.id }}">
                 <span>{{ decision.title|default("Founder decision") }}</span>
                 <strong>{{ decision.status|default("needs_input") }}</strong>
-              </div>
+              </a>
               {% endfor %}
               {% else %}
               <div class="readiness-line">

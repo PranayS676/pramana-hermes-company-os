@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 
@@ -58,9 +59,11 @@ from hermes_company_os.first_run import (
     first_run_powershell,
 )
 from hermes_company_os.founder_decisions import (
+    DECISION_TYPE_LABELS,
     RESOLVED_DECISION_STATUSES,
     founder_decisions_json,
     founder_decisions_markdown,
+    founder_decisions_payload,
 )
 from hermes_company_os.founder_handoff import (
     founder_handoff_json,
@@ -304,6 +307,7 @@ from hermes_company_os.verification_evidence import (
 )
 
 PACKAGE_ROOT = Path(__file__).parent
+DECISION_STATUS_OPTIONS = ("needed", "blocked", "approved", "rejected", "deferred")
 
 
 def reject_secret_values(values: dict[str, str]) -> None:
@@ -311,6 +315,16 @@ def reject_secret_values(values: dict[str, str]) -> None:
         assert_no_secret_values(values)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def safe_return_path(return_to: str, fallback: str) -> str:
+    if return_to.startswith("/") and not return_to.startswith("//"):
+        return return_to
+    return fallback
+
+
+def form_checkbox_checked(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes", "on", "confirmed"}
 
 
 def kanban_project_push_blocker(repository: CompanyRepository) -> str:
@@ -482,6 +496,48 @@ def approved_source_artifacts(
             }
         )
     return sources
+
+
+def wizard_review_decision_type(stage_id: str) -> str:
+    return "final_artifact_approval" if stage_id == "acceptance" else "artifact_approval"
+
+
+def create_project_stage_review_decision(
+    repository: CompanyRepository,
+    project: dict,
+    stage_id: str,
+    artifact_id: str,
+    artifact,
+) -> str:
+    decision_type = wizard_review_decision_type(stage_id)
+    stage = repository.get_project_wizard_stage(project["id"], stage_id)
+    stage_label = stage["name"] if stage else stage_id.replace("_", " ").title()
+    is_final = decision_type == "final_artifact_approval"
+    return repository.create_founder_decision(
+        title=f"Approve {stage_label} artifact for {project['name']}",
+        urgency="urgent" if is_final else "routine",
+        decision_type=decision_type,
+        source="product_wizard",
+        owner_agent_id=artifact.owner_agent_id,
+        project_id=project["id"],
+        stage_id=stage_id,
+        artifact_id=artifact_id,
+        slack_channel="#founder-command" if is_final else "#decisions",
+        telegram_policy=(
+            "Telegram only if this final artifact approval blocks launch."
+            if is_final
+            else "Slack first; Telegram only if this blocks founder progress."
+        ),
+        context=(
+            f"Review the generated {stage_label} artifact before it becomes approved "
+            f"source input for {project['name']}."
+        ),
+        evidence=(
+            f"Artifact {artifact_id} was generated in {artifact.generation_mode}. "
+            f"Next decision: {artifact.next_decision}"
+        ),
+        requires_founder_approval=is_final,
+    )
 
 
 def resolve_stage_id(repository: CompanyRepository, project_id: str, stage_id: str) -> str:
@@ -3643,16 +3699,97 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 repository.update_integration_status("llm-provider", "configured")
         return RedirectResponse("/setup#profile-smoke", status_code=303)
 
+    @app.get("/decisions")
+    def founder_decision_inbox(
+        request: Request,
+        status: str = "",
+        urgency: str = "",
+        decision_type: str = "",
+        project_id: str = "",
+        stage_id: str = "",
+        owner_agent_id: str = "",
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        try:
+            decisions = repository.list_founder_decisions(
+                status=status,
+                urgency=urgency,
+                decision_type=decision_type,
+                project_id=project_id,
+                stage_id=stage_id,
+                owner_agent_id=owner_agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        all_decisions = repository.list_founder_decisions()
+        return templates.TemplateResponse(
+            request,
+            "decisions.html",
+            {
+                "decisions": decisions,
+                "selected_decision": decisions[0] if len(decisions) == 1 else None,
+                "summary": founder_decisions_payload(all_decisions)["summary"],
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "decision_types": DECISION_TYPE_LABELS,
+                "statuses": DECISION_STATUS_OPTIONS,
+                "filters": {
+                    "status": status,
+                    "urgency": urgency,
+                    "decision_type": decision_type,
+                    "project_id": project_id,
+                    "stage_id": stage_id,
+                    "owner_agent_id": owner_agent_id,
+                },
+            },
+        )
+
+    @app.get("/decisions/{decision_id}")
+    def founder_decision_detail(request: Request, decision_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        selected_decision = repository.get_founder_decision(decision_id)
+        if selected_decision is None:
+            raise HTTPException(status_code=404, detail="Founder decision not found")
+        all_decisions = repository.list_founder_decisions()
+        return templates.TemplateResponse(
+            request,
+            "decisions.html",
+            {
+                "decisions": [selected_decision],
+                "selected_decision": selected_decision,
+                "summary": founder_decisions_payload(all_decisions)["summary"],
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "decision_types": DECISION_TYPE_LABELS,
+                "statuses": DECISION_STATUS_OPTIONS,
+                "filters": {
+                    "status": "",
+                    "urgency": "",
+                    "decision_type": "",
+                    "project_id": selected_decision.get("project_id") or "",
+                    "stage_id": selected_decision.get("stage_id") or "",
+                    "owner_agent_id": selected_decision.get("owner_agent_id") or "",
+                },
+            },
+        )
+
     @app.post("/decisions")
     def create_founder_decision(
         request: Request,
         title: str = Form(...),
         urgency: str = Form("routine"),
+        decision_type: str = Form("operating_decision"),
         source: str = Form("manual"),
         owner_agent_id: str = Form("chief-of-staff"),
+        project_id: str = Form(""),
+        stage_id: str = Form(""),
+        artifact_id: str = Form(""),
         slack_channel: str = Form("#decisions"),
         telegram_policy: str = Form("Telegram only if this blocks founder progress."),
         context: str = Form(""),
+        evidence: str = Form(""),
+        requires_founder_approval: str = Form(""),
+        return_to: str = Form("/decisions"),
     ):
         repository: CompanyRepository = request.app.state.repository
         allowed_urgencies = {"routine", "urgent"}
@@ -3669,23 +3806,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "title": title,
                 "urgency": urgency,
+                "decision_type": decision_type,
                 "source": source,
                 "owner_agent_id": owner_agent_id,
+                "project_id": project_id,
+                "stage_id": stage_id,
+                "artifact_id": artifact_id,
                 "slack_channel": slack_channel,
                 "telegram_policy": telegram_policy,
                 "context": context,
+                "evidence": evidence,
             }
         )
-        repository.create_founder_decision(
-            title=title,
-            urgency=urgency,
-            source=source,
-            owner_agent_id=owner_agent_id,
-            slack_channel=slack_channel,
-            telegram_policy=telegram_policy,
-            context=context,
+        try:
+            repository.create_founder_decision(
+                title=title,
+                urgency=urgency,
+                decision_type=decision_type,
+                source=source,
+                owner_agent_id=owner_agent_id,
+                project_id=project_id or None,
+                stage_id=stage_id or None,
+                artifact_id=artifact_id or None,
+                slack_channel=slack_channel,
+                telegram_policy=telegram_policy,
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=(
+                    True if form_checkbox_checked(requires_founder_approval) else None
+                ),
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            safe_return_path(return_to, "/decisions"),
+            status_code=303,
         )
-        return RedirectResponse("/#founder-decisions", status_code=303)
 
     @app.post("/decisions/{decision_id}")
     def update_founder_decision(
@@ -3693,12 +3849,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         decision_id: str,
         status: str = Form(...),
         decision: str = Form(""),
+        founder_confirmed: str = Form(""),
+        return_to: str = Form("/decisions"),
     ):
         repository: CompanyRepository = request.app.state.repository
         current = repository.get_founder_decision(decision_id)
         if current is None:
             raise HTTPException(status_code=404, detail="Founder decision not found")
-        allowed_statuses = RESOLVED_DECISION_STATUSES | {"needed", "blocked"}
+        allowed_statuses = set(DECISION_STATUS_OPTIONS)
         if status not in allowed_statuses:
             raise HTTPException(status_code=400, detail="Invalid founder decision status")
         if status in RESOLVED_DECISION_STATUSES and not decision.strip():
@@ -3707,12 +3865,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="A decision note is required before resolving a founder decision",
             )
         reject_secret_values({"status": status, "decision": decision})
-        repository.update_founder_decision(
-            decision_id=decision_id,
-            status=status,
-            decision=decision,
+        try:
+            repository.update_founder_decision(
+                decision_id=decision_id,
+                status=status,
+                decision=decision,
+                founder_confirmed=form_checkbox_checked(founder_confirmed),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            safe_return_path(return_to, "/decisions"),
+            status_code=303,
         )
-        return RedirectResponse("/#founder-decisions", status_code=303)
 
     @app.get("/projects")
     def projects(request: Request):
@@ -3857,7 +4022,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     wizard_stages,
                 ),
                 "task_stage_approved": task_stage_approved,
-                "founder_decisions": repository.list_founder_decisions()[:3],
+                "founder_decisions": repository.list_founder_decisions(
+                    project_id=project_id,
+                    limit=6,
+                ),
             },
         )
 
@@ -3874,12 +4042,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 product_wizard_intake_from_project(project),
                 approved_source_artifacts(repository, project_id),
             )
-            repository.save_stage_artifact_draft(
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="deferred",
+                decision="Superseded by a newly generated artifact draft.",
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            artifact_id = repository.save_stage_artifact_draft(
                 project_id=project_id,
                 stage_id=resolved_stage_id,
                 markdown_content=artifact.markdown,
                 json_content=artifact.metadata,
                 owner_agent_id=artifact.owner_agent_id,
+            )
+            create_project_stage_review_decision(
+                repository=repository,
+                project=project,
+                stage_id=resolved_stage_id,
+                artifact_id=artifact_id,
+                artifact=artifact,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -3903,17 +4085,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     stage_id=resolved_stage_id,
                     notes="Regeneration requested from the product wizard.",
                 )
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="deferred",
+                decision="Superseded by a regenerated artifact draft.",
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
             artifact = generate_wizard_artifact(
                 resolved_stage_id,
                 product_wizard_intake_from_project(project),
                 approved_source_artifacts(repository, project_id),
             )
-            repository.save_stage_artifact_draft(
+            artifact_id = repository.save_stage_artifact_draft(
                 project_id=project_id,
                 stage_id=resolved_stage_id,
                 markdown_content=artifact.markdown,
                 json_content=artifact.metadata,
                 owner_agent_id=artifact.owner_agent_id,
+            )
+            create_project_stage_review_decision(
+                repository=repository,
+                project=project,
+                stage_id=resolved_stage_id,
+                artifact_id=artifact_id,
+                artifact=artifact,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -3927,6 +4123,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
         try:
             repository.approve_stage(project_id, resolved_stage_id)
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="approved",
+                decision=(
+                    f"Founder approved the {resolved_stage_id} artifact from the "
+                    "project review workspace."
+                ),
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
             if resolved_stage_id == "tasks":
                 repository.ensure_project_workflow_items(project_id)
         except ValueError as exc:
@@ -3941,15 +4147,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         revision_request: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
+        project = repository.get_project(project_id)
+        if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
         reject_secret_values({"revision_request": revision_request})
         try:
+            latest_artifact = repository.latest_project_stage_artifact(
+                project_id,
+                resolved_stage_id,
+            )
+            revision_note = (
+                revision_request.strip()
+                or "Founder requested a revision before approving this stage."
+            )
             repository.request_stage_revision(
                 project_id=project_id,
                 stage_id=resolved_stage_id,
-                notes=revision_request,
+                notes=revision_note,
+            )
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="rejected",
+                decision=revision_note,
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            revision_decision_id = repository.create_founder_decision(
+                title=f"Revision requested for {resolved_stage_id} in {project['name']}",
+                urgency="routine",
+                decision_type="revision_request",
+                source="product_wizard",
+                owner_agent_id="product-manager",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                artifact_id=latest_artifact["id"] if latest_artifact else None,
+                slack_channel="#decisions",
+                telegram_policy="Slack first; Telegram only if this blocks launch.",
+                context=(
+                    "Founder requested a revision in the project review workspace."
+                ),
+                evidence=revision_note,
+            )
+            repository.update_founder_decision(
+                revision_decision_id,
+                status="approved",
+                decision=revision_note,
+                founder_confirmed=True,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
