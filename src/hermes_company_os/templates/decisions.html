@@ -212,10 +212,10 @@
               {% for decision in decisions %}
               <article class="decision-row list-row {{ decision.status }}">
                 <div class="decision-title-line">
-                  <span class="status-pill {{ decision.status }}">{{ decision.status }}</span>
-                  <span class="status-pill {{ decision.urgency }}">{{ decision.urgency }}</span>
+                  <span class="status-pill {{ decision.status }}" aria-label="Decision status: {{ decision.status }}">{{ decision.status }}</span>
+                  <span class="status-pill {{ decision.urgency }}" aria-label="Decision urgency: {{ decision.urgency }}">{{ decision.urgency }}</span>
                   {% if decision.requires_founder_approval %}
-                  <span class="status-pill needed">founder-only</span>
+                  <span class="status-pill needed" aria-label="Founder-only decision">founder-only</span>
                   {% endif %}
                   <strong>
                     <a href="/decisions/{{ decision.id }}">{{ decision.title }}</a>

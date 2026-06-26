@@ -43,20 +43,56 @@
           </header>
 
           <div class="wizard-layout">
-            <nav class="wizard-stepper" aria-label="Wizard stages">
-              <button class="wizard-step-trigger active" type="button" data-step-target="basics">
+            <nav class="wizard-stepper" aria-label="Wizard stages" role="tablist" aria-orientation="vertical">
+              <button
+                id="wizard-tab-basics"
+                class="wizard-step-trigger active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-current="step"
+                aria-controls="wizard-panel-basics"
+                data-step-target="basics"
+              >
                 <i data-lucide="badge-info"></i>
                 <span>Basics</span>
               </button>
-              <button class="wizard-step-trigger" type="button" data-step-target="audience">
+              <button
+                id="wizard-tab-audience"
+                class="wizard-step-trigger"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="wizard-panel-audience"
+                tabindex="-1"
+                data-step-target="audience"
+              >
                 <i data-lucide="users"></i>
                 <span>Audience</span>
               </button>
-              <button class="wizard-step-trigger" type="button" data-step-target="constraints">
+              <button
+                id="wizard-tab-constraints"
+                class="wizard-step-trigger"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="wizard-panel-constraints"
+                tabindex="-1"
+                data-step-target="constraints"
+              >
                 <i data-lucide="sliders-horizontal"></i>
                 <span>Constraints</span>
               </button>
-              <button class="wizard-step-trigger" type="button" data-step-target="review">
+              <button
+                id="wizard-tab-review"
+                class="wizard-step-trigger"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="wizard-panel-review"
+                tabindex="-1"
+                data-step-target="review"
+              >
                 <i data-lucide="check-check"></i>
                 <span>Review</span>
               </button>
@@ -64,11 +100,18 @@
 
             <form class="wizard-form" method="post" action="/projects">
               <input type="hidden" name="wizard_version" value="product-wizard-v1">
+              <p id="wizard-step-status" class="sr-only" aria-live="polite">Basics step active</p>
 
-              <section class="wizard-step-panel active" data-step-panel="basics">
+              <section
+                id="wizard-panel-basics"
+                class="wizard-step-panel active"
+                role="tabpanel"
+                aria-labelledby="wizard-tab-basics"
+                data-step-panel="basics"
+              >
                 <div class="panel-header">
                   <div>
-                    <h2>Basics</h2>
+                    <h2 id="wizard-heading-basics" tabindex="-1">Basics</h2>
                     <p class="panel-kicker">Name, category, and the raw founder idea.</p>
                   </div>
                   <i data-lucide="badge-info"></i>
@@ -106,10 +149,17 @@
                 </div>
               </section>
 
-              <section class="wizard-step-panel" data-step-panel="audience">
+              <section
+                id="wizard-panel-audience"
+                class="wizard-step-panel"
+                role="tabpanel"
+                aria-labelledby="wizard-tab-audience"
+                data-step-panel="audience"
+                hidden
+              >
                 <div class="panel-header">
                   <div>
-                    <h2>Audience And Problem</h2>
+                    <h2 id="wizard-heading-audience" tabindex="-1">Audience And Problem</h2>
                     <p class="panel-kicker">Who feels the pain and what changes for them.</p>
                   </div>
                   <i data-lucide="users"></i>
@@ -150,10 +200,17 @@
                 </div>
               </section>
 
-              <section class="wizard-step-panel" data-step-panel="constraints">
+              <section
+                id="wizard-panel-constraints"
+                class="wizard-step-panel"
+                role="tabpanel"
+                aria-labelledby="wizard-tab-constraints"
+                data-step-panel="constraints"
+                hidden
+              >
                 <div class="panel-header">
                   <div>
-                    <h2>Constraints</h2>
+                    <h2 id="wizard-heading-constraints" tabindex="-1">Constraints</h2>
                     <p class="panel-kicker">Scope, launch tier, risk, and quality expectations.</p>
                   </div>
                   <i data-lucide="sliders-horizontal"></i>
@@ -211,10 +268,17 @@
                 </div>
               </section>
 
-              <section class="wizard-step-panel" data-step-panel="review">
+              <section
+                id="wizard-panel-review"
+                class="wizard-step-panel"
+                role="tabpanel"
+                aria-labelledby="wizard-tab-review"
+                data-step-panel="review"
+                hidden
+              >
                 <div class="panel-header">
                   <div>
-                    <h2>Review</h2>
+                    <h2 id="wizard-heading-review" tabindex="-1">Review</h2>
                     <p class="panel-kicker">Create the staged Hermes workflow.</p>
                   </div>
                   <i data-lucide="check-check"></i>
@@ -258,18 +322,61 @@
     <script>
       const triggers = document.querySelectorAll("[data-step-target]");
       const panels = document.querySelectorAll("[data-step-panel]");
+      const stepStatus = document.querySelector("#wizard-step-status");
 
-      function activateWizardStep(step) {
+      function activateWizardStep(step, options = {}) {
+        const targetTrigger = document.querySelector(`[data-step-target="${step}"]`);
         triggers.forEach((trigger) => {
-          trigger.classList.toggle("active", trigger.dataset.stepTarget === step);
+          const active = trigger.dataset.stepTarget === step;
+          trigger.classList.toggle("active", active);
+          trigger.setAttribute("aria-selected", active ? "true" : "false");
+          if (active) {
+            trigger.setAttribute("aria-current", "step");
+            trigger.removeAttribute("tabindex");
+          } else {
+            trigger.removeAttribute("aria-current");
+            trigger.setAttribute("tabindex", "-1");
+          }
         });
         panels.forEach((panel) => {
-          panel.classList.toggle("active", panel.dataset.stepPanel === step);
+          const active = panel.dataset.stepPanel === step;
+          panel.classList.toggle("active", active);
+          panel.hidden = !active;
         });
+        const targetPanel = document.querySelector(`[data-step-panel="${step}"]`);
+        const heading = targetPanel ? targetPanel.querySelector("h2") : null;
+        if (stepStatus && targetTrigger) {
+          stepStatus.textContent = `${targetTrigger.innerText.trim()} step active`;
+        }
+        if (options.focusTarget) {
+          window.setTimeout(() => options.focusTarget.focus(), 0);
+        } else if (options.focusTab && targetTrigger) {
+          targetTrigger.focus();
+        } else if (options.focusPanel !== false && heading) {
+          heading.focus();
+        }
       }
 
       triggers.forEach((trigger) => {
         trigger.addEventListener("click", () => activateWizardStep(trigger.dataset.stepTarget));
+        trigger.addEventListener("keydown", (event) => {
+          const currentIndex = Array.from(triggers).indexOf(trigger);
+          const lastIndex = triggers.length - 1;
+          let nextIndex = currentIndex;
+          if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+            nextIndex = currentIndex === lastIndex ? 0 : currentIndex + 1;
+          } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+            nextIndex = currentIndex === 0 ? lastIndex : currentIndex - 1;
+          } else if (event.key === "Home") {
+            nextIndex = 0;
+          } else if (event.key === "End") {
+            nextIndex = lastIndex;
+          } else {
+            return;
+          }
+          event.preventDefault();
+          activateWizardStep(triggers[nextIndex].dataset.stepTarget, { focusTab: true });
+        });
       });
       document.querySelectorAll("[data-next-step]").forEach((button) => {
         button.addEventListener("click", () => activateWizardStep(button.dataset.nextStep));
@@ -277,7 +384,7 @@
       document.querySelector(".wizard-form").addEventListener("invalid", (event) => {
         const panel = event.target.closest("[data-step-panel]");
         if (panel) {
-          activateWizardStep(panel.dataset.stepPanel);
+          activateWizardStep(panel.dataset.stepPanel, { focusTarget: event.target });
         }
       }, true);
       lucide.createIcons();

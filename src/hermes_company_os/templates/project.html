@@ -84,13 +84,19 @@
           <p class="page-subtitle">{{ project.founder_idea }}</p>
         </div>
         <div class="project-title-actions">
-          <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
+          <span class="status-pill {{ artifact_status }}" aria-label="Artifact status: {{ artifact_status }}">{{ artifact_status }}</span>
           {% if has_latest_artifact %}
-          <span class="status-pill {% if artifact.selected %}needed{% else %}ready{% endif %}">
+          <span
+            class="status-pill {% if artifact.selected %}needed{% else %}ready{% endif %}"
+            aria-label="{% if artifact.selected %}Selected artifact version{% else %}Latest artifact version{% endif %}"
+          >
             {% if artifact.selected %}selected version{% else %}latest version{% endif %}
           </span>
           {% endif %}
-          <span class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}">
+          <span
+            class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}"
+            aria-label="{% if kanban_gate_open %}Kanban ready{% else %}Kanban blocked{% endif %}"
+          >
             {% if kanban_gate_open %}
             Kanban ready
             {% elif not kanban_ready %}
@@ -149,7 +155,7 @@
             <p class="panel-kicker">Each artifact is approved before the next stage opens.</p>
           </div>
         </div>
-        <div class="stage-timeline">
+        <div class="stage-timeline" role="list">
           {% for stage in stages %}
           {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
           {% set stage_label = stage.label|default(stage.name|default(stage_id|replace("_", " ")|title, true), true) %}
@@ -157,6 +163,9 @@
           <div
             class="stage-node {% if stage_id == active_stage_id %}active{% endif %}"
             data-stage-id="{{ stage_id }}"
+            role="listitem"
+            {% if stage_id == active_stage_id %}aria-current="step"{% endif %}
+            aria-label="{{ stage_label }} stage, {{ stage_status }}"
           >
             <span class="stage-icon"><i data-lucide="{{ stage.icon|default('circle') }}"></i></span>
             <div>
@@ -371,8 +380,16 @@
               </div>
               <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
             </div>
-            <article class="artifact-preview" id="artifact-preview">
-              <h3>{{ artifact_title }}</h3>
+            <article
+              class="artifact-preview"
+              id="artifact-preview"
+              aria-labelledby="artifact-preview-heading"
+              aria-describedby="artifact-status-summary"
+            >
+              <p id="artifact-status-summary" class="sr-only">
+                Artifact status {{ artifact_status }}{% if has_latest_artifact %}, version {{ artifact.version }}{% endif %}.
+              </p>
+              <h3 id="artifact-preview-heading">{{ artifact_title }}</h3>
               {% if artifact_sections %}
               <div class="artifact-section-list">
                 {% for section in artifact_sections %}
@@ -506,11 +523,7 @@
               </button>
             </form>
             {% else %}
-            <button class="primary-button full-width-button" type="button" disabled>
-              <i data-lucide="lock"></i>
-              Push workflow to Kanban
-            </button>
-            <p class="empty-state gate-copy">
+            <p class="empty-state gate-copy" id="kanban-gate-reason">
               {% if not task_gate_ready %}
               Approve the tasks stage before pushing workflow items to Hermes Kanban.
               {% elif kanban_blocker %}
@@ -519,6 +532,15 @@
               Kanban verification must be ready before external handoff.
               {% endif %}
             </p>
+            <button
+              class="primary-button full-width-button"
+              type="button"
+              disabled
+              aria-describedby="kanban-gate-reason"
+            >
+              <i data-lucide="lock"></i>
+              Push workflow to Kanban
+            </button>
             {% if not kanban_ready %}
             <a class="secondary-button link-button-muted full-width-button" href="/setup#kanban-verification">
               <i data-lucide="shield-alert"></i>
@@ -536,14 +558,19 @@
               </div>
               <i data-lucide="square-terminal"></i>
             </div>
-            <button class="secondary-button full-width-button" type="button" disabled>
-              <i data-lucide="lock"></i>
-              Start Codex workstreams
-            </button>
-            <p class="empty-state gate-copy">
+            <p class="empty-state gate-copy" id="codex-gate-reason">
               Future Codex execution requires approved code plan, approved acceptance package,
               and a separate founder execution approval before real branches or parallel workstreams start.
             </p>
+            <button
+              class="secondary-button full-width-button"
+              type="button"
+              disabled
+              aria-describedby="codex-gate-reason"
+            >
+              <i data-lucide="lock"></i>
+              Start Codex workstreams
+            </button>
           </section>
 
           <section class="panel stage-artifacts-panel">

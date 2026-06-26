@@ -24,7 +24,15 @@
           <a class="secondary-button link-button-muted" href="/decisions">
             <i data-lucide="gavel"></i> Decisions
           </a>
-          <button class="secondary-button" type="button" disabled title="Future Codex execution requires founder approval.">
+          <span id="queue-codex-blocker" class="sr-only">
+            Future Codex execution requires approved code plan, approved acceptance package, and founder execution approval.
+          </span>
+          <button
+            class="secondary-button"
+            type="button"
+            disabled
+            aria-describedby="queue-codex-blocker"
+          >
             <i data-lucide="lock"></i> Start Codex
           </button>
         </div>
@@ -179,8 +187,8 @@
             <article class="queue-row {{ item.status }}">
               <div class="queue-row-main">
                 <div class="queue-title-line">
-                  <span class="status-pill {{ item.status }}">{{ state_labels[item.status] }}</span>
-                  <span class="status-pill {{ item.priority }}">{{ priority_labels[item.priority] }}</span>
+                  <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ state_labels[item.status] }}">{{ state_labels[item.status] }}</span>
+                  <span class="status-pill {{ item.priority }}" aria-label="Queue priority: {{ priority_labels[item.priority] }}">{{ priority_labels[item.priority] }}</span>
                   {% if item.founder_action_required %}
                   <span class="status-pill urgent">Founder required</span>
                   {% endif %}

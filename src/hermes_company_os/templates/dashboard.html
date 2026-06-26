@@ -181,8 +181,8 @@
                 {% for decision in founder_decisions %}
                 <div class="decision-row list-row {{ decision.status }}">
                   <div class="decision-title-line">
-                    <span class="status-pill {{ decision.status }}">{{ decision.status }}</span>
-                    <span class="status-pill {{ decision.urgency }}">{{ decision.urgency }}</span>
+                    <span class="status-pill {{ decision.status }}" aria-label="Decision status: {{ decision.status }}">{{ decision.status }}</span>
+                    <span class="status-pill {{ decision.urgency }}" aria-label="Decision urgency: {{ decision.urgency }}">{{ decision.urgency }}</span>
                     <strong>{{ decision.title }}</strong>
                   </div>
                   <small>
@@ -251,7 +251,7 @@
             <div class="queue-strip">
               {% for item in agent_work_items %}
               <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
-                <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ item.status }}">{{ item.status }}</span>
                 <div>
                   <strong>{{ item.title }}</strong>
                   <small>
@@ -295,7 +295,7 @@
               <h2>Standups</h2>
             </div>
             {% if standup_run_blocker %}
-            <p class="empty-state">
+            <p class="empty-state" id="standup-run-blocker">
               {{ standup_run_blocker }} Manual standup runs stay locked until the
               Chief of Staff profile passes final LLM verification.
             </p>
@@ -311,6 +311,7 @@
                   title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
                   type="submit"
                   class="icon-button"
+                  {% if standup_run_blocker %}aria-describedby="standup-run-blocker"{% endif %}
                   {% if standup_run_blocker %}disabled{% endif %}
                 >
                   <i data-lucide="play"></i>
