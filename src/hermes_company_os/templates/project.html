@@ -44,14 +44,19 @@
 ] %}
 {% set stages = wizard_stages|default(default_wizard_stages, true) %}
 {% set active_stage = current_stage|default(stages|first, true) %}
+{% set next_actionable_stage = actionable_stage|default(active_stage, true) %}
 {% set active_stage_id = active_stage.id|default(active_stage.stage_id|default(active_stage.slug|default(active_stage, true), true), true) %}
 {% set active_stage_label = active_stage.label|default(active_stage.name|default(active_stage_id|replace("_", " ")|title, true), true) %}
+{% set next_actionable_stage_id = next_actionable_stage.id|default(next_actionable_stage.stage_id|default(next_actionable_stage.slug|default(next_actionable_stage, true), true), true) %}
 {% set has_latest_artifact = latest_artifact is defined and latest_artifact %}
 {% set fallback_artifact = workflow_items|first if not stages else {} %}
 {% set artifact = latest_artifact|default(fallback_artifact|default({}, true), true) %}
 {% set artifact_title = artifact.title|default(active_stage_label ~ " artifact", true) %}
 {% set artifact_status = artifact.status|default(active_stage.status|default("ready", true), true) %}
 {% set artifact_body = artifact.body|default(artifact.summary|default(project.founder_idea, true), true) %}
+{% set artifact_checks = artifact.quality_checks|default([], true) %}
+{% set artifact_sources = artifact.source_artifact_ids|default([], true) %}
+{% set artifact_sections = artifact.sections|default([], true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
@@ -79,6 +84,11 @@
         </div>
         <div class="project-title-actions">
           <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
+          {% if has_latest_artifact %}
+          <span class="status-pill {% if artifact.selected %}needed{% else %}ready{% endif %}">
+            {% if artifact.selected %}selected version{% else %}latest version{% endif %}
+          </span>
+          {% endif %}
           <span class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}">
             {% if kanban_gate_open %}
             Kanban ready
@@ -154,7 +164,47 @@
               <i data-lucide="{{ active_stage.icon|default('sparkles') }}"></i>
             </div>
 
+            <section class="stage-decision-summary" aria-label="Stage decision summary">
+              <div>
+                <span>Review state</span>
+                <strong>{{ artifact_status }}</strong>
+              </div>
+              <div>
+                <span>Owner</span>
+                <strong>{{ artifact.owner_name|default(active_stage.owner_name|default("Not assigned", true), true) }}</strong>
+              </div>
+              <div>
+                <span>Generation mode</span>
+                <strong>{{ artifact.generation_mode|default("not generated", true) }}</strong>
+              </div>
+              <div>
+                <span>Version</span>
+                <strong>{% if has_latest_artifact %}{{ artifact.version }}{% else %}Not generated{% endif %}</strong>
+              </div>
+              <div class="summary-span">
+                <span>Next decision</span>
+                <strong>{{ artifact.next_decision|default("Generate this stage before approval.", true) }}</strong>
+              </div>
+              {% if active_stage.revision_notes %}
+              <div class="summary-span warning-summary">
+                <span>Revision notes</span>
+                <strong>{{ active_stage.revision_notes }}</strong>
+              </div>
+              {% endif %}
+              {% if artifact.selected %}
+              <div class="summary-span warning-summary">
+                <span>Selected artifact</span>
+                <strong>History inspection mode. Confirm that any action still matches the selected stage context.</strong>
+              </div>
+              {% endif %}
+            </section>
+
             <div class="stage-action-grid" aria-label="Current stage actions">
+              {% if artifact.selected %}
+              <a class="secondary-button link-button-muted full-width-button" href="/projects/{{ project.id }}#artifact-preview">
+                <i data-lucide="history"></i> Return to latest review
+              </a>
+              {% else %}
               {% if artifact_status in ["ready", "needs_revision", "blocked"] %}
               <form method="post" action="/projects/{{ project.id }}/stages/current/generate">
                 <button class="primary-button full-width-button" type="submit">
@@ -183,6 +233,14 @@
                 action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/revision"
               >
                 <label>
+                  Revision reason
+                  <select name="revision_reason">
+                    {% for reason_id, reason_label in revision_reasons.items() %}
+                    <option value="{{ reason_id }}" {% if reason_id == "acceptance_concern" %}selected{% endif %}>{{ reason_label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
                   Revision request
                   <textarea
                     name="revision_request"
@@ -195,7 +253,65 @@
                 </button>
               </form>
               {% endif %}
+              {% endif %}
             </div>
+          </section>
+
+          <section class="panel review-contract-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact review contract</h2>
+                <p class="panel-kicker">Owner, sources, checks, and approval context before founder action.</p>
+              </div>
+              <i data-lucide="clipboard-check"></i>
+            </div>
+            {% if has_latest_artifact %}
+            <div class="review-contract-grid">
+              <div>
+                <span>Owner agent</span>
+                <strong>{{ artifact.owner_name }}{% if artifact.owner_command %} - {{ artifact.owner_command }}{% endif %}</strong>
+              </div>
+              <div>
+                <span>Generation mode</span>
+                <strong>{{ artifact.generation_mode|default("not recorded", true) }}</strong>
+              </div>
+              <div>
+                <span>Source artifacts</span>
+                {% if artifact_sources %}
+                <strong>{{ artifact_sources|join(", ") }}</strong>
+                {% else %}
+                <strong>No prior artifact required for this stage.</strong>
+                {% endif %}
+              </div>
+              <div>
+                <span>Supporting agents</span>
+                {% if artifact.supporting_agent_ids %}
+                <strong>{{ artifact.supporting_agent_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>None</strong>
+                {% endif %}
+              </div>
+            </div>
+            <div class="quality-check-list" aria-label="Quality checks">
+              <h3>Quality checks</h3>
+              {% for check in artifact_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.evidence }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">Generate an artifact to see quality checks.</p>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state">
+              Generate this stage to see owner metadata, generation mode, source artifacts,
+              quality checks, and the next founder decision.
+            </p>
+            {% endif %}
           </section>
 
           <section class="panel intake-panel">
@@ -236,7 +352,18 @@
             </div>
             <article class="artifact-preview" id="artifact-preview">
               <h3>{{ artifact_title }}</h3>
+              {% if artifact_sections %}
+              <div class="artifact-section-list">
+                {% for section in artifact_sections %}
+                <section class="artifact-section">
+                  <h4>{{ section.title }}</h4>
+                  <p class="artifact-copy">{{ section.body }}</p>
+                </section>
+                {% endfor %}
+              </div>
+              {% else %}
               <p class="artifact-copy">{{ artifact_body }}</p>
+              {% endif %}
             </article>
           </section>
 
@@ -348,6 +475,24 @@
             {% endif %}
           </section>
 
+          <section class="panel codex-gate-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Codex Execution</h2>
+                <p class="panel-kicker">Future implementation handoff remains founder-gated.</p>
+              </div>
+              <i data-lucide="square-terminal"></i>
+            </div>
+            <button class="secondary-button full-width-button" type="button" disabled>
+              <i data-lucide="lock"></i>
+              Start Codex workstreams
+            </button>
+            <p class="empty-state gate-copy">
+              Future Codex execution requires approved code plan, approved acceptance package,
+              and a separate founder execution approval before real branches or parallel workstreams start.
+            </p>
+          </section>
+
           <section class="panel stage-artifacts-panel">
             <div class="panel-header">
               <div>
@@ -374,8 +519,13 @@
               {% if stage_artifact_list %}
               <div class="artifact-version-list">
                 {% for artifact_item in stage_artifact_list %}
-                <a href="#artifact-preview" class="artifact-version-chip">
-                  Version {{ artifact_item.version }} · {{ artifact_item.status }}
+                <a
+                  href="/projects/{{ project.id }}?artifact_id={{ artifact_item.id }}#artifact-preview"
+                  class="artifact-version-chip {% if selected_artifact_id == artifact_item.id %}active{% endif %}"
+                  aria-label="Inspect {{ stage_label }} artifact version {{ artifact_item.version }} with status {{ artifact_item.status }}"
+                >
+                  Version {{ artifact_item.version }} - {{ artifact_item.status }}
+                  {% if artifact_item.owner_name %} - {{ artifact_item.owner_name }}{% endif %}
                 </a>
                 {% endfor %}
               </div>

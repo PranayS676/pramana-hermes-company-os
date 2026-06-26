@@ -308,6 +308,14 @@ from hermes_company_os.verification_evidence import (
 
 PACKAGE_ROOT = Path(__file__).parent
 DECISION_STATUS_OPTIONS = ("needed", "blocked", "approved", "rejected", "deferred")
+REVISION_REASON_LABELS = {
+    "evidence_gap": "Evidence gap",
+    "scope_issue": "Scope issue",
+    "risk_concern": "Risk concern",
+    "test_gap": "Test gap",
+    "owner_mismatch": "Owner mismatch",
+    "acceptance_concern": "Acceptance concern",
+}
 
 
 def reject_secret_values(values: dict[str, str]) -> None:
@@ -448,15 +456,57 @@ def stage_view(stage: dict) -> dict:
     }
 
 
+def markdown_review_sections(markdown_content: str) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
+    current_title = "Summary"
+    current_lines: list[str] = []
+
+    def flush_section() -> None:
+        body = "\n".join(current_lines).strip()
+        if body:
+            sections.append({"title": current_title, "body": body})
+
+    for line in markdown_content.splitlines():
+        if line.startswith("## "):
+            flush_section()
+            current_title = line.removeprefix("## ").strip()
+            current_lines = []
+            continue
+        if line.startswith("# ") and not sections and not current_lines:
+            current_title = line.removeprefix("# ").strip()
+            continue
+        current_lines.append(line)
+    flush_section()
+    if not sections and markdown_content.strip():
+        sections.append({"title": "Summary", "body": markdown_content.strip()})
+    return sections
+
+
 def artifact_view(artifact: dict | None) -> dict | None:
     if artifact is None:
         return None
-    title = artifact.get("json", {}).get("title") or artifact["stage_id"].replace("_", " ").title()
+    metadata = artifact.get("json", {})
+    title = metadata.get("title") or artifact["stage_id"].replace("_", " ").title()
+    checks = metadata.get("checks") if isinstance(metadata.get("checks"), list) else []
+    source_artifact_ids = metadata.get("source_artifact_ids")
+    supporting_agent_ids = metadata.get("supporting_agent_ids")
     return {
         **artifact,
         "title": title,
         "body": artifact["markdown_content"],
         "summary": artifact["markdown_content"],
+        "metadata": metadata,
+        "generation_mode": metadata.get("generation_mode", ""),
+        "next_decision": metadata.get("next_decision", ""),
+        "source_artifact_ids": (
+            source_artifact_ids if isinstance(source_artifact_ids, list) else []
+        ),
+        "supporting_agent_ids": (
+            supporting_agent_ids if isinstance(supporting_agent_ids, list) else []
+        ),
+        "quality_checks": checks,
+        "sections": markdown_review_sections(artifact["markdown_content"]),
+        "selected": False,
     }
 
 
@@ -3982,26 +4032,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.get("/projects/{project_id}")
-    def project_detail(request: Request, project_id: str):
+    def project_detail(
+        request: Request,
+        project_id: str,
+        artifact_id: str = "",
+    ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         workflow_items = repository.list_project_workflow_items(project_id)
         wizard_stages = repository.list_project_wizard_stages(project_id)
+        selected_artifact = None
+        selected_stage = None
+        if artifact_id:
+            selected_artifact = repository.get_project_wizard_artifact(
+                project_id,
+                artifact_id,
+            )
+            if selected_artifact is None:
+                raise HTTPException(status_code=404, detail="Artifact not found")
+            selected_stage = repository.get_project_wizard_stage(
+                project_id,
+                selected_artifact["stage_id"],
+            )
         current_stage = repository.next_actionable_stage(project_id)
         if current_stage is None and wizard_stages:
             current_stage = wizard_stages[-1]
+        review_stage = selected_stage or current_stage
         latest_artifact = (
             artifact_view(
-                repository.latest_project_stage_artifact(
+                selected_artifact
+                or repository.latest_project_stage_artifact(
                     project_id,
-                    current_stage["stage_id"],
+                    review_stage["stage_id"],
                 )
             )
-            if current_stage
+            if review_stage
             else None
         )
+        if latest_artifact:
+            latest_artifact["selected"] = bool(selected_artifact)
         task_stage_approved = project_task_stage_approved(repository, project_id)
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         return templates.TemplateResponse(
@@ -4014,13 +4085,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_ready": not kanban_blocker,
                 "kanban_blocker": kanban_blocker,
                 "wizard_stages": [stage_view(stage) for stage in wizard_stages],
-                "current_stage": stage_view(current_stage) if current_stage else None,
+                "current_stage": stage_view(review_stage) if review_stage else None,
+                "actionable_stage": stage_view(current_stage) if current_stage else None,
                 "latest_artifact": latest_artifact,
                 "stage_artifacts": stage_artifacts_view(
                     repository,
                     project_id,
                     wizard_stages,
                 ),
+                "selected_artifact_id": artifact_id,
+                "revision_reasons": REVISION_REASON_LABELS,
                 "task_stage_approved": task_stage_approved,
                 "founder_decisions": repository.list_founder_decisions(
                     project_id=project_id,
@@ -4144,6 +4218,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         project_id: str,
         stage_id: str,
+        revision_reason: str = Form("acceptance_concern"),
         revision_request: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
@@ -4151,15 +4226,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        reject_secret_values({"revision_request": revision_request})
+        if revision_reason not in REVISION_REASON_LABELS:
+            raise HTTPException(status_code=400, detail="Invalid revision reason")
+        reject_secret_values(
+            {
+                "revision_reason": revision_reason,
+                "revision_request": revision_request,
+            }
+        )
         try:
             latest_artifact = repository.latest_project_stage_artifact(
                 project_id,
                 resolved_stage_id,
             )
+            revision_reason_label = REVISION_REASON_LABELS[revision_reason]
             revision_note = (
-                revision_request.strip()
-                or "Founder requested a revision before approving this stage."
+                f"{revision_reason_label}: {revision_request.strip()}"
+                if revision_request.strip()
+                else (
+                    f"{revision_reason_label}: Founder requested a revision before "
+                    "approving this stage."
+                )
             )
             repository.request_stage_revision(
                 project_id=project_id,

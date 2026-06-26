@@ -157,7 +157,10 @@ def test_revision_and_regenerate_preserve_prior_artifact_history(tmp_path):
 
     revision = client.post(
         f"/projects/{project_id}/stages/{stage_id}/revision",
-        data={"revision_request": "Tighten the target-customer evidence."},
+        data={
+            "revision_reason": "evidence_gap",
+            "revision_request": "Tighten the target-customer evidence.",
+        },
         follow_redirects=False,
     )
     assert revision.status_code == 303, revision.text
@@ -173,15 +176,26 @@ def test_revision_and_regenerate_preserve_prior_artifact_history(tmp_path):
     assert [artifact["version"] for artifact in artifacts] == [2, 1]
     assert artifacts[0]["status"] == "draft"
     assert artifacts[1]["status"] == "needs_revision"
-    assert "Tighten the target-customer evidence." in (
-        app.state.repository.get_project_wizard_stage(project_id, stage_id)["revision_notes"]
-    )
+    revision_notes = app.state.repository.get_project_wizard_stage(
+        project_id,
+        stage_id,
+    )["revision_notes"]
+    assert "Evidence gap" in revision_notes
+    assert "Tighten the target-customer evidence." in revision_notes
     assert json.dumps(artifacts[0], sort_keys=True) != json.dumps(artifacts[1], sort_keys=True)
 
     detail = client.get(f"/projects/{project_id}")
     assert "Artifact history" in detail.text
     assert "Version 1" in detail.text
     assert "Version 2" in detail.text
+    assert f"?artifact_id={artifacts[1]['id']}#artifact-preview" in detail.text
+
+    selected = client.get(f"/projects/{project_id}?artifact_id={artifacts[1]['id']}")
+    assert selected.status_code == 200
+    assert "selected version" in selected.text
+    assert "History inspection mode" in selected.text
+    assert "Return to latest review" in selected.text
+    assert "Version 1 - needs_revision" in selected.text
 
 
 def test_happy_path_reaches_acceptance_checklist_one_stage_at_a_time(tmp_path):

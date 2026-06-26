@@ -1522,6 +1522,31 @@ class CompanyRepository:
             ).fetchall()
         return [decode_wizard_artifact(row) for row in rows]
 
+    def get_project_wizard_artifact(
+        self,
+        project_id: str,
+        artifact_id: str,
+    ) -> dict | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT artifacts.*,
+                       agents.name AS owner_name,
+                       agents.hermes_command AS owner_command,
+                       definitions.name AS stage_name,
+                       stages.revision_notes AS stage_revision_notes
+                FROM product_wizard_artifacts AS artifacts
+                JOIN agents ON agents.id = artifacts.owner_agent_id
+                JOIN product_wizard_project_stages AS stages
+                    ON stages.id = artifacts.project_stage_id
+                JOIN product_wizard_stage_definitions AS definitions
+                    ON definitions.id = artifacts.stage_id
+                WHERE artifacts.project_id = ? AND artifacts.id = ?
+                """,
+                (project_id, artifact_id),
+            ).fetchone()
+        return decode_wizard_artifact(row) if row else None
+
     def latest_project_stage_artifact(
         self,
         project_id: str,

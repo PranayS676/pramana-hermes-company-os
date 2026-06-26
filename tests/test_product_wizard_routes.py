@@ -173,3 +173,18 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "local_fake_public_demo" in raw_artifact
     assert "Opportunity Research" in raw_artifact
     assert secret_violations({"artifact": raw_artifact}) == []
+
+    detail = client.get(f"/projects/{project_id}")
+    assert detail.status_code == 200
+    assert "Artifact review contract" in detail.text
+    assert "Generation mode" in detail.text
+    assert "local_fake_public_demo" in detail.text
+    assert "Quality checks" in detail.text
+    assert "Target User" in detail.text
+    assert "Next decision" in detail.text
+    assert "Revision reason" in detail.text
+    assert "Evidence gap" in detail.text
+    assert "Codex Execution" in detail.text
+    assert "approved code plan, approved acceptance package" in detail.text
+    assert artifact["id"] in detail.text
+    assert secret_violations({"project_detail": detail.text}) == []

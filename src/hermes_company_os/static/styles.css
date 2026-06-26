@@ -1292,6 +1292,49 @@ summary {
   gap: 12px;
 }
 
+.stage-decision-summary,
+.review-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stage-decision-summary > div,
+.review-contract-grid > div {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.stage-decision-summary span,
+.review-contract-grid span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.stage-decision-summary strong,
+.review-contract-grid strong {
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.stage-decision-summary .summary-span {
+  grid-column: span 2;
+}
+
+.warning-summary {
+  background: #fff8e8 !important;
+  border-color: #ead6a7 !important;
+}
+
 .stage-action-grid form {
   min-width: 0;
 }
@@ -1299,9 +1342,39 @@ summary {
 .revision-form {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(180px, 0.3fr) minmax(0, 1fr) 220px;
   gap: 12px;
   align-items: end;
+}
+
+.quality-check-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.quality-check-list h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.quality-check-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 52px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.quality-check-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .intake-grid {
@@ -1344,6 +1417,23 @@ summary {
 .artifact-preview h3 {
   margin: 0 0 8px;
   font-size: 1rem;
+}
+
+.artifact-section-list {
+  display: grid;
+  gap: 10px;
+}
+
+.artifact-section {
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.artifact-section h4 {
+  margin: 0 0 8px;
+  font-size: 0.94rem;
 }
 
 .artifact-copy {
@@ -1408,6 +1498,12 @@ summary {
   text-decoration: none;
 }
 
+.artifact-version-chip.active {
+  background: #eef6f3;
+  border-color: #9ec7bd;
+  color: var(--accent-strong);
+}
+
 .gate-copy {
   margin: 12px 0;
   line-height: 1.45;
@@ -1461,9 +1557,16 @@ summary {
     .setup-input-grid,
     .wizard-field-grid,
     .intake-grid,
+    .stage-decision-summary,
+    .review-contract-grid,
+    .quality-check-row,
     .revision-form,
     .project-decision-strip {
     grid-template-columns: 1fr;
+  }
+
+  .stage-decision-summary .summary-span {
+    grid-column: span 1;
   }
 
   .stage-timeline {
