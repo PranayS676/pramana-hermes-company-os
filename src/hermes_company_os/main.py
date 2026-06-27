@@ -132,6 +132,11 @@ from hermes_company_os.kickoff_readiness import (
     kickoff_readiness_markdown,
     kickoff_readiness_payload,
 )
+from hermes_company_os.live_hermes_readiness import (
+    LIVE_HERMES_DECISION_SOURCE,
+    LIVE_HERMES_DECISION_TYPE,
+    evaluate_live_hermes_readiness,
+)
 from hermes_company_os.live_verification import live_verification_markdown
 from hermes_company_os.llm_artifacts import (
     llm_credentials_plan_markdown,
@@ -572,11 +577,15 @@ def generation_run_view(run: dict | None) -> dict | None:
     }
 
 
-def product_wizard_generation_service(request: Request, mode: GenerationMode):
+def product_wizard_generation_service(
+    request: Request,
+    mode: GenerationMode,
+    live_gate=None,
+):
     if mode == LOCAL_DEMO_GENERATION_MODE:
         return request.app.state.generation_service
     if mode == LIVE_HERMES_GENERATION_MODE:
-        return request.app.state.live_generation_service
+        return LiveHermesGenerationService(live_gate)
     raise ValueError(f"Unsupported Product Wizard generation mode: {mode}")
 
 
@@ -4244,6 +4253,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if review_stage
             else None
         )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                review_stage["stage_id"],
+            ).to_dict()
+            if review_stage
+            else None
+        )
         if latest_artifact:
             latest_artifact["selected"] = bool(selected_artifact)
             latest_artifact["generation_run"] = latest_generation_run
@@ -4263,6 +4281,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "actionable_stage": stage_view(current_stage) if current_stage else None,
                 "latest_artifact": latest_artifact,
                 "latest_generation_run": latest_generation_run,
+                "live_hermes_readiness": live_hermes_readiness,
                 "stage_artifacts": stage_artifacts_view(
                     repository,
                     project_id,
@@ -4311,11 +4330,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
         )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
         generation_service = product_wizard_generation_service(
             request,
             resolved_generation_mode,
+            live_hermes_readiness.gate if live_hermes_readiness else None,
         )
         try:
+            if live_hermes_readiness and not live_hermes_readiness.ready:
+                raise ValueError(live_hermes_readiness.blocker)
             artifact = generation_service.generate_stage(generation_request)
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -4382,11 +4413,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
         )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
         generation_service = product_wizard_generation_service(
             request,
             resolved_generation_mode,
+            live_hermes_readiness.gate if live_hermes_readiness else None,
         )
         try:
+            if live_hermes_readiness and not live_hermes_readiness.ready:
+                raise ValueError(live_hermes_readiness.blocker)
             artifact = generation_service.generate_stage(generation_request)
             if latest_artifact and latest_artifact["status"] == "approved":
                 repository.request_stage_revision(
@@ -4425,6 +4468,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repository.fail_generation_run(generation_run_id, str(exc))
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/live-hermes-approval")
+    def request_live_hermes_approval(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        stage = repository.get_project_wizard_stage(project_id, resolved_stage_id)
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Project stage not found")
+        readiness = evaluate_live_hermes_readiness(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        if readiness.approval_request_allowed:
+            context = (
+                f"Approve live Hermes generation for {stage['name']} in "
+                f"{project['name']}. Live execution remains blocked until profile "
+                "installation, profile smoke, profile acceptance, and prior artifact "
+                "readiness checks pass."
+            )
+            evidence = (
+                "Current live Hermes readiness: "
+                + "; ".join(
+                    f"{check['label']}={check['status']}"
+                    for check in readiness.checks
+                )
+                + "."
+            )
+            repository.create_founder_decision(
+                title=f"Approve live Hermes generation for {stage['name']}",
+                urgency="urgent",
+                decision_type=LIVE_HERMES_DECISION_TYPE,
+                source=LIVE_HERMES_DECISION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if live Hermes execution blocks launch.",
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#live-hermes-readiness",
+            status_code=303,
+        )
 
     @app.post("/projects/{project_id}/stages/{stage_id}/approve")
     def approve_project_stage(request: Request, project_id: str, stage_id: str):

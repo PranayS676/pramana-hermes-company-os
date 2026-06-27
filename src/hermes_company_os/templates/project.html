@@ -59,6 +59,8 @@
 {% set artifact_sections = artifact.sections|default([], true) %}
 {% set generation_run = latest_generation_run|default(artifact.generation_run|default({}, true), true) %}
 {% set generation_run_sources = generation_run.source_artifact_ids|default([], true) %}
+{% set live_readiness = live_hermes_readiness|default({}, true) %}
+{% set live_readiness_checks = live_readiness.checks|default([], true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
@@ -297,6 +299,45 @@
                 </button>
               </form>
               {% endif %}
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel live-readiness-panel" id="live-hermes-readiness">
+            <div class="panel-header">
+              <div>
+                <h2>Live Hermes readiness</h2>
+                <p class="panel-kicker">Founder approval and profile gates before live generation.</p>
+              </div>
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="quality-check-list" aria-label="Live Hermes readiness checks">
+              {% for check in live_readiness_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.detail }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No live Hermes readiness checks are available.</p>
+              {% endfor %}
+            </div>
+            <div class="live-readiness-actions">
+              {% if live_readiness.ready %}
+              <span class="status-pill ready">ready</span>
+              <strong>Live Hermes gates are satisfied; execution adapter is still disabled.</strong>
+              {% elif live_readiness.approval_request_allowed %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-approval">
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="send"></i> Request founder approval
+                </button>
+              </form>
+              {% elif live_readiness.founder_approval_decision_id %}
+              <a class="secondary-button link-button-muted full-width-button" href="/decisions/{{ live_readiness.founder_approval_decision_id }}">
+                <i data-lucide="inbox"></i> Open approval decision
+              </a>
               {% endif %}
             </div>
           </section>

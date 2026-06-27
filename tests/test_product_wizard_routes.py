@@ -6,8 +6,11 @@ from fastapi.testclient import TestClient
 
 from hermes_company_os.generation_service import (
     LIVE_HERMES_GENERATION_MODE,
-    LIVE_HERMES_LOCKED_MESSAGE,
     StageGenerationRequest,
+)
+from hermes_company_os.live_hermes_readiness import (
+    LIVE_HERMES_DECISION_SOURCE,
+    LIVE_HERMES_DECISION_TYPE,
 )
 from hermes_company_os.main import create_app
 from hermes_company_os.product_wizard import generate_wizard_artifact
@@ -102,6 +105,57 @@ def create_structured_project(client: TestClient, **overrides: str) -> tuple[str
     location = response.headers["location"]
     assert location.startswith("/projects/")
     return location.rsplit("/", 1)[-1], location
+
+
+def mark_agent_runtime_ready(app, agent_id: str) -> None:
+    repository = app.state.repository
+    repository.update_profile_installation_check(
+        check_id=f"{agent_id}-profile-installation",
+        status="verified",
+        evidence="Verified in route test.",
+    )
+    preference = repository.get_model_preference(agent_id)
+    repository.update_model_preference(
+        agent_id=agent_id,
+        provider=preference["provider"],
+        model=preference["model"],
+        fallback_provider=preference["fallback_provider"],
+        fallback_model=preference["fallback_model"],
+        auth_method=preference["auth_method"],
+        status="verified",
+        notes="Verified in route test.",
+    )
+    for check in repository.list_profile_acceptance_checks():
+        if check["agent_id"] == agent_id:
+            repository.update_profile_acceptance_check(
+                check_id=check["id"],
+                status="verified",
+                evidence="Verified in route test.",
+            )
+
+
+def approve_live_hermes_stage(app, project_id: str, stage_id: str) -> str:
+    decision_id = app.state.repository.create_founder_decision(
+        title="Approve live Hermes generation",
+        urgency="urgent",
+        decision_type=LIVE_HERMES_DECISION_TYPE,
+        source=LIVE_HERMES_DECISION_SOURCE,
+        owner_agent_id="chief-of-staff",
+        project_id=project_id,
+        stage_id=stage_id,
+        slack_channel="#founder-command",
+        telegram_policy="Telegram only if live generation blocks launch.",
+        context="Approve live Hermes generation for this project stage.",
+        evidence="Runtime gates are verified.",
+        requires_founder_approval=True,
+    )
+    app.state.repository.update_founder_decision(
+        decision_id,
+        status="approved",
+        decision="Approved for one live Hermes generation attempt.",
+        founder_confirmed=True,
+    )
+    return decision_id
 
 
 def test_new_project_wizard_form_renders_structured_intake(tmp_path):
@@ -223,6 +277,10 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     detail = client.get(f"/projects/{project_id}")
     assert detail.status_code == 200
     assert "Artifact review contract" in detail.text
+    assert "Live Hermes readiness" in detail.text
+    assert "Profile installation" in detail.text
+    assert "Founder live-mode approval" in detail.text
+    assert "Request founder approval" in detail.text
     assert "Generation mode" in detail.text
     assert "Generation run" in detail.text
     assert "Live Hermes locked" in detail.text
@@ -287,7 +345,9 @@ def test_live_hermes_mode_is_locked_and_records_failed_run(tmp_path):
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == LIVE_HERMES_LOCKED_MESSAGE
+    assert "Live Hermes readiness blocked: Profile installation" in (
+        response.json()["detail"]
+    )
     assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
     generation_runs = app.state.repository.list_generation_runs(
         project_id=project_id,
@@ -298,7 +358,7 @@ def test_live_hermes_mode_is_locked_and_records_failed_run(tmp_path):
     assert generation_run["status"] == "failed"
     assert generation_run["generation_mode"] == LIVE_HERMES_GENERATION_MODE
     assert generation_run["artifact_id"] is None
-    assert generation_run["error"] == LIVE_HERMES_LOCKED_MESSAGE
+    assert "Live Hermes readiness blocked: Profile installation" in generation_run["error"]
 
     detail = client.get(f"/projects/{project_id}")
 
@@ -308,5 +368,87 @@ def test_live_hermes_mode_is_locked_and_records_failed_run(tmp_path):
     assert "failed" in detail.text
     assert LIVE_HERMES_GENERATION_MODE in detail.text
     assert generation_run["id"] in detail.text
-    assert LIVE_HERMES_LOCKED_MESSAGE in detail.text
+    assert "Verify profile installation for: research-agent." in detail.text
     assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_request_live_hermes_approval_creates_founder_decision_once(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id, _ = create_structured_project(client)
+
+    first = client.post(
+        f"/projects/{project_id}/stages/current/live-hermes-approval",
+        follow_redirects=False,
+    )
+    second = client.post(
+        f"/projects/{project_id}/stages/current/live-hermes-approval",
+        follow_redirects=False,
+    )
+    decisions = app.state.repository.list_founder_decisions(
+        project_id=project_id,
+        stage_id="research",
+        decision_type=LIVE_HERMES_DECISION_TYPE,
+        include_resolved=False,
+    )
+    live_decisions = [
+        decision
+        for decision in decisions
+        if decision["source"] == LIVE_HERMES_DECISION_SOURCE
+    ]
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert len(live_decisions) == 1
+    assert live_decisions[0]["requires_founder_approval"] == 1
+    assert live_decisions[0]["status"] == "needed"
+    assert project_page.status_code == 200
+    assert "Open approval decision" in project_page.text
+    assert live_decisions[0]["id"] in project_page.text
+    assert secret_violations({"project_detail": project_page.text}) == []
+
+
+def test_live_hermes_runtime_ready_still_requires_founder_approval(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert "Founder live-mode approval" in response.json()["detail"]
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+
+
+def test_live_hermes_all_gates_ready_reaches_disabled_adapter_only(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+    decision_id = approve_live_hermes_stage(app, project_id, "research")
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+    generation_run = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )[0]
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Live Hermes generation adapter is not implemented in this public demo."
+    )
+    assert generation_run["status"] == "failed"
+    assert generation_run["generation_mode"] == LIVE_HERMES_GENERATION_MODE
+    assert generation_run["artifact_id"] is None
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    assert "Live Hermes gates are satisfied" in project_page.text
+    assert decision_id in project_page.text
+    assert secret_violations({"project_detail": project_page.text}) == []
