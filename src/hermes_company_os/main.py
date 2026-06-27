@@ -136,7 +136,10 @@ from hermes_company_os.kickoff_readiness import (
 from hermes_company_os.live_hermes_readiness import (
     LIVE_HERMES_DECISION_SOURCE,
     LIVE_HERMES_DECISION_TYPE,
+    LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+    LIVE_HERMES_RUN_CONFIRMATION_TYPE,
     evaluate_live_hermes_readiness,
+    evaluate_live_hermes_run_confirmation,
 )
 from hermes_company_os.live_verification import live_verification_markdown
 from hermes_company_os.llm_artifacts import (
@@ -585,6 +588,7 @@ def live_hermes_operator_console(
     project: dict,
     stage_id: str,
     live_readiness: dict | None,
+    run_confirmation: dict | None,
     latest_artifact: dict | None,
 ) -> dict:
     preview = live_hermes_operator_preview(
@@ -603,6 +607,14 @@ def live_hermes_operator_console(
 
     live_ready = bool(live_readiness and live_readiness.get("ready"))
     founder_approved = bool(live_readiness and live_readiness.get("founder_approved"))
+    run_confirmed = bool(run_confirmation and run_confirmation.get("fresh"))
+    run_request_open = bool(run_confirmation and run_confirmation.get("request_open"))
+    run_request_allowed = bool(
+        settings.hermes_live_execution_enabled
+        and live_ready
+        and run_confirmation
+        and run_confirmation.get("request_allowed")
+    )
     last_adapter = str(generation_metadata.get("adapter", ""))
     last_status = str(generation_metadata.get("status", ""))
     last_external_execution = str(generation_metadata.get("external_execution", ""))
@@ -624,7 +636,13 @@ def live_hermes_operator_console(
         "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
         "timeout_seconds": settings.hermes_timeout_seconds,
         "command_preview": preview,
-        "live_run_possible": settings.hermes_live_execution_enabled and live_ready,
+        "live_run_possible": (
+            settings.hermes_live_execution_enabled and live_ready and run_confirmed
+        ),
+        "run_confirmation": run_confirmation or {},
+        "run_confirmation_ready": run_confirmed,
+        "run_confirmation_request_open": run_request_open,
+        "run_confirmation_request_allowed": run_request_allowed,
         "warning": (
             "Real Hermes command execution is enabled for this process."
             if settings.hermes_live_execution_enabled
@@ -667,6 +685,24 @@ def live_hermes_operator_console(
                 ),
             },
             {
+                "id": "run_confirmation",
+                "label": "One-run confirmation",
+                "status": (
+                    "ready"
+                    if run_confirmed
+                    else ("manual" if not settings.hermes_live_execution_enabled else "needed")
+                ),
+                "detail": (
+                    "Founder-confirmed one-run approval is fresh for this stage."
+                    if run_confirmed
+                    else (
+                        "Dry-run mode does not require one-run confirmation."
+                        if not settings.hermes_live_execution_enabled
+                        else "Request and approve a one-run token before real execution."
+                    )
+                ),
+            },
+            {
                 "id": "dry_run_evidence",
                 "label": "Dry-run evidence",
                 "status": "ready" if last_adapter else "needed",
@@ -700,6 +736,16 @@ def live_hermes_operator_console(
             "stderr_capture": stderr_capture,
         },
     }
+
+
+def live_hermes_gate_for(
+    live_readiness,
+    run_confirmation,
+):
+    gate = live_readiness.gate
+    if run_confirmation:
+        gate = gate.with_run_confirmation(run_confirmation.fresh)
+    return gate
 
 
 def product_wizard_generation_service(
@@ -4395,6 +4441,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if review_stage
             else None
         )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                review_stage["stage_id"],
+            ).to_dict()
+            if review_stage
+            else None
+        )
         live_hermes_operator = (
             live_hermes_operator_console(
                 settings=request.app.state.settings,
@@ -4402,6 +4457,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 project=project,
                 stage_id=review_stage["stage_id"],
                 live_readiness=live_hermes_readiness,
+                run_confirmation=live_hermes_run_confirmation,
                 latest_artifact=latest_artifact,
             )
             if review_stage
@@ -4427,6 +4483,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "latest_artifact": latest_artifact,
                 "latest_generation_run": latest_generation_run,
                 "live_hermes_readiness": live_hermes_readiness,
+                "live_hermes_run_confirmation": live_hermes_run_confirmation,
                 "live_hermes_operator": live_hermes_operator,
                 "stage_artifacts": stage_artifacts_view(
                     repository,
@@ -4485,14 +4542,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
             else None
         )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
         generation_service = product_wizard_generation_service(
             request,
             resolved_generation_mode,
-            live_hermes_readiness.gate if live_hermes_readiness else None,
+            (
+                live_hermes_gate_for(
+                    live_hermes_readiness,
+                    live_hermes_run_confirmation,
+                )
+                if live_hermes_readiness
+                else None
+            ),
         )
         try:
             if live_hermes_readiness and not live_hermes_readiness.ready:
                 raise ValueError(live_hermes_readiness.blocker)
+            if (
+                request.app.state.settings.hermes_live_execution_enabled
+                and live_hermes_run_confirmation
+                and not live_hermes_run_confirmation.fresh
+            ):
+                raise ValueError(live_hermes_run_confirmation.blocker)
             artifact = generation_service.generate_stage(generation_request)
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -4568,14 +4647,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
             else None
         )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
         generation_service = product_wizard_generation_service(
             request,
             resolved_generation_mode,
-            live_hermes_readiness.gate if live_hermes_readiness else None,
+            (
+                live_hermes_gate_for(
+                    live_hermes_readiness,
+                    live_hermes_run_confirmation,
+                )
+                if live_hermes_readiness
+                else None
+            ),
         )
         try:
             if live_hermes_readiness and not live_hermes_readiness.ready:
                 raise ValueError(live_hermes_readiness.blocker)
+            if (
+                request.app.state.settings.hermes_live_execution_enabled
+                and live_hermes_run_confirmation
+                and not live_hermes_run_confirmation.fresh
+            ):
+                raise ValueError(live_hermes_run_confirmation.blocker)
             artifact = generation_service.generate_stage(generation_request)
             if latest_artifact and latest_artifact["status"] == "approved":
                 repository.request_stage_revision(
@@ -4665,6 +4766,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return RedirectResponse(
             f"/projects/{project_id}#live-hermes-readiness",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/live-hermes-run-confirmation")
+    def request_live_hermes_run_confirmation(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        stage = repository.get_project_wizard_stage(project_id, resolved_stage_id)
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Project stage not found")
+        readiness = evaluate_live_hermes_readiness(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        run_confirmation = evaluate_live_hermes_run_confirmation(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        settings: Settings = request.app.state.settings
+        if (
+            settings.hermes_live_execution_enabled
+            and readiness.ready
+            and run_confirmation.request_allowed
+        ):
+            preview = live_hermes_operator_preview(
+                resolved_stage_id,
+                product_wizard_intake_from_project(project),
+                approved_source_artifacts(repository, project_id),
+                timeout_seconds=settings.hermes_timeout_seconds,
+                live_execution_enabled=True,
+            )
+            context = (
+                f"Confirm exactly one live Hermes command runner attempt for "
+                f"{stage['name']} in {project['name']}. This confirmation is consumed "
+                "by the next live_hermes generation run for this stage."
+            )
+            evidence = (
+                "Command preview: "
+                + preview["command_preview_text"]
+                + f". Prompt SHA256: {preview['prompt_handoff']['sha256']}."
+            )
+            repository.create_founder_decision(
+                title=f"Confirm one live Hermes run for {stage['name']}",
+                urgency="urgent",
+                decision_type=LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+                source=LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if live Hermes execution blocks launch.",
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#live-hermes-operator",
             status_code=303,
         )
 

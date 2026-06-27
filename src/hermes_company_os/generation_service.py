@@ -254,6 +254,7 @@ class LiveHermesGenerationGate:
     enabled: bool = False
     founder_approved: bool = False
     runtime_ready: bool = False
+    run_confirmed: bool = False
 
     def blocker(self) -> str:
         if not self.enabled:
@@ -263,6 +264,14 @@ class LiveHermesGenerationGate:
         if not self.runtime_ready:
             return "Live Hermes generation is locked until Hermes readiness checks pass."
         return ""
+
+    def with_run_confirmation(self, run_confirmed: bool) -> LiveHermesGenerationGate:
+        return LiveHermesGenerationGate(
+            enabled=self.enabled,
+            founder_approved=self.founder_approved,
+            runtime_ready=self.runtime_ready,
+            run_confirmed=run_confirmed,
+        )
 
 
 class LiveHermesGenerationService:
@@ -290,6 +299,11 @@ class LiveHermesGenerationService:
         blocker = self.gate.blocker()
         if blocker:
             raise ValueError(blocker)
+        if self.live_execution_enabled and not self.gate.run_confirmed:
+            raise ValueError(
+                "Live Hermes generation is locked until a founder-confirmed "
+                "one-run approval is recorded."
+            )
         prompt_contract = build_wizard_prompt_contract(
             request.stage_id,
             request.intake,

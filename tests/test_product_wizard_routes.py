@@ -13,6 +13,8 @@ from hermes_company_os.generation_service import (
 from hermes_company_os.live_hermes_readiness import (
     LIVE_HERMES_DECISION_SOURCE,
     LIVE_HERMES_DECISION_TYPE,
+    LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+    LIVE_HERMES_RUN_CONFIRMATION_TYPE,
 )
 from hermes_company_os.main import create_app
 from hermes_company_os.product_wizard import generate_wizard_artifact
@@ -327,6 +329,8 @@ def test_live_operator_console_shows_enabled_config_without_running_command(tmp_
     assert "Live execution operator" in detail.text
     assert "execution enabled" in detail.text
     assert "Real Hermes command execution is enabled for this process." in detail.text
+    assert "One-run confirmation" in detail.text
+    assert "Request and approve a one-run token before real execution." in detail.text
     assert (
         "hermes profiles run research-agent --stage research --output "
         "product-wizard-artifact-json"
@@ -338,6 +342,83 @@ def test_live_operator_console_shows_enabled_config_without_running_command(tmp_
     assert "42 seconds" in detail.text
     assert "Complete live Hermes readiness before a real runner attempt." in detail.text
     assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_live_execution_enabled_blocks_without_one_run_confirmation(tmp_path):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            hermes_live_execution_enabled=True,
+        )
+    )
+    client = TestClient(app)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+    approve_live_hermes_stage(app, project_id, "research")
+
+    project_page = client.get(f"/projects/{project_id}")
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+    generation_run = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )[0]
+
+    assert project_page.status_code == 200
+    assert "Request one-run confirmation" in project_page.text
+    assert response.status_code == 409
+    assert "one-run confirmation blocked" in response.json()["detail"]
+    assert generation_run["status"] == "failed"
+    assert generation_run["artifact_id"] is None
+    assert "one-run confirmation blocked" in generation_run["error"]
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    assert secret_violations({"project_detail": project_page.text}) == []
+
+
+def test_request_one_run_confirmation_creates_founder_decision_once(tmp_path):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            hermes_live_execution_enabled=True,
+        )
+    )
+    client = TestClient(app)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+    approve_live_hermes_stage(app, project_id, "research")
+
+    first = client.post(
+        f"/projects/{project_id}/stages/current/live-hermes-run-confirmation",
+        follow_redirects=False,
+    )
+    second = client.post(
+        f"/projects/{project_id}/stages/current/live-hermes-run-confirmation",
+        follow_redirects=False,
+    )
+    decisions = app.state.repository.list_founder_decisions(
+        project_id=project_id,
+        stage_id="research",
+        decision_type=LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+        include_resolved=False,
+    )
+    confirmations = [
+        decision
+        for decision in decisions
+        if decision["source"] == LIVE_HERMES_RUN_CONFIRMATION_SOURCE
+    ]
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert len(confirmations) == 1
+    assert confirmations[0]["requires_founder_approval"] == 1
+    assert confirmations[0]["status"] == "needed"
+    assert "Open run confirmation" in project_page.text
+    assert confirmations[0]["id"] in project_page.text
+    assert secret_violations({"project_detail": project_page.text}) == []
 
 
 def test_generation_failure_records_failed_run_without_artifact(tmp_path):

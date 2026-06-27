@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
-from hermes_company_os.generation_service import LiveHermesGenerationGate
+from hermes_company_os.generation_service import (
+    LIVE_HERMES_GENERATION_MODE,
+    LiveHermesGenerationGate,
+)
 from hermes_company_os.product_wizard import STAGE_CONTRACTS
 
 LIVE_HERMES_DECISION_SOURCE = "live_hermes_generation"
 LIVE_HERMES_DECISION_TYPE = "external_action_approval"
+LIVE_HERMES_RUN_CONFIRMATION_SOURCE = "live_hermes_run_confirmation"
+LIVE_HERMES_RUN_CONFIRMATION_TYPE = "external_action_approval"
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,69 @@ class LiveHermesReadiness:
         }
 
 
+@dataclass(frozen=True)
+class LiveHermesRunConfirmation:
+    project_id: str
+    stage_id: str
+    decision_id: str = ""
+    status: str = ""
+    decision_timestamp: str = ""
+    latest_live_run_id: str = ""
+    latest_live_run_timestamp: str = ""
+
+    @property
+    def approved(self) -> bool:
+        return self.status == "approved"
+
+    @property
+    def fresh(self) -> bool:
+        if not self.approved:
+            return False
+        if not self.latest_live_run_timestamp:
+            return True
+        return self.decision_timestamp > self.latest_live_run_timestamp
+
+    @property
+    def request_open(self) -> bool:
+        return bool(
+            self.decision_id and self.status not in RESOLVED_DECISION_STATUSES
+        )
+
+    @property
+    def request_allowed(self) -> bool:
+        return not self.fresh and not self.request_open
+
+    @property
+    def blocker(self) -> str:
+        if self.fresh:
+            return ""
+        if self.request_open:
+            return (
+                "Live Hermes one-run confirmation blocked: founder approval is "
+                f"pending in {self.decision_id}."
+            )
+        return (
+            "Live Hermes one-run confirmation blocked: request and approve a fresh "
+            "founder-confirmed run token before real execution."
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "project_id": self.project_id,
+            "stage_id": self.stage_id,
+            "decision_id": self.decision_id,
+            "status": self.status,
+            "decision_timestamp": self.decision_timestamp,
+            "latest_live_run_id": self.latest_live_run_id,
+            "latest_live_run_timestamp": self.latest_live_run_timestamp,
+            "approved": self.approved,
+            "fresh": self.fresh,
+            "request_open": self.request_open,
+            "request_allowed": self.request_allowed,
+            "blocker": self.blocker,
+        }
+
+
 def evaluate_live_hermes_readiness(repository, project_id: str, stage_id: str):
     stage = repository.get_project_wizard_stage(project_id, stage_id)
     if stage is None:
@@ -102,6 +170,67 @@ def evaluate_live_hermes_readiness(repository, project_id: str, stage_id: str):
         checks=checks,
         founder_approval_decision_id=approval["id"],
         founder_approval_status=approval["status"],
+    )
+
+
+def evaluate_live_hermes_run_confirmation(
+    repository,
+    project_id: str,
+    stage_id: str,
+) -> LiveHermesRunConfirmation:
+    latest_run = _latest_live_generation_run(repository, project_id, stage_id)
+    latest_run_timestamp = _generation_run_timestamp(latest_run)
+    decisions = _live_hermes_run_confirmation_decisions(
+        repository,
+        project_id,
+        stage_id,
+    )
+    approved = _freshest_approved_confirmation(decisions)
+    if approved:
+        approved_timestamp = _decision_timestamp(approved)
+        if not latest_run_timestamp or approved_timestamp > latest_run_timestamp:
+            return LiveHermesRunConfirmation(
+                project_id=project_id,
+                stage_id=stage_id,
+                decision_id=approved["id"],
+                status=approved["status"],
+                decision_timestamp=approved_timestamp,
+                latest_live_run_id=latest_run["id"] if latest_run else "",
+                latest_live_run_timestamp=latest_run_timestamp,
+            )
+    open_decision = next(
+        (
+            decision
+            for decision in decisions
+            if decision["status"] not in RESOLVED_DECISION_STATUSES
+        ),
+        None,
+    )
+    if open_decision:
+        return LiveHermesRunConfirmation(
+            project_id=project_id,
+            stage_id=stage_id,
+            decision_id=open_decision["id"],
+            status=open_decision["status"],
+            decision_timestamp=_decision_timestamp(open_decision),
+            latest_live_run_id=latest_run["id"] if latest_run else "",
+            latest_live_run_timestamp=latest_run_timestamp,
+        )
+    if approved:
+        return LiveHermesRunConfirmation(
+            project_id=project_id,
+            stage_id=stage_id,
+            decision_id=approved["id"],
+            status=approved["status"],
+            decision_timestamp=_decision_timestamp(approved),
+            latest_live_run_id=latest_run["id"] if latest_run else "",
+            latest_live_run_timestamp=latest_run_timestamp,
+        )
+    return LiveHermesRunConfirmation(
+        project_id=project_id,
+        stage_id=stage_id,
+        latest_live_run_id=latest_run["id"] if latest_run else "",
+        latest_live_run_timestamp=latest_run_timestamp,
     )
 
 
@@ -252,6 +381,50 @@ def _live_hermes_approval(repository, project_id: str, stage_id: str) -> dict[st
     if open_decision:
         return {"id": open_decision["id"], "status": open_decision["status"]}
     return {"id": "", "status": ""}
+
+
+def _live_hermes_run_confirmation_decisions(
+    repository,
+    project_id: str,
+    stage_id: str,
+) -> list[dict]:
+    return [
+        decision
+        for decision in repository.list_founder_decisions(
+            project_id=project_id,
+            stage_id=stage_id,
+            decision_type=LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+        )
+        if decision["source"] == LIVE_HERMES_RUN_CONFIRMATION_SOURCE
+    ]
+
+
+def _freshest_approved_confirmation(decisions: list[dict]) -> dict | None:
+    approved = [decision for decision in decisions if decision["status"] == "approved"]
+    if not approved:
+        return None
+    return max(approved, key=_decision_timestamp)
+
+
+def _latest_live_generation_run(repository, project_id: str, stage_id: str) -> dict | None:
+    for run in repository.list_generation_runs(
+        project_id=project_id,
+        stage_id=stage_id,
+        limit=100,
+    ):
+        if run["generation_mode"] == LIVE_HERMES_GENERATION_MODE:
+            return run
+    return None
+
+
+def _decision_timestamp(decision: dict) -> str:
+    return decision.get("resolved_at") or decision.get("updated_at") or decision["created_at"]
+
+
+def _generation_run_timestamp(run: dict | None) -> str:
+    if not run:
+        return ""
+    return run.get("completed_at") or run["created_at"]
 
 
 def _check(check_id: str, label: str, status: str, detail: str) -> dict[str, str]:

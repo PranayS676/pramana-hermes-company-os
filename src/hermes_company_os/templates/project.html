@@ -69,6 +69,7 @@
 {% set live_operator_last_run = live_operator.last_run|default({}, true) %}
 {% set live_operator_stdout_capture = live_operator_last_run.stdout_capture|default({}, true) %}
 {% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
+{% set live_run_confirmation = live_operator.run_confirmation|default({}, true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
@@ -335,7 +336,7 @@
             <div class="live-readiness-actions">
               {% if live_readiness.ready %}
               <span class="status-pill ready">ready</span>
-              <strong>Live Hermes gates are satisfied; execution adapter is still disabled.</strong>
+              <strong>Live Hermes gates are satisfied; operator console controls execution.</strong>
               {% elif live_readiness.approval_request_allowed %}
               <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-approval">
                 <button class="warning-button full-width-button" type="submit">
@@ -395,6 +396,28 @@
               {% else %}
               <p class="empty-state">No live execution operator checklist is available.</p>
               {% endfor %}
+            </div>
+            <div class="live-readiness-actions">
+              {% if live_operator.run_confirmation_ready %}
+              <span class="status-pill ready">one-run confirmation ready</span>
+              <strong>Founder-confirmed run token is fresh for this stage.</strong>
+              {% elif live_operator.run_confirmation_request_allowed %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-run-confirmation">
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="shield-alert"></i> Request one-run confirmation
+                </button>
+              </form>
+              {% elif live_run_confirmation.decision_id %}
+              <a class="secondary-button link-button-muted full-width-button" href="/decisions/{{ live_run_confirmation.decision_id }}">
+                <i data-lucide="inbox"></i> Open run confirmation
+              </a>
+              {% elif live_operator.execution_enabled %}
+              <span class="status-pill needed">one-run confirmation needed</span>
+              <strong>Complete readiness before requesting a one-run confirmation.</strong>
+              {% else %}
+              <span class="status-pill manual">dry-run only</span>
+              <strong>One-run confirmation is required only when real execution is enabled.</strong>
+              {% endif %}
             </div>
             {% if live_operator_last_run.available %}
             <div class="operator-last-run">

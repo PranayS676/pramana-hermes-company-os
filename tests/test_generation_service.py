@@ -320,6 +320,7 @@ def test_real_hermes_command_adapter_uses_fake_runner_only_when_enabled():
         enabled=True,
         founder_approved=True,
         runtime_ready=True,
+        run_confirmed=True,
     )
     fake_runner = FakeHermesCommandRunner(
         LiveHermesAdapterRawResult(
@@ -376,6 +377,7 @@ def test_real_hermes_command_adapter_redacts_secret_shaped_errors():
         enabled=True,
         founder_approved=True,
         runtime_ready=True,
+        run_confirmed=True,
     )
     fake_runner = FakeHermesCommandRunner(
         LiveHermesAdapterRawResult(
@@ -399,3 +401,31 @@ def test_real_hermes_command_adapter_redacts_secret_shaped_errors():
     assert "redacted" in str(error.value)
     assert FAKE_OPENAI_SECRET not in str(error.value)
     assert secret_violations({"error": str(error.value)}) == []
+
+
+def test_real_hermes_command_adapter_requires_one_run_confirmation_when_enabled():
+    request = StageGenerationRequest(
+        stage_id="research",
+        intake=_intake(),
+        mode=LIVE_HERMES_GENERATION_MODE,
+    )
+    ready_without_run_confirmation = LiveHermesGenerationGate(
+        enabled=True,
+        founder_approved=True,
+        runtime_ready=True,
+    )
+    fake_runner = FakeHermesCommandRunner(
+        LiveHermesAdapterRawResult(stdout="This fake runner must not be called.")
+    )
+
+    with pytest.raises(ValueError, match="one-run approval"):
+        LiveHermesGenerationService(
+            ready_without_run_confirmation,
+            adapter=LiveHermesCommandAdapter(
+                live_execution_enabled=True,
+                runner=fake_runner,
+            ),
+            live_execution_enabled=True,
+        ).generate_stage(request)
+
+    assert fake_runner.calls == []
