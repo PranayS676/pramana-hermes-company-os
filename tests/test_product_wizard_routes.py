@@ -4,7 +4,9 @@ import json
 
 from fastapi.testclient import TestClient
 
+from hermes_company_os.generation_service import StageGenerationRequest
 from hermes_company_os.main import create_app
+from hermes_company_os.product_wizard import generate_wizard_artifact
 from hermes_company_os.secret_guard import secret_violations
 from hermes_company_os.settings import Settings
 
@@ -57,6 +59,19 @@ STRUCTURED_FIELD_LABELS = [
 ]
 
 WIZARD_STAGE_IDS = ["research", "prd", "architecture", "tasks", "code_plan", "acceptance"]
+
+
+class CapturingGenerationService:
+    def __init__(self):
+        self.requests: list[StageGenerationRequest] = []
+
+    def generate_stage(self, request: StageGenerationRequest):
+        self.requests.append(request)
+        return generate_wizard_artifact(
+            request.stage_id,
+            request.intake,
+            request.approved_sources,
+        )
 
 
 def app_and_client(tmp_path):
@@ -157,6 +172,8 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     ):
         monkeypatch.delenv(env_name, raising=False)
     app, client = app_and_client(tmp_path)
+    generation_service = CapturingGenerationService()
+    app.state.generation_service = generation_service
     project_id, _ = create_structured_project(client)
 
     response = client.post(
@@ -165,6 +182,12 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     )
 
     assert response.status_code == 303, response.text
+    assert len(generation_service.requests) == 1
+    generation_request = generation_service.requests[0]
+    assert generation_request.stage_id == "research"
+    assert generation_request.mode == "local_fake_public_demo"
+    assert list(generation_request.approved_sources) == []
+    assert generation_request.intake.project_name == STRUCTURED_INTAKE["name"]
     artifact = app.state.repository.latest_project_stage_artifact(project_id, "research")
     assert artifact is not None
     assert artifact["status"] == "draft"

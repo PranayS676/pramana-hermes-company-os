@@ -94,6 +94,10 @@ from hermes_company_os.gateway_operations import (
     gateway_operations_markdown,
     gateway_operations_powershell,
 )
+from hermes_company_os.generation_service import (
+    LocalDemoGenerationService,
+    StageGenerationRequest,
+)
 from hermes_company_os.hermes_client import HermesClient
 from hermes_company_os.hermes_runtime import (
     hermes_install_powershell,
@@ -163,10 +167,7 @@ from hermes_company_os.messaging_verification_import import (
     messaging_verification_template_markdown,
     parse_messaging_verification_reply,
 )
-from hermes_company_os.product_wizard import (
-    ProductWizardIntake,
-    generate_wizard_artifact,
-)
+from hermes_company_os.product_wizard import ProductWizardIntake
 from hermes_company_os.profile_acceptance import (
     profile_acceptance_json,
     profile_acceptance_markdown,
@@ -760,6 +761,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.repository = CompanyRepository(database_path)
     app.state.hermes_client = HermesClient(resolved_settings)
     app.state.kanban_client = KanbanClient()
+    app.state.generation_service = LocalDemoGenerationService()
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -4249,10 +4251,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
         try:
-            artifact = generate_wizard_artifact(
-                resolved_stage_id,
-                product_wizard_intake_from_project(project),
-                approved_source_artifacts(repository, project_id),
+            artifact = request.app.state.generation_service.generate_stage(
+                StageGenerationRequest(
+                    stage_id=resolved_stage_id,
+                    intake=product_wizard_intake_from_project(project),
+                    approved_sources=approved_source_artifacts(repository, project_id),
+                )
             )
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -4305,10 +4309,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 decision="Superseded by a regenerated artifact draft.",
                 decision_types={"artifact_approval", "final_artifact_approval"},
             )
-            artifact = generate_wizard_artifact(
-                resolved_stage_id,
-                product_wizard_intake_from_project(project),
-                approved_source_artifacts(repository, project_id),
+            artifact = request.app.state.generation_service.generate_stage(
+                StageGenerationRequest(
+                    stage_id=resolved_stage_id,
+                    intake=product_wizard_intake_from_project(project),
+                    approved_sources=approved_source_artifacts(repository, project_id),
+                )
             )
             artifact_id = repository.save_stage_artifact_draft(
                 project_id=project_id,
