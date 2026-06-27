@@ -95,8 +95,13 @@ from hermes_company_os.gateway_operations import (
     gateway_operations_powershell,
 )
 from hermes_company_os.generation_service import (
+    LIVE_HERMES_GENERATION_MODE,
+    LOCAL_DEMO_GENERATION_MODE,
+    GenerationMode,
+    LiveHermesGenerationService,
     LocalDemoGenerationService,
     StageGenerationRequest,
+    normalize_generation_mode,
 )
 from hermes_company_os.hermes_client import HermesClient
 from hermes_company_os.hermes_runtime import (
@@ -567,6 +572,14 @@ def generation_run_view(run: dict | None) -> dict | None:
     }
 
 
+def product_wizard_generation_service(request: Request, mode: GenerationMode):
+    if mode == LOCAL_DEMO_GENERATION_MODE:
+        return request.app.state.generation_service
+    if mode == LIVE_HERMES_GENERATION_MODE:
+        return request.app.state.live_generation_service
+    raise ValueError(f"Unsupported Product Wizard generation mode: {mode}")
+
+
 def wizard_review_decision_type(stage_id: str) -> str:
     return "final_artifact_approval" if stage_id == "acceptance" else "artifact_approval"
 
@@ -774,6 +787,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.hermes_client = HermesClient(resolved_settings)
     app.state.kanban_client = KanbanClient()
     app.state.generation_service = LocalDemoGenerationService()
+    app.state.live_generation_service = LiveHermesGenerationService()
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -4269,17 +4283,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/projects/{project_id}/stages/{stage_id}/generate")
-    def generate_project_stage(request: Request, project_id: str, stage_id: str):
+    def generate_project_stage(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+    ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            resolved_generation_mode = normalize_generation_mode(generation_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         source_artifacts = approved_source_artifacts(repository, project_id)
         generation_request = StageGenerationRequest(
             stage_id=resolved_stage_id,
             intake=product_wizard_intake_from_project(project),
             approved_sources=source_artifacts,
+            mode=resolved_generation_mode,
         )
         generation_run_id = repository.create_generation_run(
             project_id=project_id,
@@ -4287,10 +4311,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
         )
+        generation_service = product_wizard_generation_service(
+            request,
+            resolved_generation_mode,
+        )
         try:
-            artifact = request.app.state.generation_service.generate_stage(
-                generation_request
-            )
+            artifact = generation_service.generate_stage(generation_request)
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
                 stage_id=resolved_stage_id,
@@ -4324,12 +4350,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/stages/{stage_id}/regenerate")
-    def regenerate_project_stage(request: Request, project_id: str, stage_id: str):
+    def regenerate_project_stage(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+    ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            resolved_generation_mode = normalize_generation_mode(generation_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         latest_artifact = repository.latest_project_stage_artifact(
             project_id,
             resolved_stage_id,
@@ -4339,6 +4374,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stage_id=resolved_stage_id,
             intake=product_wizard_intake_from_project(project),
             approved_sources=source_artifacts,
+            mode=resolved_generation_mode,
         )
         generation_run_id = repository.create_generation_run(
             project_id=project_id,
@@ -4346,7 +4382,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
         )
+        generation_service = product_wizard_generation_service(
+            request,
+            resolved_generation_mode,
+        )
         try:
+            artifact = generation_service.generate_stage(generation_request)
             if latest_artifact and latest_artifact["status"] == "approved":
                 repository.request_stage_revision(
                     project_id=project_id,
@@ -4359,9 +4400,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status="deferred",
                 decision="Superseded by a regenerated artifact draft.",
                 decision_types={"artifact_approval", "final_artifact_approval"},
-            )
-            artifact = request.app.state.generation_service.generate_stage(
-                generation_request
             )
             artifact_id = repository.save_stage_artifact_draft(
                 project_id=project_id,

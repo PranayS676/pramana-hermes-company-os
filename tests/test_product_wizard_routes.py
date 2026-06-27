@@ -4,7 +4,11 @@ import json
 
 from fastapi.testclient import TestClient
 
-from hermes_company_os.generation_service import StageGenerationRequest
+from hermes_company_os.generation_service import (
+    LIVE_HERMES_GENERATION_MODE,
+    LIVE_HERMES_LOCKED_MESSAGE,
+    StageGenerationRequest,
+)
 from hermes_company_os.main import create_app
 from hermes_company_os.product_wizard import generate_wizard_artifact
 from hermes_company_os.secret_guard import secret_violations
@@ -221,6 +225,8 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "Artifact review contract" in detail.text
     assert "Generation mode" in detail.text
     assert "Generation run" in detail.text
+    assert "Live Hermes locked" in detail.text
+    assert "Founder approval and Hermes readiness required." in detail.text
     assert generation_run["id"] in detail.text
     assert "succeeded" in detail.text
     assert "local_fake_public_demo" in detail.text
@@ -267,4 +273,40 @@ def test_generation_failure_records_failed_run_without_artifact(tmp_path):
     assert generation_run["id"] in detail.text
     assert "failed" in detail.text
     assert "Simulated generation failure." in detail.text
+    assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_live_hermes_mode_is_locked_and_records_failed_run(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id, _ = create_structured_project(client)
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == LIVE_HERMES_LOCKED_MESSAGE
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    generation_runs = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )
+    assert len(generation_runs) == 1
+    generation_run = generation_runs[0]
+    assert generation_run["status"] == "failed"
+    assert generation_run["generation_mode"] == LIVE_HERMES_GENERATION_MODE
+    assert generation_run["artifact_id"] is None
+    assert generation_run["error"] == LIVE_HERMES_LOCKED_MESSAGE
+
+    detail = client.get(f"/projects/{project_id}")
+
+    assert detail.status_code == 200
+    assert "Live Hermes locked" in detail.text
+    assert "Run status" in detail.text
+    assert "failed" in detail.text
+    assert LIVE_HERMES_GENERATION_MODE in detail.text
+    assert generation_run["id"] in detail.text
+    assert LIVE_HERMES_LOCKED_MESSAGE in detail.text
     assert secret_violations({"project_detail": detail.text}) == []

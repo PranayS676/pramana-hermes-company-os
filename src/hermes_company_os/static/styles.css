@@ -1546,6 +1546,18 @@ summary {
   min-width: 0;
 }
 
+.live-mode-gate {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.live-mode-gate small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .revision-form {
   grid-column: 1 / -1;
   display: grid;

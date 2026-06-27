@@ -3,9 +3,14 @@ import json
 import pytest
 
 from hermes_company_os.generation_service import (
+    LIVE_HERMES_GENERATION_MODE,
+    LIVE_HERMES_LOCKED_MESSAGE,
     LOCAL_DEMO_GENERATION_MODE,
+    LiveHermesGenerationGate,
+    LiveHermesGenerationService,
     LocalDemoGenerationService,
     StageGenerationRequest,
+    normalize_generation_mode,
 )
 from hermes_company_os.product_wizard import (
     ProductWizardIntake,
@@ -67,8 +72,45 @@ def test_local_demo_generation_service_rejects_unsupported_generation_mode():
     request = StageGenerationRequest(
         stage_id="research",
         intake=_intake(),
-        mode="live_hermes_draft",  # type: ignore[arg-type]
+        mode=LIVE_HERMES_GENERATION_MODE,
     )
 
     with pytest.raises(ValueError, match="Unsupported Product Wizard generation mode"):
         LocalDemoGenerationService().generate_stage(request)
+
+
+def test_generation_mode_normalization_accepts_only_supported_modes():
+    assert normalize_generation_mode("local_fake_public_demo") == LOCAL_DEMO_GENERATION_MODE
+    assert normalize_generation_mode("live_hermes") == LIVE_HERMES_GENERATION_MODE
+
+    with pytest.raises(ValueError, match="Unsupported Product Wizard generation mode"):
+        normalize_generation_mode("live_hermes_draft")
+
+
+def test_live_hermes_generation_service_fails_closed_until_gates_are_ready():
+    request = StageGenerationRequest(
+        stage_id="research",
+        intake=_intake(),
+        mode=LIVE_HERMES_GENERATION_MODE,
+    )
+
+    with pytest.raises(ValueError, match="Live Hermes generation is locked"):
+        LiveHermesGenerationService().generate_stage(request)
+
+    enabled_without_approval = LiveHermesGenerationService(
+        LiveHermesGenerationGate(enabled=True)
+    )
+    with pytest.raises(ValueError, match="founder approval"):
+        enabled_without_approval.generate_stage(request)
+
+    ready_gate = LiveHermesGenerationService(
+        LiveHermesGenerationGate(
+            enabled=True,
+            founder_approved=True,
+            runtime_ready=True,
+        )
+    )
+    with pytest.raises(ValueError, match="not implemented"):
+        ready_gate.generate_stage(request)
+
+    assert secret_violations({"locked_message": LIVE_HERMES_LOCKED_MESSAGE}) == []
