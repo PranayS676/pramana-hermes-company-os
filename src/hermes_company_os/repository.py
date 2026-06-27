@@ -19,7 +19,7 @@ from hermes_company_os.founder_decisions import (
     founder_only_decision_type,
     normalize_decision_type,
 )
-from hermes_company_os.secret_guard import assert_no_secret_values
+from hermes_company_os.secret_guard import assert_no_secret_values, secret_violations
 
 
 def utc_now() -> str:
@@ -48,6 +48,22 @@ def decode_wizard_artifact(row: sqlite3.Row) -> dict:
     raw_json = artifact["json_content"].strip()
     artifact["json"] = json.loads(raw_json) if raw_json else {}
     return artifact
+
+
+def decode_generation_run(row: sqlite3.Row) -> dict:
+    run = dict(row)
+    raw_sources = run.get("source_artifact_ids_json", "").strip()
+    run["source_artifact_ids"] = json.loads(raw_sources) if raw_sources else []
+    return run
+
+
+def safe_generation_error(message: str) -> str:
+    cleaned = message.strip()
+    if not cleaned:
+        return "Generation failed without a detailed error."
+    if secret_violations({"generation_error": cleaned}):
+        return "Generation failed. Error contained secret-looking content and was redacted."
+    return cleaned[:1000]
 
 
 def age_label(timestamp: str) -> str:
@@ -2074,6 +2090,176 @@ class CompanyRepository:
     ) -> dict | None:
         artifacts = self.list_project_stage_artifacts(project_id, stage_id)
         return artifacts[0] if artifacts else None
+
+    def create_generation_run(
+        self,
+        project_id: str,
+        stage_id: str,
+        generation_mode: str,
+        source_artifact_ids: list[str] | tuple[str, ...] = (),
+    ) -> str:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        if self.get_project_wizard_stage(project_id, stage_id) is None:
+            raise sqlite3.IntegrityError(
+                f"Unknown product wizard stage: {project_id}/{stage_id}"
+            )
+        cleaned_sources = [str(source_id).strip() for source_id in source_artifact_ids]
+        cleaned_sources = [source_id for source_id in cleaned_sources if source_id]
+        source_json = json.dumps(cleaned_sources, sort_keys=True)
+        cleaned_mode = generation_mode.strip()
+        if not cleaned_mode:
+            raise ValueError("Generation mode is required.")
+        assert_no_secret_values(
+            {
+                "generation_mode": cleaned_mode,
+                "source_artifact_ids": source_json,
+            }
+        )
+
+        run_id = f"gen-run-{uuid4().hex[:10]}"
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO generation_runs (
+                    id, project_id, stage_id, artifact_id, generation_mode, status,
+                    source_artifact_ids_json, error, created_at, completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    project_id,
+                    stage_id,
+                    None,
+                    cleaned_mode,
+                    "running",
+                    source_json,
+                    "",
+                    now,
+                    None,
+                ),
+            )
+        return run_id
+
+    def complete_generation_run(
+        self,
+        run_id: str,
+        artifact_id: str,
+        source_artifact_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> None:
+        values_to_check = {"generation_run_id": run_id, "artifact_id": artifact_id}
+        source_json = None
+        if source_artifact_ids is not None:
+            cleaned_sources = [str(source_id).strip() for source_id in source_artifact_ids]
+            cleaned_sources = [source_id for source_id in cleaned_sources if source_id]
+            source_json = json.dumps(cleaned_sources, sort_keys=True)
+            values_to_check["source_artifact_ids"] = source_json
+        assert_no_secret_values(values_to_check)
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            if source_json is None:
+                cursor = connection.execute(
+                    """
+                    UPDATE generation_runs
+                    SET status = ?,
+                        artifact_id = ?,
+                        error = '',
+                        completed_at = ?
+                    WHERE id = ?
+                    """,
+                    ("succeeded", artifact_id, now, run_id),
+                )
+            else:
+                cursor = connection.execute(
+                    """
+                    UPDATE generation_runs
+                    SET status = ?,
+                        artifact_id = ?,
+                        source_artifact_ids_json = ?,
+                        error = '',
+                        completed_at = ?
+                    WHERE id = ?
+                    """,
+                    ("succeeded", artifact_id, source_json, now, run_id),
+                )
+        if cursor.rowcount == 0:
+            raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
+
+    def fail_generation_run(self, run_id: str, error: str) -> None:
+        safe_error = safe_generation_error(error)
+        assert_no_secret_values(
+            {
+                "generation_run_id": run_id,
+                "generation_error": safe_error,
+            }
+        )
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE generation_runs
+                SET status = ?,
+                    error = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                ("failed", safe_error, now, run_id),
+            )
+        if cursor.rowcount == 0:
+            raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
+
+    def get_generation_run(self, run_id: str) -> dict | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM generation_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+        return decode_generation_run(row) if row else None
+
+    def list_generation_runs(
+        self,
+        project_id: str,
+        stage_id: str | None = None,
+        artifact_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        filters = ["project_id = ?"]
+        parameters: list[str | int] = [project_id]
+        if stage_id:
+            filters.append("stage_id = ?")
+            parameters.append(stage_id)
+        if artifact_id:
+            filters.append("artifact_id = ?")
+            parameters.append(artifact_id)
+        parameters.append(max(1, min(limit, 100)))
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM generation_runs
+                WHERE {" AND ".join(filters)}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [decode_generation_run(row) for row in rows]
+
+    def latest_generation_run(
+        self,
+        project_id: str,
+        stage_id: str,
+        artifact_id: str | None = None,
+    ) -> dict | None:
+        runs = self.list_generation_runs(
+            project_id=project_id,
+            stage_id=stage_id,
+            artifact_id=artifact_id,
+            limit=1,
+        )
+        return runs[0] if runs else None
 
     def save_stage_artifact_draft(
         self,

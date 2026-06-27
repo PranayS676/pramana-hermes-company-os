@@ -74,6 +74,15 @@ class CapturingGenerationService:
         )
 
 
+class FailingGenerationService:
+    def __init__(self):
+        self.requests: list[StageGenerationRequest] = []
+
+    def generate_stage(self, request: StageGenerationRequest):
+        self.requests.append(request)
+        raise ValueError("Simulated generation failure.")
+
+
 def app_and_client(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     return app, TestClient(app)
@@ -192,6 +201,16 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert artifact is not None
     assert artifact["status"] == "draft"
     assert artifact["version"] == 1
+    generation_runs = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )
+    assert len(generation_runs) == 1
+    generation_run = generation_runs[0]
+    assert generation_run["status"] == "succeeded"
+    assert generation_run["generation_mode"] == "local_fake_public_demo"
+    assert generation_run["artifact_id"] == artifact["id"]
+    assert generation_run["source_artifact_ids"] == []
     raw_artifact = json.dumps(artifact, sort_keys=True)
     assert "local_fake_public_demo" in raw_artifact
     assert "Opportunity Research" in raw_artifact
@@ -201,6 +220,9 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert detail.status_code == 200
     assert "Artifact review contract" in detail.text
     assert "Generation mode" in detail.text
+    assert "Generation run" in detail.text
+    assert generation_run["id"] in detail.text
+    assert "succeeded" in detail.text
     assert "local_fake_public_demo" in detail.text
     assert "Quality checks" in detail.text
     assert "Target User" in detail.text
@@ -210,4 +232,39 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "Codex Execution" in detail.text
     assert "approved code plan, approved acceptance package" in detail.text
     assert artifact["id"] in detail.text
+    assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_generation_failure_records_failed_run_without_artifact(tmp_path):
+    app, client = app_and_client(tmp_path)
+    generation_service = FailingGenerationService()
+    app.state.generation_service = generation_service
+    project_id, _ = create_structured_project(client)
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Simulated generation failure."
+    assert len(generation_service.requests) == 1
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    generation_runs = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )
+    assert len(generation_runs) == 1
+    generation_run = generation_runs[0]
+    assert generation_run["status"] == "failed"
+    assert generation_run["artifact_id"] is None
+    assert generation_run["error"] == "Simulated generation failure."
+
+    detail = client.get(f"/projects/{project_id}")
+
+    assert detail.status_code == 200
+    assert "Generation run" in detail.text
+    assert generation_run["id"] in detail.text
+    assert "failed" in detail.text
+    assert "Simulated generation failure." in detail.text
     assert secret_violations({"project_detail": detail.text}) == []

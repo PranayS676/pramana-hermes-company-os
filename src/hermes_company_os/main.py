@@ -555,6 +555,18 @@ def approved_source_artifacts(
     return sources
 
 
+def generation_run_view(run: dict | None) -> dict | None:
+    if run is None:
+        return None
+    source_artifact_ids = run.get("source_artifact_ids")
+    return {
+        **run,
+        "source_artifact_ids": (
+            source_artifact_ids if isinstance(source_artifact_ids, list) else []
+        ),
+    }
+
+
 def wizard_review_decision_type(stage_id: str) -> str:
     return "final_artifact_approval" if stage_id == "acceptance" else "artifact_approval"
 
@@ -4207,8 +4219,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if review_stage
             else None
         )
+        latest_generation_run = (
+            generation_run_view(
+                repository.latest_generation_run(
+                    project_id=project_id,
+                    stage_id=review_stage["stage_id"],
+                    artifact_id=selected_artifact["id"] if selected_artifact else None,
+                )
+            )
+            if review_stage
+            else None
+        )
         if latest_artifact:
             latest_artifact["selected"] = bool(selected_artifact)
+            latest_artifact["generation_run"] = latest_generation_run
         task_stage_approved = project_task_stage_approved(repository, project_id)
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         return templates.TemplateResponse(
@@ -4224,6 +4248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "current_stage": stage_view(review_stage) if review_stage else None,
                 "actionable_stage": stage_view(current_stage) if current_stage else None,
                 "latest_artifact": latest_artifact,
+                "latest_generation_run": latest_generation_run,
                 "stage_artifacts": stage_artifacts_view(
                     repository,
                     project_id,
@@ -4250,13 +4275,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        source_artifacts = approved_source_artifacts(repository, project_id)
+        generation_request = StageGenerationRequest(
+            stage_id=resolved_stage_id,
+            intake=product_wizard_intake_from_project(project),
+            approved_sources=source_artifacts,
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
+        )
         try:
             artifact = request.app.state.generation_service.generate_stage(
-                StageGenerationRequest(
-                    stage_id=resolved_stage_id,
-                    intake=product_wizard_intake_from_project(project),
-                    approved_sources=approved_source_artifacts(repository, project_id),
-                )
+                generation_request
             )
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -4272,6 +4305,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 json_content=artifact.metadata,
                 owner_agent_id=artifact.owner_agent_id,
             )
+            repository.complete_generation_run(
+                generation_run_id,
+                artifact_id,
+                source_artifact_ids=list(artifact.source_artifact_ids),
+            )
             create_project_stage_review_decision(
                 repository=repository,
                 project=project,
@@ -4281,6 +4319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
+            repository.fail_generation_run(generation_run_id, str(exc))
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
@@ -4294,6 +4333,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         latest_artifact = repository.latest_project_stage_artifact(
             project_id,
             resolved_stage_id,
+        )
+        source_artifacts = approved_source_artifacts(repository, project_id)
+        generation_request = StageGenerationRequest(
+            stage_id=resolved_stage_id,
+            intake=product_wizard_intake_from_project(project),
+            approved_sources=source_artifacts,
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
         )
         try:
             if latest_artifact and latest_artifact["status"] == "approved":
@@ -4310,11 +4361,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 decision_types={"artifact_approval", "final_artifact_approval"},
             )
             artifact = request.app.state.generation_service.generate_stage(
-                StageGenerationRequest(
-                    stage_id=resolved_stage_id,
-                    intake=product_wizard_intake_from_project(project),
-                    approved_sources=approved_source_artifacts(repository, project_id),
-                )
+                generation_request
             )
             artifact_id = repository.save_stage_artifact_draft(
                 project_id=project_id,
@@ -4322,6 +4369,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 markdown_content=artifact.markdown,
                 json_content=artifact.metadata,
                 owner_agent_id=artifact.owner_agent_id,
+            )
+            repository.complete_generation_run(
+                generation_run_id,
+                artifact_id,
+                source_artifact_ids=list(artifact.source_artifact_ids),
             )
             create_project_stage_review_decision(
                 repository=repository,
@@ -4332,6 +4384,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             repository.sync_project_wizard_work_items(project_id)
         except ValueError as exc:
+            repository.fail_generation_run(generation_run_id, str(exc))
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 

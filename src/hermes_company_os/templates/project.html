@@ -57,6 +57,8 @@
 {% set artifact_checks = artifact.quality_checks|default([], true) %}
 {% set artifact_sources = artifact.source_artifact_ids|default([], true) %}
 {% set artifact_sections = artifact.sections|default([], true) %}
+{% set generation_run = latest_generation_run|default(artifact.generation_run|default({}, true), true) %}
+{% set generation_run_sources = generation_run.source_artifact_ids|default([], true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
@@ -208,6 +210,10 @@
                 <strong>{{ artifact.generation_mode|default("not generated", true) }}</strong>
               </div>
               <div>
+                <span>Generation run</span>
+                <strong>{% if generation_run %}{{ generation_run.status }}{% else %}Not started{% endif %}</strong>
+              </div>
+              <div>
                 <span>Version</span>
                 <strong>{% if has_latest_artifact %}{{ artifact.version }}{% else %}Not generated{% endif %}</strong>
               </div>
@@ -291,24 +297,37 @@
             <div class="panel-header">
               <div>
                 <h2>Artifact review contract</h2>
-                <p class="panel-kicker">Owner, sources, checks, and approval context before founder action.</p>
+                <p class="panel-kicker">Owner, generation run, sources, checks, and approval context before founder action.</p>
               </div>
               <i data-lucide="clipboard-check"></i>
             </div>
-            {% if has_latest_artifact %}
+            {% if has_latest_artifact or generation_run %}
             <div class="review-contract-grid">
               <div>
                 <span>Owner agent</span>
-                <strong>{{ artifact.owner_name }}{% if artifact.owner_command %} - {{ artifact.owner_command }}{% endif %}</strong>
+                <strong>
+                  {{ artifact.owner_name|default(active_stage.owner_name|default("Not assigned", true), true) }}
+                  {% if artifact.owner_command %} - {{ artifact.owner_command }}{% endif %}
+                </strong>
               </div>
               <div>
                 <span>Generation mode</span>
-                <strong>{{ artifact.generation_mode|default("not recorded", true) }}</strong>
+                <strong>{{ artifact.generation_mode|default(generation_run.generation_mode|default("not recorded", true), true) }}</strong>
+              </div>
+              <div>
+                <span>Run status</span>
+                <strong>{% if generation_run %}{{ generation_run.status }}{% else %}No run recorded{% endif %}</strong>
+              </div>
+              <div>
+                <span>Run ID</span>
+                <strong>{{ generation_run.id|default("No run recorded", true) }}</strong>
               </div>
               <div>
                 <span>Source artifacts</span>
                 {% if artifact_sources %}
                 <strong>{{ artifact_sources|join(", ") }}</strong>
+                {% elif generation_run_sources %}
+                <strong>{{ generation_run_sources|join(", ") }}</strong>
                 {% else %}
                 <strong>No prior artifact required for this stage.</strong>
                 {% endif %}
@@ -321,6 +340,12 @@
                 <strong>None</strong>
                 {% endif %}
               </div>
+              {% if generation_run.error %}
+              <div>
+                <span>Run error</span>
+                <strong>{{ generation_run.error }}</strong>
+              </div>
+              {% endif %}
             </div>
             <div class="quality-check-list" aria-label="Quality checks">
               <h3>Quality checks</h3>

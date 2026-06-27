@@ -46,6 +46,24 @@ CREATE TABLE IF NOT EXISTS agent_work_items (
 );
 """
 
+GENERATION_RUNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS generation_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+    artifact_id TEXT REFERENCES product_wizard_artifacts(id) ON DELETE SET NULL,
+    generation_mode TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
+    source_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_runs_project_stage_created
+ON generation_runs(project_id, stage_id, created_at DESC);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -350,12 +368,14 @@ def initialize_database(database_path: Path) -> None:
             """
         )
         connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
+        connection.executescript(GENERATION_RUNS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
 
 def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
+    connection.executescript(GENERATION_RUNS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

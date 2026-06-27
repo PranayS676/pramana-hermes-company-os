@@ -2,6 +2,9 @@ import pytest
 
 from hermes_company_os.database import initialize_database
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.secret_guard import secret_violations
+
+FAKE_OPENAI_SECRET = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
 
 
 def initialized_repository(tmp_path) -> CompanyRepository:
@@ -168,6 +171,61 @@ def test_wizard_artifacts_reject_secret_like_values(tmp_path):
             markdown_content="OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456",
             json_content={"safe": True},
         )
+
+
+def test_generation_runs_track_success_and_redact_secret_shaped_errors(tmp_path):
+    repository = initialized_repository(tmp_path)
+    project_id = repository.create_structured_project(
+        name="Acme AI",
+        founder_idea="AI operating company for small businesses.",
+    )
+
+    run_id = repository.create_generation_run(
+        project_id=project_id,
+        stage_id="research",
+        generation_mode="local_fake_public_demo",
+        source_artifact_ids=["research-input"],
+    )
+    running_run = repository.get_generation_run(run_id)
+
+    assert running_run["status"] == "running"
+    assert running_run["source_artifact_ids"] == ["research-input"]
+    assert running_run["artifact_id"] is None
+
+    artifact_id = repository.save_stage_artifact_draft(
+        project_id=project_id,
+        stage_id="research",
+        markdown_content="# Research\n\nEvidence-backed opportunity.",
+        json_content={"generation_mode": "local_fake_public_demo"},
+    )
+    repository.complete_generation_run(
+        run_id,
+        artifact_id,
+        source_artifact_ids=[],
+    )
+    succeeded_run = repository.get_generation_run(run_id)
+
+    assert succeeded_run["status"] == "succeeded"
+    assert succeeded_run["artifact_id"] == artifact_id
+    assert succeeded_run["source_artifact_ids"] == []
+    assert succeeded_run["completed_at"]
+
+    failed_run_id = repository.create_generation_run(
+        project_id=project_id,
+        stage_id="research",
+        generation_mode="local_fake_public_demo",
+    )
+    repository.fail_generation_run(
+        failed_run_id,
+        "Provider returned pasted key " + FAKE_OPENAI_SECRET,
+    )
+    failed_run = repository.get_generation_run(failed_run_id)
+
+    assert failed_run["status"] == "failed"
+    assert "secret-looking content" in failed_run["error"]
+    assert FAKE_OPENAI_SECRET not in failed_run["error"]
+    assert secret_violations({"generation_run": str(failed_run)}) == []
+    assert repository.latest_generation_run(project_id, "research")["id"] == failed_run_id
 
 
 def test_legacy_project_workflow_behavior_is_unchanged(tmp_path):
