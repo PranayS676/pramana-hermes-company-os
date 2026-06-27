@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from hermes_company_os.secret_guard import SECRET_PATTERNS
@@ -130,10 +130,11 @@ class ProductWizardArtifact:
     next_decision: str
     supporting_agent_ids: tuple[str, ...] = ()
     generation_mode: str = "local_fake_public_demo"
+    generation_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "stage": self.stage,
             "title": self.title,
             "owner_agent_id": self.owner_agent_id,
@@ -143,6 +144,9 @@ class ProductWizardArtifact:
             "next_decision": self.next_decision,
             "generation_mode": self.generation_mode,
         }
+        if self.generation_metadata:
+            metadata["generation_metadata"] = dict(self.generation_metadata)
+        return metadata
 
     def to_dict(self) -> dict[str, Any]:
         return {

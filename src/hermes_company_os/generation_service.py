@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
 from hermes_company_os.product_wizard import (
@@ -9,8 +11,10 @@ from hermes_company_os.product_wizard import (
     ProductWizardIntake,
     ProductWizardSourceArtifact,
     WizardStage,
+    build_wizard_prompt_contract,
     generate_wizard_artifact,
 )
+from hermes_company_os.secret_guard import secret_violations
 
 GenerationMode = Literal["local_fake_public_demo", "live_hermes"]
 LOCAL_DEMO_GENERATION_MODE: GenerationMode = "local_fake_public_demo"
@@ -22,6 +26,12 @@ SUPPORTED_GENERATION_MODES: tuple[GenerationMode, ...] = (
 LIVE_HERMES_LOCKED_MESSAGE = (
     "Live Hermes generation is locked. Founder approval and Hermes readiness "
     "gates are required before live profile execution."
+)
+LIVE_HERMES_DRY_RUN_ADAPTER = "dry_run_live_hermes"
+LIVE_HERMES_DRY_RUN_STATUS = "dry_run_succeeded"
+LIVE_HERMES_DRY_RUN_MESSAGE = (
+    "Live Hermes dry-run adapter produced a public-demo artifact without "
+    "external execution."
 )
 ApprovedSourceInput = Iterable[
     ProductWizardArtifact | ProductWizardSourceArtifact | Mapping[str, Any]
@@ -48,6 +58,70 @@ class StageGenerationRequest:
 class StageGenerationService(Protocol):
     def generate_stage(self, request: StageGenerationRequest) -> ProductWizardArtifact:
         """Generate one Product Wizard stage artifact."""
+
+
+@dataclass(frozen=True)
+class LiveHermesAdapterRequest:
+    stage_id: str
+    owner_agent_id: str
+    supporting_agent_ids: tuple[str, ...]
+    source_artifact_ids: tuple[str, ...]
+    prompt_contract: Mapping[str, Any]
+    command_preview: tuple[str, ...]
+    timeout_seconds: int = 120
+
+    @property
+    def prompt_sha256(self) -> str:
+        prompt = str(self.prompt_contract.get("prompt", ""))
+        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class LiveHermesAdapterRawResult:
+    stdout: str
+    stderr: str = ""
+    exit_code: int = 0
+    timed_out: bool = False
+    duration_ms: int = 0
+
+
+class LiveHermesAdapter(Protocol):
+    def execute(self, request: LiveHermesAdapterRequest) -> LiveHermesAdapterRawResult:
+        """Execute or simulate a Live Hermes generation request."""
+
+
+@dataclass(frozen=True)
+class ParsedLiveHermesAdapterResult:
+    metadata: dict[str, Any]
+    markdown_appendix: str
+
+
+class DryRunLiveHermesAdapter:
+    def execute(self, request: LiveHermesAdapterRequest) -> LiveHermesAdapterRawResult:
+        payload = {
+            "adapter": LIVE_HERMES_DRY_RUN_ADAPTER,
+            "status": LIVE_HERMES_DRY_RUN_STATUS,
+            "message": LIVE_HERMES_DRY_RUN_MESSAGE,
+            "external_execution": "disabled",
+            "stage_id": request.stage_id,
+            "owner_agent_id": request.owner_agent_id,
+            "supporting_agent_ids": list(request.supporting_agent_ids),
+            "source_artifact_ids": list(request.source_artifact_ids),
+            "command_preview": list(request.command_preview),
+            "timeout_seconds": request.timeout_seconds,
+            "prompt_handoff": {
+                "contract": "product_wizard_prompt_contract_v1",
+                "sha256": request.prompt_sha256,
+            },
+            "output_parser": {
+                "name": "product_wizard_artifact_v1",
+                "status": "validated",
+            },
+        }
+        return LiveHermesAdapterRawResult(
+            stdout=json.dumps(payload, sort_keys=True),
+            duration_ms=0,
+        )
 
 
 class LocalDemoGenerationService:
@@ -84,8 +158,15 @@ class LiveHermesGenerationGate:
 class LiveHermesGenerationService:
     mode: GenerationMode = LIVE_HERMES_GENERATION_MODE
 
-    def __init__(self, gate: LiveHermesGenerationGate | None = None):
+    def __init__(
+        self,
+        gate: LiveHermesGenerationGate | None = None,
+        adapter: LiveHermesAdapter | None = None,
+        timeout_seconds: int = 120,
+    ):
         self.gate = gate or LiveHermesGenerationGate()
+        self.adapter = adapter or DryRunLiveHermesAdapter()
+        self.timeout_seconds = timeout_seconds
 
     def generate_stage(self, request: StageGenerationRequest) -> ProductWizardArtifact:
         if request.mode != self.mode:
@@ -95,6 +176,147 @@ class LiveHermesGenerationService:
         blocker = self.gate.blocker()
         if blocker:
             raise ValueError(blocker)
-        raise ValueError(
-            "Live Hermes generation adapter is not implemented in this public demo."
+        prompt_contract = build_wizard_prompt_contract(
+            request.stage_id,
+            request.intake,
+            request.approved_sources,
         )
+        adapter_request = _live_hermes_adapter_request(
+            prompt_contract,
+            timeout_seconds=self.timeout_seconds,
+        )
+        raw_result = self.adapter.execute(adapter_request)
+        parsed_result = _parse_live_hermes_adapter_result(
+            adapter_request,
+            raw_result,
+        )
+        artifact = generate_wizard_artifact(
+            request.stage_id,
+            request.intake,
+            request.approved_sources,
+        )
+        return replace(
+            artifact,
+            markdown=artifact.markdown + parsed_result.markdown_appendix,
+            generation_mode=LIVE_HERMES_GENERATION_MODE,
+            generation_metadata=parsed_result.metadata,
+        )
+
+
+def _live_hermes_adapter_request(
+    prompt_contract: Mapping[str, Any],
+    *,
+    timeout_seconds: int,
+) -> LiveHermesAdapterRequest:
+    stage_id = str(prompt_contract["stage"])
+    owner_agent_id = str(prompt_contract["owner_agent_id"])
+    supporting_agent_ids = tuple(
+        str(agent_id) for agent_id in prompt_contract.get("supporting_agent_ids", [])
+    )
+    source_artifact_ids = tuple(
+        str(source_id) for source_id in prompt_contract.get("source_artifact_ids", [])
+    )
+    command_preview = (
+        "hermes",
+        "profiles",
+        "run",
+        owner_agent_id,
+        "--stage",
+        stage_id,
+        "--dry-run",
+        "--output",
+        "product-wizard-artifact-json",
+    )
+    return LiveHermesAdapterRequest(
+        stage_id=stage_id,
+        owner_agent_id=owner_agent_id,
+        supporting_agent_ids=supporting_agent_ids,
+        source_artifact_ids=source_artifact_ids,
+        prompt_contract=prompt_contract,
+        command_preview=command_preview,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _parse_live_hermes_adapter_result(
+    request: LiveHermesAdapterRequest,
+    raw_result: LiveHermesAdapterRawResult,
+) -> ParsedLiveHermesAdapterResult:
+    if raw_result.timed_out:
+        raise ValueError(
+            "Live Hermes dry-run adapter timed out after "
+            f"{request.timeout_seconds} seconds."
+        )
+    if raw_result.exit_code != 0:
+        raise ValueError(
+            "Live Hermes dry-run adapter failed: "
+            + _safe_adapter_error(raw_result.stderr or f"exit code {raw_result.exit_code}")
+        )
+    try:
+        payload = json.loads(raw_result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Live Hermes dry-run adapter returned invalid JSON output.") from exc
+    if payload.get("status") != LIVE_HERMES_DRY_RUN_STATUS:
+        raise ValueError(
+            "Live Hermes dry-run adapter returned unexpected status: "
+            + str(payload.get("status", "missing"))
+        )
+
+    metadata = {
+        "adapter": str(payload.get("adapter", LIVE_HERMES_DRY_RUN_ADAPTER)),
+        "status": str(payload["status"]),
+        "message": str(payload.get("message", LIVE_HERMES_DRY_RUN_MESSAGE)),
+        "external_execution": str(payload.get("external_execution", "disabled")),
+        "stage_id": request.stage_id,
+        "owner_agent_id": request.owner_agent_id,
+        "supporting_agent_ids": list(request.supporting_agent_ids),
+        "source_artifact_ids": list(request.source_artifact_ids),
+        "command_preview": list(request.command_preview),
+        "timeout_seconds": request.timeout_seconds,
+        "duration_ms": raw_result.duration_ms,
+        "prompt_handoff": {
+            "contract": "product_wizard_prompt_contract_v1",
+            "sha256": request.prompt_sha256,
+        },
+        "output_parser": {
+            "name": "product_wizard_artifact_v1",
+            "status": "validated",
+        },
+        "captured_error": "",
+    }
+    markdown_appendix = _live_hermes_dry_run_appendix(metadata)
+    return ParsedLiveHermesAdapterResult(
+        metadata=metadata,
+        markdown_appendix=markdown_appendix,
+    )
+
+
+def _safe_adapter_error(message: str) -> str:
+    cleaned = message.strip()
+    if not cleaned:
+        return "adapter exited without stderr."
+    if secret_violations({"adapter_error": cleaned}):
+        return "adapter error contained secret-looking content and was redacted."
+    return cleaned[:500]
+
+
+def _live_hermes_dry_run_appendix(metadata: Mapping[str, Any]) -> str:
+    command_preview = " ".join(str(part) for part in metadata["command_preview"])
+    prompt_handoff = metadata["prompt_handoff"]
+    output_parser = metadata["output_parser"]
+    return "\n".join(
+        [
+            "",
+            "## Live Hermes Dry Run",
+            "",
+            "- External execution: `disabled`",
+            f"- Adapter: `{metadata['adapter']}`",
+            f"- Command preview: `{command_preview}`",
+            "- Prompt handoff: "
+            f"`{prompt_handoff['contract']}` `{prompt_handoff['sha256']}`",
+            f"- Output parser: `{output_parser['name']}` `{output_parser['status']}`",
+            f"- Timeout: `{metadata['timeout_seconds']}` seconds",
+            "- Captured error: none",
+            "",
+        ]
+    )

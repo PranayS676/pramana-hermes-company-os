@@ -5,6 +5,8 @@ import json
 from fastapi.testclient import TestClient
 
 from hermes_company_os.generation_service import (
+    LIVE_HERMES_DRY_RUN_ADAPTER,
+    LIVE_HERMES_DRY_RUN_STATUS,
     LIVE_HERMES_GENERATION_MODE,
     StageGenerationRequest,
 )
@@ -424,7 +426,7 @@ def test_live_hermes_runtime_ready_still_requires_founder_approval(tmp_path):
     assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
 
 
-def test_live_hermes_all_gates_ready_reaches_disabled_adapter_only(tmp_path):
+def test_live_hermes_all_gates_ready_creates_dry_run_artifact(tmp_path):
     app, client = app_and_client(tmp_path)
     project_id, _ = create_structured_project(client)
     mark_agent_runtime_ready(app, "research-agent")
@@ -440,15 +442,36 @@ def test_live_hermes_all_gates_ready_reaches_disabled_adapter_only(tmp_path):
         stage_id="research",
     )[0]
     project_page = client.get(f"/projects/{project_id}")
-
-    assert response.status_code == 409
-    assert response.json()["detail"] == (
-        "Live Hermes generation adapter is not implemented in this public demo."
+    artifact = app.state.repository.latest_project_stage_artifact(
+        project_id,
+        "research",
     )
-    assert generation_run["status"] == "failed"
+    raw_artifact = json.dumps(artifact, sort_keys=True)
+
+    assert response.status_code == 303
+    assert generation_run["status"] == "succeeded"
     assert generation_run["generation_mode"] == LIVE_HERMES_GENERATION_MODE
-    assert generation_run["artifact_id"] is None
-    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    assert artifact is not None
+    assert generation_run["artifact_id"] == artifact["id"]
+    assert artifact["json"]["generation_mode"] == LIVE_HERMES_GENERATION_MODE
+    assert artifact["json"]["generation_metadata"]["adapter"] == LIVE_HERMES_DRY_RUN_ADAPTER
+    assert artifact["json"]["generation_metadata"]["status"] == LIVE_HERMES_DRY_RUN_STATUS
+    assert artifact["json"]["generation_metadata"]["external_execution"] == "disabled"
+    assert artifact["json"]["generation_metadata"]["command_preview"] == [
+        "hermes",
+        "profiles",
+        "run",
+        "research-agent",
+        "--stage",
+        "research",
+        "--dry-run",
+        "--output",
+        "product-wizard-artifact-json",
+    ]
+    assert "## Live Hermes Dry Run" in artifact["markdown_content"]
     assert "Live Hermes gates are satisfied" in project_page.text
+    assert "Live Hermes Dry Run" in project_page.text
+    assert "dry_run_live_hermes" in project_page.text
     assert decision_id in project_page.text
+    assert secret_violations({"artifact": raw_artifact}) == []
     assert secret_violations({"project_detail": project_page.text}) == []
