@@ -585,7 +585,12 @@ def product_wizard_generation_service(
     if mode == LOCAL_DEMO_GENERATION_MODE:
         return request.app.state.generation_service
     if mode == LIVE_HERMES_GENERATION_MODE:
-        return LiveHermesGenerationService(live_gate)
+        settings: Settings = request.app.state.settings
+        return LiveHermesGenerationService(
+            live_gate,
+            timeout_seconds=settings.hermes_timeout_seconds,
+            live_execution_enabled=settings.hermes_live_execution_enabled,
+        )
     raise ValueError(f"Unsupported Product Wizard generation mode: {mode}")
 
 
@@ -796,7 +801,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.hermes_client = HermesClient(resolved_settings)
     app.state.kanban_client = KanbanClient()
     app.state.generation_service = LocalDemoGenerationService()
-    app.state.live_generation_service = LiveHermesGenerationService()
+    app.state.live_generation_service = LiveHermesGenerationService(
+        timeout_seconds=resolved_settings.hermes_timeout_seconds,
+        live_execution_enabled=resolved_settings.hermes_live_execution_enabled,
+    )
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))

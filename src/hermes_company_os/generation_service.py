@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
@@ -32,6 +34,11 @@ LIVE_HERMES_DRY_RUN_STATUS = "dry_run_succeeded"
 LIVE_HERMES_DRY_RUN_MESSAGE = (
     "Live Hermes dry-run adapter produced a public-demo artifact without "
     "external execution."
+)
+LIVE_HERMES_LIVE_ADAPTER = "real_live_hermes"
+LIVE_HERMES_LIVE_STATUS = "live_runner_succeeded"
+LIVE_HERMES_LIVE_MESSAGE = (
+    "Live Hermes runner completed through the gated command boundary."
 )
 ApprovedSourceInput = Iterable[
     ProductWizardArtifact | ProductWizardSourceArtifact | Mapping[str, Any]
@@ -69,6 +76,7 @@ class LiveHermesAdapterRequest:
     prompt_contract: Mapping[str, Any]
     command_preview: tuple[str, ...]
     timeout_seconds: int = 120
+    external_execution_enabled: bool = False
 
     @property
     def prompt_sha256(self) -> str:
@@ -88,6 +96,56 @@ class LiveHermesAdapterRawResult:
 class LiveHermesAdapter(Protocol):
     def execute(self, request: LiveHermesAdapterRequest) -> LiveHermesAdapterRawResult:
         """Execute or simulate a Live Hermes generation request."""
+
+
+class HermesCommandRunner(Protocol):
+    def run(
+        self,
+        command: tuple[str, ...],
+        prompt: str,
+        timeout_seconds: int,
+    ) -> LiveHermesAdapterRawResult:
+        """Run a Hermes command with stdin prompt text and captured output."""
+
+
+class SubprocessHermesCommandRunner:
+    def run(
+        self,
+        command: tuple[str, ...],
+        prompt: str,
+        timeout_seconds: int,
+    ) -> LiveHermesAdapterRawResult:
+        started_at = time.monotonic()
+        try:
+            completed = subprocess.run(
+                list(command),
+                input=prompt,
+                text=True,
+                capture_output=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except FileNotFoundError:
+            return LiveHermesAdapterRawResult(
+                stdout="",
+                stderr=f"Hermes command not found: {command[0]}.",
+                exit_code=127,
+                duration_ms=_elapsed_ms(started_at),
+            )
+        except subprocess.TimeoutExpired as exc:
+            return LiveHermesAdapterRawResult(
+                stdout=_process_output_to_text(exc.stdout),
+                stderr=_process_output_to_text(exc.stderr),
+                exit_code=124,
+                timed_out=True,
+                duration_ms=_elapsed_ms(started_at),
+            )
+        return LiveHermesAdapterRawResult(
+            stdout=completed.stdout.strip(),
+            stderr=completed.stderr.strip(),
+            exit_code=completed.returncode,
+            duration_ms=_elapsed_ms(started_at),
+        )
 
 
 @dataclass(frozen=True)
@@ -121,6 +179,58 @@ class DryRunLiveHermesAdapter:
         return LiveHermesAdapterRawResult(
             stdout=json.dumps(payload, sort_keys=True),
             duration_ms=0,
+        )
+
+
+class LiveHermesCommandAdapter:
+    def __init__(
+        self,
+        *,
+        live_execution_enabled: bool = False,
+        runner: HermesCommandRunner | None = None,
+    ):
+        self.live_execution_enabled = live_execution_enabled
+        self.runner = runner or SubprocessHermesCommandRunner()
+        self.dry_run_adapter = DryRunLiveHermesAdapter()
+
+    def execute(self, request: LiveHermesAdapterRequest) -> LiveHermesAdapterRawResult:
+        if not self.live_execution_enabled or not request.external_execution_enabled:
+            return self.dry_run_adapter.execute(request)
+        prompt = str(request.prompt_contract.get("prompt", ""))
+        raw_result = self.runner.run(
+            request.command_preview,
+            prompt,
+            request.timeout_seconds,
+        )
+        if raw_result.timed_out or raw_result.exit_code != 0:
+            return raw_result
+        payload = {
+            "adapter": LIVE_HERMES_LIVE_ADAPTER,
+            "status": LIVE_HERMES_LIVE_STATUS,
+            "message": LIVE_HERMES_LIVE_MESSAGE,
+            "external_execution": "enabled",
+            "stage_id": request.stage_id,
+            "owner_agent_id": request.owner_agent_id,
+            "supporting_agent_ids": list(request.supporting_agent_ids),
+            "source_artifact_ids": list(request.source_artifact_ids),
+            "command_preview": list(request.command_preview),
+            "timeout_seconds": request.timeout_seconds,
+            "prompt_handoff": {
+                "contract": "product_wizard_prompt_contract_v1",
+                "sha256": request.prompt_sha256,
+            },
+            "output_parser": {
+                "name": "product_wizard_artifact_v1",
+                "status": "validated",
+            },
+            "stdout_capture": _output_capture(raw_result.stdout, "stdout"),
+            "stderr_capture": _output_capture(raw_result.stderr, "stderr"),
+        }
+        return LiveHermesAdapterRawResult(
+            stdout=json.dumps(payload, sort_keys=True),
+            stderr=raw_result.stderr,
+            exit_code=0,
+            duration_ms=raw_result.duration_ms,
         )
 
 
@@ -163,10 +273,14 @@ class LiveHermesGenerationService:
         gate: LiveHermesGenerationGate | None = None,
         adapter: LiveHermesAdapter | None = None,
         timeout_seconds: int = 120,
+        live_execution_enabled: bool = False,
     ):
         self.gate = gate or LiveHermesGenerationGate()
-        self.adapter = adapter or DryRunLiveHermesAdapter()
+        self.adapter = adapter or LiveHermesCommandAdapter(
+            live_execution_enabled=live_execution_enabled
+        )
         self.timeout_seconds = timeout_seconds
+        self.live_execution_enabled = live_execution_enabled
 
     def generate_stage(self, request: StageGenerationRequest) -> ProductWizardArtifact:
         if request.mode != self.mode:
@@ -184,6 +298,7 @@ class LiveHermesGenerationService:
         adapter_request = _live_hermes_adapter_request(
             prompt_contract,
             timeout_seconds=self.timeout_seconds,
+            live_execution_enabled=self.live_execution_enabled,
         )
         raw_result = self.adapter.execute(adapter_request)
         parsed_result = _parse_live_hermes_adapter_result(
@@ -207,6 +322,7 @@ def _live_hermes_adapter_request(
     prompt_contract: Mapping[str, Any],
     *,
     timeout_seconds: int,
+    live_execution_enabled: bool,
 ) -> LiveHermesAdapterRequest:
     stage_id = str(prompt_contract["stage"])
     owner_agent_id = str(prompt_contract["owner_agent_id"])
@@ -223,10 +339,15 @@ def _live_hermes_adapter_request(
         owner_agent_id,
         "--stage",
         stage_id,
-        "--dry-run",
         "--output",
         "product-wizard-artifact-json",
     )
+    if not live_execution_enabled:
+        command_preview = (
+            *command_preview[:6],
+            "--dry-run",
+            *command_preview[6:],
+        )
     return LiveHermesAdapterRequest(
         stage_id=stage_id,
         owner_agent_id=owner_agent_id,
@@ -235,6 +356,7 @@ def _live_hermes_adapter_request(
         prompt_contract=prompt_contract,
         command_preview=command_preview,
         timeout_seconds=timeout_seconds,
+        external_execution_enabled=live_execution_enabled,
     )
 
 
@@ -255,10 +377,10 @@ def _parse_live_hermes_adapter_result(
     try:
         payload = json.loads(raw_result.stdout)
     except json.JSONDecodeError as exc:
-        raise ValueError("Live Hermes dry-run adapter returned invalid JSON output.") from exc
-    if payload.get("status") != LIVE_HERMES_DRY_RUN_STATUS:
+        raise ValueError("Live Hermes adapter returned invalid JSON output.") from exc
+    if payload.get("status") not in {LIVE_HERMES_DRY_RUN_STATUS, LIVE_HERMES_LIVE_STATUS}:
         raise ValueError(
-            "Live Hermes dry-run adapter returned unexpected status: "
+            "Live Hermes adapter returned unexpected status: "
             + str(payload.get("status", "missing"))
         )
 
@@ -282,9 +404,11 @@ def _parse_live_hermes_adapter_result(
             "name": "product_wizard_artifact_v1",
             "status": "validated",
         },
+        "stdout_capture": dict(payload.get("stdout_capture", {})),
+        "stderr_capture": dict(payload.get("stderr_capture", {})),
         "captured_error": "",
     }
-    markdown_appendix = _live_hermes_dry_run_appendix(metadata)
+    markdown_appendix = _live_hermes_adapter_appendix(metadata)
     return ParsedLiveHermesAdapterResult(
         metadata=metadata,
         markdown_appendix=markdown_appendix,
@@ -300,23 +424,67 @@ def _safe_adapter_error(message: str) -> str:
     return cleaned[:500]
 
 
-def _live_hermes_dry_run_appendix(metadata: Mapping[str, Any]) -> str:
+def _live_hermes_adapter_appendix(metadata: Mapping[str, Any]) -> str:
     command_preview = " ".join(str(part) for part in metadata["command_preview"])
     prompt_handoff = metadata["prompt_handoff"]
     output_parser = metadata["output_parser"]
+    external_execution = str(metadata["external_execution"])
+    title = (
+        "Live Hermes Runner"
+        if external_execution == "enabled"
+        else "Live Hermes Dry Run"
+    )
+    capture_lines = []
+    if external_execution == "enabled":
+        stdout_capture = metadata.get("stdout_capture", {})
+        stderr_capture = metadata.get("stderr_capture", {})
+        capture_lines = [
+            "- Captured stdout bytes: "
+            f"`{stdout_capture.get('bytes', 0)}` "
+            f"`{stdout_capture.get('sha256', '')}`",
+            "- Captured stderr bytes: "
+            f"`{stderr_capture.get('bytes', 0)}` "
+            f"`{stderr_capture.get('sha256', '')}`",
+        ]
     return "\n".join(
         [
             "",
-            "## Live Hermes Dry Run",
+            f"## {title}",
             "",
-            "- External execution: `disabled`",
+            f"- External execution: `{external_execution}`",
             f"- Adapter: `{metadata['adapter']}`",
             f"- Command preview: `{command_preview}`",
             "- Prompt handoff: "
             f"`{prompt_handoff['contract']}` `{prompt_handoff['sha256']}`",
             f"- Output parser: `{output_parser['name']}` `{output_parser['status']}`",
             f"- Timeout: `{metadata['timeout_seconds']}` seconds",
+            *capture_lines,
             "- Captured error: none",
             "",
         ]
     )
+
+
+def _output_capture(value: str, field: str) -> dict[str, Any]:
+    text = value.strip()
+    preview = text[:500]
+    if text and secret_violations({field: text}):
+        preview = "REDACTED_SECRET_OUTPUT"
+    return {
+        "bytes": len(text.encode("utf-8")),
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "preview": preview,
+        "redacted": preview == "REDACTED_SECRET_OUTPUT",
+    }
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return int((time.monotonic() - started_at) * 1000)
+
+
+def _process_output_to_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    return value.strip()
