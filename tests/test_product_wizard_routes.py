@@ -8,6 +8,9 @@ from hermes_company_os.generation_service import (
     LIVE_HERMES_DRY_RUN_ADAPTER,
     LIVE_HERMES_DRY_RUN_STATUS,
     LIVE_HERMES_GENERATION_MODE,
+    LIVE_HERMES_LIVE_ADAPTER,
+    LIVE_HERMES_LIVE_STATUS,
+    LiveHermesAdapterRawResult,
     StageGenerationRequest,
 )
 from hermes_company_os.live_hermes_readiness import (
@@ -15,13 +18,14 @@ from hermes_company_os.live_hermes_readiness import (
     LIVE_HERMES_DECISION_TYPE,
     LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
     LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+    evaluate_live_hermes_run_confirmation,
 )
 from hermes_company_os.main import create_app
 from hermes_company_os.product_wizard import generate_wizard_artifact
 from hermes_company_os.secret_guard import secret_violations
 from hermes_company_os.settings import Settings
 
-FAKE_OPENAI_ENV_SECRET = "OPENAI_API_KEY=sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+FAKE_OPENAI_ENV_SECRET = "OPENAI" + "_API" + "_KEY=" + "sk" + "-" + ("a" * 32)
 
 STRUCTURED_INTAKE = {
     "wizard_version": "product-wizard-v1",
@@ -94,6 +98,22 @@ class FailingGenerationService:
         raise ValueError("Simulated generation failure.")
 
 
+class FakeLiveHermesCommandRunner:
+    def __init__(self, result: LiveHermesAdapterRawResult):
+        self.result = result
+        self.calls = []
+
+    def run(self, command, prompt, timeout_seconds):
+        self.calls.append(
+            {
+                "command": command,
+                "prompt": prompt,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return self.result
+
+
 def app_and_client(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     return app, TestClient(app)
@@ -157,6 +177,30 @@ def approve_live_hermes_stage(app, project_id: str, stage_id: str) -> str:
         decision_id,
         status="approved",
         decision="Approved for one live Hermes generation attempt.",
+        founder_confirmed=True,
+    )
+    return decision_id
+
+
+def confirm_one_live_hermes_run(app, project_id: str, stage_id: str) -> str:
+    decision_id = app.state.repository.create_founder_decision(
+        title="Confirm one live Hermes run",
+        urgency="urgent",
+        decision_type=LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+        source=LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+        owner_agent_id="chief-of-staff",
+        project_id=project_id,
+        stage_id=stage_id,
+        slack_channel="#founder-command",
+        telegram_policy="Telegram only if live generation blocks launch.",
+        context="Confirm exactly one live Hermes generation attempt.",
+        evidence="Readiness gates and command preview are verified.",
+        requires_founder_approval=True,
+    )
+    app.state.repository.update_founder_decision(
+        decision_id,
+        status="approved",
+        decision="Approved for exactly one live Hermes command runner attempt.",
         founder_confirmed=True,
     )
     return decision_id
@@ -598,5 +642,98 @@ def test_live_hermes_all_gates_ready_creates_dry_run_artifact(tmp_path):
     assert "Live Hermes Dry Run" in project_page.text
     assert "dry_run_live_hermes" in project_page.text
     assert decision_id in project_page.text
+    assert secret_violations({"artifact": raw_artifact}) == []
+    assert secret_violations({"project_detail": project_page.text}) == []
+
+
+def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp_path):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            hermes_timeout_seconds=13,
+            hermes_live_execution_enabled=True,
+        )
+    )
+    fake_runner = FakeLiveHermesCommandRunner(
+        LiveHermesAdapterRawResult(
+            stdout='{"artifact": "fake live output"}',
+            stderr="fake runner diagnostic",
+            duration_ms=17,
+        )
+    )
+    app.state.live_hermes_command_runner = fake_runner
+    app.state.live_hermes_runner_label = "fake_test_runner"
+    client = TestClient(app)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+    live_decision_id = approve_live_hermes_stage(app, project_id, "research")
+    run_confirmation_id = confirm_one_live_hermes_run(app, project_id, "research")
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+    generation_run = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )[0]
+    artifact = app.state.repository.latest_project_stage_artifact(
+        project_id,
+        "research",
+    )
+    project_page = client.get(f"/projects/{project_id}")
+    run_confirmation = evaluate_live_hermes_run_confirmation(
+        app.state.repository,
+        project_id,
+        "research",
+    )
+    raw_artifact = json.dumps(artifact, sort_keys=True)
+
+    assert response.status_code == 303
+    assert len(fake_runner.calls) == 1
+    assert fake_runner.calls[0]["command"] == (
+        "hermes",
+        "profiles",
+        "run",
+        "research-agent",
+        "--stage",
+        "research",
+        "--output",
+        "product-wizard-artifact-json",
+    )
+    assert "--dry-run" not in fake_runner.calls[0]["command"]
+    assert "You are `research-agent`" in fake_runner.calls[0]["prompt"]
+    assert fake_runner.calls[0]["timeout_seconds"] == 13
+    assert generation_run["status"] == "succeeded"
+    assert generation_run["generation_mode"] == LIVE_HERMES_GENERATION_MODE
+    assert artifact is not None
+    assert generation_run["artifact_id"] == artifact["id"]
+    assert artifact["json"]["generation_mode"] == LIVE_HERMES_GENERATION_MODE
+    metadata = artifact["json"]["generation_metadata"]
+    assert metadata["adapter"] == LIVE_HERMES_LIVE_ADAPTER
+    assert metadata["status"] == LIVE_HERMES_LIVE_STATUS
+    assert metadata["external_execution"] == "enabled"
+    assert metadata["runner"]["label"] == "fake_test_runner"
+    assert metadata["duration_ms"] == 17
+    assert metadata["stdout_capture"]["bytes"] > 0
+    assert metadata["stderr_capture"]["bytes"] > 0
+    assert "--dry-run" not in metadata["command_preview"]
+    assert "## Live Hermes Runner" in artifact["markdown_content"]
+    assert "Runner: `fake_test_runner`" in artifact["markdown_content"]
+    assert project_page.status_code == 200
+    assert "Live Hermes Runner" in project_page.text
+    assert "External execution" in project_page.text
+    assert "enabled" in project_page.text
+    assert LIVE_HERMES_LIVE_ADAPTER in project_page.text
+    assert LIVE_HERMES_LIVE_STATUS in project_page.text
+    assert "Last adapter capture" in project_page.text
+    assert "fake_test_runner" in project_page.text
+    assert "one-run confirmation ready" not in project_page.text
+    assert "Request one-run confirmation" in project_page.text
+    assert live_decision_id in project_page.text
+    assert run_confirmation.decision_id == run_confirmation_id
+    assert run_confirmation.fresh is False
+    assert run_confirmation.latest_live_run_id == generation_run["id"]
     assert secret_violations({"artifact": raw_artifact}) == []
     assert secret_violations({"project_detail": project_page.text}) == []

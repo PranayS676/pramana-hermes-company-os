@@ -69,6 +69,7 @@
 {% set live_operator_last_run = live_operator.last_run|default({}, true) %}
 {% set live_operator_stdout_capture = live_operator_last_run.stdout_capture|default({}, true) %}
 {% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
+{% set live_operator_last_runner = live_operator_last_run.runner|default({}, true) %}
 {% set live_run_confirmation = live_operator.run_confirmation|default({}, true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
@@ -430,6 +431,10 @@
                 <div>
                   <span>External execution</span>
                   <strong>{{ live_operator_last_run.external_execution }}</strong>
+                </div>
+                <div>
+                  <span>Runner</span>
+                  <strong>{{ live_operator_last_runner.label|default("not recorded", true) }}</strong>
                 </div>
                 <div>
                   <span>Last command</span>

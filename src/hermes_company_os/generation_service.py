@@ -188,9 +188,11 @@ class LiveHermesCommandAdapter:
         *,
         live_execution_enabled: bool = False,
         runner: HermesCommandRunner | None = None,
+        runner_label: str = "subprocess",
     ):
         self.live_execution_enabled = live_execution_enabled
         self.runner = runner or SubprocessHermesCommandRunner()
+        self.runner_label = runner_label
         self.dry_run_adapter = DryRunLiveHermesAdapter()
 
     def execute(self, request: LiveHermesAdapterRequest) -> LiveHermesAdapterRawResult:
@@ -225,6 +227,9 @@ class LiveHermesCommandAdapter:
             },
             "stdout_capture": _output_capture(raw_result.stdout, "stdout"),
             "stderr_capture": _output_capture(raw_result.stderr, "stderr"),
+            "runner": {
+                "label": self.runner_label,
+            },
         }
         return LiveHermesAdapterRawResult(
             stdout=json.dumps(payload, sort_keys=True),
@@ -436,6 +441,10 @@ def _parse_live_hermes_adapter_result(
             + str(payload.get("status", "missing"))
         )
 
+    runner = payload.get("runner")
+    if not isinstance(runner, dict):
+        runner = {}
+
     metadata = {
         "adapter": str(payload.get("adapter", LIVE_HERMES_DRY_RUN_ADAPTER)),
         "status": str(payload["status"]),
@@ -458,6 +467,7 @@ def _parse_live_hermes_adapter_result(
         },
         "stdout_capture": dict(payload.get("stdout_capture", {})),
         "stderr_capture": dict(payload.get("stderr_capture", {})),
+        "runner": dict(runner),
         "captured_error": "",
     }
     markdown_appendix = _live_hermes_adapter_appendix(metadata)
@@ -491,6 +501,8 @@ def _live_hermes_adapter_appendix(metadata: Mapping[str, Any]) -> str:
         stdout_capture = metadata.get("stdout_capture", {})
         stderr_capture = metadata.get("stderr_capture", {})
         capture_lines = [
+            "- Runner: "
+            f"`{metadata.get('runner', {}).get('label', 'not recorded')}`",
             "- Captured stdout bytes: "
             f"`{stdout_capture.get('bytes', 0)}` "
             f"`{stdout_capture.get('sha256', '')}`",

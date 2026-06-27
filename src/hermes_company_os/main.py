@@ -98,6 +98,7 @@ from hermes_company_os.generation_service import (
     LIVE_HERMES_GENERATION_MODE,
     LOCAL_DEMO_GENERATION_MODE,
     GenerationMode,
+    LiveHermesCommandAdapter,
     LiveHermesGenerationService,
     LocalDemoGenerationService,
     StageGenerationRequest,
@@ -627,6 +628,9 @@ def live_hermes_operator_console(
         stdout_capture = {}
     if not isinstance(stderr_capture, dict):
         stderr_capture = {}
+    runner = generation_metadata.get("runner")
+    if not isinstance(runner, dict):
+        runner = {}
 
     return {
         "execution_enabled": settings.hermes_live_execution_enabled,
@@ -734,6 +738,7 @@ def live_hermes_operator_console(
             "output_parser": generation_metadata.get("output_parser", {}),
             "stdout_capture": stdout_capture,
             "stderr_capture": stderr_capture,
+            "runner": runner,
         },
     }
 
@@ -757,8 +762,21 @@ def product_wizard_generation_service(
         return request.app.state.generation_service
     if mode == LIVE_HERMES_GENERATION_MODE:
         settings: Settings = request.app.state.settings
+        injected_runner = getattr(request.app.state, "live_hermes_command_runner", None)
+        adapter = None
+        if injected_runner is not None:
+            adapter = LiveHermesCommandAdapter(
+                live_execution_enabled=settings.hermes_live_execution_enabled,
+                runner=injected_runner,
+                runner_label=getattr(
+                    request.app.state,
+                    "live_hermes_runner_label",
+                    "injected_runner",
+                ),
+            )
         return LiveHermesGenerationService(
             live_gate,
+            adapter=adapter,
             timeout_seconds=settings.hermes_timeout_seconds,
             live_execution_enabled=settings.hermes_live_execution_enabled,
         )
@@ -976,6 +994,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         timeout_seconds=resolved_settings.hermes_timeout_seconds,
         live_execution_enabled=resolved_settings.hermes_live_execution_enabled,
     )
+    app.state.live_hermes_command_runner = None
+    app.state.live_hermes_runner_label = "subprocess"
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -4527,12 +4547,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             approved_sources=source_artifacts,
             mode=resolved_generation_mode,
         )
-        generation_run_id = repository.create_generation_run(
-            project_id=project_id,
-            stage_id=resolved_stage_id,
-            generation_mode=generation_request.mode,
-            source_artifact_ids=[source["id"] for source in source_artifacts],
-        )
         live_hermes_readiness = (
             evaluate_live_hermes_readiness(
                 repository,
@@ -4550,6 +4564,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
             else None
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
         )
         generation_service = product_wizard_generation_service(
             request,
@@ -4632,12 +4652,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             approved_sources=source_artifacts,
             mode=resolved_generation_mode,
         )
-        generation_run_id = repository.create_generation_run(
-            project_id=project_id,
-            stage_id=resolved_stage_id,
-            generation_mode=generation_request.mode,
-            source_artifact_ids=[source["id"] for source in source_artifacts],
-        )
         live_hermes_readiness = (
             evaluate_live_hermes_readiness(
                 repository,
@@ -4655,6 +4669,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
             else None
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
         )
         generation_service = product_wizard_generation_service(
             request,

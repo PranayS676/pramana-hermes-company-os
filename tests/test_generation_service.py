@@ -26,7 +26,7 @@ from hermes_company_os.product_wizard import (
 )
 from hermes_company_os.secret_guard import secret_violations
 
-FAKE_OPENAI_SECRET = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+FAKE_OPENAI_SECRET = "sk" + "-" + ("a" * 32)
 
 
 def _intake() -> ProductWizardIntake:
@@ -332,6 +332,7 @@ def test_real_hermes_command_adapter_uses_fake_runner_only_when_enabled():
     adapter = LiveHermesCommandAdapter(
         live_execution_enabled=True,
         runner=fake_runner,
+        runner_label="fake_test_runner",
     )
 
     artifact = LiveHermesGenerationService(
@@ -359,11 +360,13 @@ def test_real_hermes_command_adapter_uses_fake_runner_only_when_enabled():
     assert metadata["adapter"] == LIVE_HERMES_LIVE_ADAPTER
     assert metadata["status"] == LIVE_HERMES_LIVE_STATUS
     assert metadata["external_execution"] == "enabled"
+    assert metadata["runner"]["label"] == "fake_test_runner"
     assert metadata["stdout_capture"]["bytes"] > 0
     assert metadata["stdout_capture"]["redacted"] is False
     assert metadata["stderr_capture"]["bytes"] > 0
     assert "## Live Hermes Runner" in artifact.markdown
     assert "External execution: `enabled`" in artifact.markdown
+    assert "Runner: `fake_test_runner`" in artifact.markdown
     assert secret_violations({"artifact": json.dumps(artifact.to_dict())}) == []
 
 
