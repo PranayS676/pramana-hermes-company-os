@@ -318,6 +318,44 @@ class LiveHermesGenerationService:
         )
 
 
+def live_hermes_operator_preview(
+    stage_id: WizardStage | str,
+    intake: ProductWizardIntake | Mapping[str, Any],
+    approved_sources: ApprovedSourceInput = (),
+    *,
+    timeout_seconds: int = 120,
+    live_execution_enabled: bool = False,
+) -> dict[str, Any]:
+    prompt_contract = build_wizard_prompt_contract(
+        stage_id,
+        intake,
+        approved_sources,
+    )
+    adapter_request = _live_hermes_adapter_request(
+        prompt_contract,
+        timeout_seconds=timeout_seconds,
+        live_execution_enabled=live_execution_enabled,
+    )
+    return {
+        "stage_id": adapter_request.stage_id,
+        "owner_agent_id": adapter_request.owner_agent_id,
+        "supporting_agent_ids": list(adapter_request.supporting_agent_ids),
+        "source_artifact_ids": list(adapter_request.source_artifact_ids),
+        "command_preview": list(adapter_request.command_preview),
+        "command_preview_text": " ".join(adapter_request.command_preview),
+        "timeout_seconds": adapter_request.timeout_seconds,
+        "external_execution_enabled": adapter_request.external_execution_enabled,
+        "prompt_handoff": {
+            "contract": "product_wizard_prompt_contract_v1",
+            "sha256": adapter_request.prompt_sha256,
+        },
+        "output_parser": {
+            "name": "product_wizard_artifact_v1",
+            "status": "validated",
+        },
+    }
+
+
 def _live_hermes_adapter_request(
     prompt_contract: Mapping[str, Any],
     *,

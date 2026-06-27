@@ -101,6 +101,7 @@ from hermes_company_os.generation_service import (
     LiveHermesGenerationService,
     LocalDemoGenerationService,
     StageGenerationRequest,
+    live_hermes_operator_preview,
     normalize_generation_mode,
 )
 from hermes_company_os.hermes_client import HermesClient
@@ -574,6 +575,130 @@ def generation_run_view(run: dict | None) -> dict | None:
         "source_artifact_ids": (
             source_artifact_ids if isinstance(source_artifact_ids, list) else []
         ),
+    }
+
+
+def live_hermes_operator_console(
+    *,
+    settings: Settings,
+    repository: CompanyRepository,
+    project: dict,
+    stage_id: str,
+    live_readiness: dict | None,
+    latest_artifact: dict | None,
+) -> dict:
+    preview = live_hermes_operator_preview(
+        stage_id,
+        product_wizard_intake_from_project(project),
+        approved_source_artifacts(repository, project["id"]),
+        timeout_seconds=settings.hermes_timeout_seconds,
+        live_execution_enabled=settings.hermes_live_execution_enabled,
+    )
+    generation_metadata = {}
+    if latest_artifact:
+        artifact_metadata = latest_artifact.get("metadata") or latest_artifact.get("json", {})
+        raw_generation_metadata = artifact_metadata.get("generation_metadata")
+        if isinstance(raw_generation_metadata, dict):
+            generation_metadata = raw_generation_metadata
+
+    live_ready = bool(live_readiness and live_readiness.get("ready"))
+    founder_approved = bool(live_readiness and live_readiness.get("founder_approved"))
+    last_adapter = str(generation_metadata.get("adapter", ""))
+    last_status = str(generation_metadata.get("status", ""))
+    last_external_execution = str(generation_metadata.get("external_execution", ""))
+    last_command_preview = generation_metadata.get("command_preview")
+    if not isinstance(last_command_preview, list):
+        last_command_preview = []
+    stdout_capture = generation_metadata.get("stdout_capture")
+    stderr_capture = generation_metadata.get("stderr_capture")
+    if not isinstance(stdout_capture, dict):
+        stdout_capture = {}
+    if not isinstance(stderr_capture, dict):
+        stderr_capture = {}
+
+    return {
+        "execution_enabled": settings.hermes_live_execution_enabled,
+        "execution_status": (
+            "enabled" if settings.hermes_live_execution_enabled else "disabled"
+        ),
+        "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
+        "timeout_seconds": settings.hermes_timeout_seconds,
+        "command_preview": preview,
+        "live_run_possible": settings.hermes_live_execution_enabled and live_ready,
+        "warning": (
+            "Real Hermes command execution is enabled for this process."
+            if settings.hermes_live_execution_enabled
+            else (
+                "Real Hermes command execution is disabled for this process; "
+                "live mode will stay on the dry-run runner boundary."
+            )
+        ),
+        "checklist": [
+            {
+                "id": "execution_flag",
+                "label": "Execution flag",
+                "status": (
+                    "ready" if settings.hermes_live_execution_enabled else "manual"
+                ),
+                "detail": (
+                    "HERMES_LIVE_EXECUTION_ENABLED is true."
+                    if settings.hermes_live_execution_enabled
+                    else "Set HERMES_LIVE_EXECUTION_ENABLED=true outside the dashboard."
+                ),
+            },
+            {
+                "id": "readiness_gates",
+                "label": "Readiness gates",
+                "status": "ready" if live_ready else "blocked",
+                "detail": (
+                    "Founder and runtime readiness gates are satisfied."
+                    if live_ready
+                    else "Complete live Hermes readiness before a real runner attempt."
+                ),
+            },
+            {
+                "id": "founder_approval",
+                "label": "Founder approval",
+                "status": "ready" if founder_approved else "needed",
+                "detail": (
+                    "Founder approval is recorded for this stage."
+                    if founder_approved
+                    else "Founder approval is required before live Hermes execution."
+                ),
+            },
+            {
+                "id": "dry_run_evidence",
+                "label": "Dry-run evidence",
+                "status": "ready" if last_adapter else "needed",
+                "detail": (
+                    f"Last adapter evidence: {last_adapter} / {last_status}."
+                    if last_adapter
+                    else "Run the dry-run adapter and review the generated artifact first."
+                ),
+            },
+            {
+                "id": "capture_boundary",
+                "label": "Capture boundary",
+                "status": "ready",
+                "detail": (
+                    "Runner output stores hashes and byte counts; "
+                    "secret-shaped errors are redacted."
+                ),
+            },
+        ],
+        "last_run": {
+            "available": bool(generation_metadata),
+            "adapter": last_adapter,
+            "status": last_status,
+            "external_execution": last_external_execution,
+            "duration_ms": generation_metadata.get("duration_ms", ""),
+            "command_preview": last_command_preview,
+            "command_preview_text": " ".join(str(part) for part in last_command_preview),
+            "prompt_handoff": generation_metadata.get("prompt_handoff", {}),
+            "output_parser": generation_metadata.get("output_parser", {}),
+            "stdout_capture": stdout_capture,
+            "stderr_capture": stderr_capture,
+        },
     }
 
 
@@ -4270,6 +4395,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if review_stage
             else None
         )
+        live_hermes_operator = (
+            live_hermes_operator_console(
+                settings=request.app.state.settings,
+                repository=repository,
+                project=project,
+                stage_id=review_stage["stage_id"],
+                live_readiness=live_hermes_readiness,
+                latest_artifact=latest_artifact,
+            )
+            if review_stage
+            else None
+        )
         if latest_artifact:
             latest_artifact["selected"] = bool(selected_artifact)
             latest_artifact["generation_run"] = latest_generation_run
@@ -4290,6 +4427,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "latest_artifact": latest_artifact,
                 "latest_generation_run": latest_generation_run,
                 "live_hermes_readiness": live_hermes_readiness,
+                "live_hermes_operator": live_hermes_operator,
                 "stage_artifacts": stage_artifacts_view(
                     repository,
                     project_id,

@@ -61,6 +61,14 @@
 {% set generation_run_sources = generation_run.source_artifact_ids|default([], true) %}
 {% set live_readiness = live_hermes_readiness|default({}, true) %}
 {% set live_readiness_checks = live_readiness.checks|default([], true) %}
+{% set live_operator = live_hermes_operator|default({}, true) %}
+{% set live_operator_preview = live_operator.command_preview|default({}, true) %}
+{% set live_operator_prompt_handoff = live_operator_preview.prompt_handoff|default({}, true) %}
+{% set live_operator_output_parser = live_operator_preview.output_parser|default({}, true) %}
+{% set live_operator_checks = live_operator.checklist|default([], true) %}
+{% set live_operator_last_run = live_operator.last_run|default({}, true) %}
+{% set live_operator_stdout_capture = live_operator_last_run.stdout_capture|default({}, true) %}
+{% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
@@ -340,6 +348,87 @@
               </a>
               {% endif %}
             </div>
+          </section>
+
+          <section class="panel live-operator-panel" id="live-hermes-operator">
+            <div class="panel-header">
+              <div>
+                <h2>Live execution operator</h2>
+                <p class="panel-kicker">Command preview, config gate, and capture evidence before any real runner attempt.</p>
+              </div>
+              <span class="status-pill {% if live_operator.execution_enabled %}urgent{% else %}manual{% endif %}">
+                execution {{ live_operator.execution_status|default("disabled", true) }}
+              </span>
+            </div>
+            <div class="operator-warning {% if live_operator.execution_enabled %}operator-warning-enabled{% endif %}">
+              <strong>{{ live_operator.env_var|default("HERMES_LIVE_EXECUTION_ENABLED", true) }}</strong>
+              <span>{{ live_operator.warning|default("Real Hermes command execution is disabled for this process.", true) }}</span>
+            </div>
+            <div class="operator-command-grid">
+              <div>
+                <span>Command preview</span>
+                <code>{{ live_operator_preview.command_preview_text|default("No command preview available.", true) }}</code>
+              </div>
+              <div>
+                <span>Prompt handoff</span>
+                <code>{{ live_operator_prompt_handoff.contract|default("product_wizard_prompt_contract_v1", true) }} {{ live_operator_prompt_handoff.sha256|default("pending", true) }}</code>
+              </div>
+              <div>
+                <span>Output parser</span>
+                <code>{{ live_operator_output_parser.name|default("product_wizard_artifact_v1", true) }} {{ live_operator_output_parser.status|default("pending", true) }}</code>
+              </div>
+              <div>
+                <span>Timeout</span>
+                <strong>{{ live_operator.timeout_seconds|default(live_operator_preview.timeout_seconds|default("not configured", true), true) }} seconds</strong>
+              </div>
+            </div>
+            <div class="quality-check-list" aria-label="Live execution operator checklist">
+              <h3>Operator checklist</h3>
+              {% for check in live_operator_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.detail }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No live execution operator checklist is available.</p>
+              {% endfor %}
+            </div>
+            {% if live_operator_last_run.available %}
+            <div class="operator-last-run">
+              <h3>Last adapter capture</h3>
+              <div class="operator-command-grid">
+                <div>
+                  <span>Adapter</span>
+                  <strong>{{ live_operator_last_run.adapter }} / {{ live_operator_last_run.status }}</strong>
+                </div>
+                <div>
+                  <span>External execution</span>
+                  <strong>{{ live_operator_last_run.external_execution }}</strong>
+                </div>
+                <div>
+                  <span>Last command</span>
+                  <code>{{ live_operator_last_run.command_preview_text|default("No command recorded.", true) }}</code>
+                </div>
+                <div>
+                  <span>Duration</span>
+                  <strong>{{ live_operator_last_run.duration_ms|default(0, true) }} ms</strong>
+                </div>
+                <div>
+                  <span>Stdout capture</span>
+                  <strong>{{ live_operator_stdout_capture.bytes|default(0, true) }} bytes {{ live_operator_stdout_capture.sha256|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Stderr capture</span>
+                  <strong>{{ live_operator_stderr_capture.bytes|default(0, true) }} bytes {{ live_operator_stderr_capture.sha256|default("", true) }}</strong>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <p class="empty-state">No adapter capture exists yet. Generate a dry-run artifact before enabling real execution.</p>
+            {% endif %}
           </section>
 
           <section class="panel review-contract-panel">

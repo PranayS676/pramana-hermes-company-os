@@ -280,6 +280,15 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert detail.status_code == 200
     assert "Artifact review contract" in detail.text
     assert "Live Hermes readiness" in detail.text
+    assert "Live execution operator" in detail.text
+    assert "HERMES_LIVE_EXECUTION_ENABLED" in detail.text
+    assert "execution disabled" in detail.text
+    assert (
+        "hermes profiles run research-agent --stage research --dry-run --output "
+        "product-wizard-artifact-json"
+    ) in detail.text
+    assert "Operator checklist" in detail.text
+    assert "No adapter capture exists yet" in detail.text
     assert "Profile installation" in detail.text
     assert "Founder live-mode approval" in detail.text
     assert "Request founder approval" in detail.text
@@ -298,6 +307,36 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "Codex Execution" in detail.text
     assert "approved code plan, approved acceptance package" in detail.text
     assert artifact["id"] in detail.text
+    assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_live_operator_console_shows_enabled_config_without_running_command(tmp_path):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            hermes_timeout_seconds=42,
+            hermes_live_execution_enabled=True,
+        )
+    )
+    client = TestClient(app)
+    project_id, _ = create_structured_project(client)
+
+    detail = client.get(f"/projects/{project_id}")
+
+    assert detail.status_code == 200
+    assert "Live execution operator" in detail.text
+    assert "execution enabled" in detail.text
+    assert "Real Hermes command execution is enabled for this process." in detail.text
+    assert (
+        "hermes profiles run research-agent --stage research --output "
+        "product-wizard-artifact-json"
+    ) in detail.text
+    assert (
+        "hermes profiles run research-agent --stage research --dry-run --output"
+        not in detail.text
+    )
+    assert "42 seconds" in detail.text
+    assert "Complete live Hermes readiness before a real runner attempt." in detail.text
     assert secret_violations({"project_detail": detail.text}) == []
 
 
@@ -470,6 +509,11 @@ def test_live_hermes_all_gates_ready_creates_dry_run_artifact(tmp_path):
     ]
     assert "## Live Hermes Dry Run" in artifact["markdown_content"]
     assert "Live Hermes gates are satisfied" in project_page.text
+    assert "Last adapter capture" in project_page.text
+    assert (
+        "hermes profiles run research-agent --stage research --dry-run --output "
+        "product-wizard-artifact-json"
+    ) in project_page.text
     assert "Live Hermes Dry Run" in project_page.text
     assert "dry_run_live_hermes" in project_page.text
     assert decision_id in project_page.text

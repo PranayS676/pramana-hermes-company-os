@@ -17,6 +17,7 @@ from hermes_company_os.generation_service import (
     LiveHermesGenerationService,
     LocalDemoGenerationService,
     StageGenerationRequest,
+    live_hermes_operator_preview,
     normalize_generation_mode,
 )
 from hermes_company_os.product_wizard import (
@@ -122,6 +123,48 @@ def test_generation_mode_normalization_accepts_only_supported_modes():
 
     with pytest.raises(ValueError, match="Unsupported Product Wizard generation mode"):
         normalize_generation_mode("live_hermes_draft")
+
+
+def test_live_hermes_operator_preview_reflects_execution_flag():
+    disabled_preview = live_hermes_operator_preview(
+        "research",
+        _intake(),
+        timeout_seconds=19,
+        live_execution_enabled=False,
+    )
+    enabled_preview = live_hermes_operator_preview(
+        "research",
+        _intake(),
+        timeout_seconds=19,
+        live_execution_enabled=True,
+    )
+
+    assert disabled_preview["command_preview"] == [
+        "hermes",
+        "profiles",
+        "run",
+        "research-agent",
+        "--stage",
+        "research",
+        "--dry-run",
+        "--output",
+        "product-wizard-artifact-json",
+    ]
+    assert enabled_preview["command_preview"] == [
+        "hermes",
+        "profiles",
+        "run",
+        "research-agent",
+        "--stage",
+        "research",
+        "--output",
+        "product-wizard-artifact-json",
+    ]
+    assert disabled_preview["timeout_seconds"] == 19
+    assert enabled_preview["external_execution_enabled"] is True
+    assert disabled_preview["prompt_handoff"]["sha256"] == (
+        enabled_preview["prompt_handoff"]["sha256"]
+    )
 
 
 def test_live_hermes_generation_service_fails_closed_until_gates_are_ready():
