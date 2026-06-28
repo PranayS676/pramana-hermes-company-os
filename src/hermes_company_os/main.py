@@ -259,8 +259,10 @@ from hermes_company_os.project_memory import (
     project_memory_package,
 )
 from hermes_company_os.project_operating_loop import (
+    consume_external_dispatch_preview_approval,
     project_external_dispatch_preview_package,
     project_operating_loop_package,
+    request_external_dispatch_approval,
 )
 from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
@@ -4811,6 +4813,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return project_external_dispatch_preview_package(repository, project_id)
+
+    @app.post("/projects/{project_id}/external-dispatch-approval")
+    def request_project_external_dispatch_approval(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            request_external_dispatch_approval(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#external-dispatch-preview",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/external-dispatch-audit")
+    def consume_project_external_dispatch_audit(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            consume_external_dispatch_preview_approval(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#external-dispatch-preview",
+            status_code=303,
+        )
 
     @app.get("/projects/{project_id}/codex-execution.json")
     def project_codex_execution_json(request: Request, project_id: str) -> dict:

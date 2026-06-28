@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
 
+from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 PROJECT_OPERATING_LOOP_SCHEMA = "project_operating_loop_v1"
 PROJECT_EXTERNAL_DISPATCH_PREVIEW_SCHEMA = "project_external_dispatch_preview_v1"
+PROJECT_EXTERNAL_DISPATCH_AUDIT_SCHEMA = "project_external_dispatch_audit_v1"
+EXTERNAL_DISPATCH_DECISION_SOURCE = "external_dispatch_preview"
+EXTERNAL_DISPATCH_DECISION_TYPE = "external_action_approval"
+EXTERNAL_DISPATCH_STAGE_ID = "external_operating_loop"
+EXTERNAL_DISPATCH_AUDIT_EVENT_TYPE = "external_dispatch_preview_audit_consumed"
 
 
 def project_operating_loop_package(repository, project_id: str) -> dict:
@@ -65,6 +72,8 @@ def project_external_dispatch_preview_package(repository, project_id: str) -> di
     operating_loop = project_operating_loop_package(repository, project_id)
     workflow_items = repository.list_project_workflow_items(project_id)
     operating_loop_ready = bool(operating_loop["aggregate"]["ready"])
+    approval = external_dispatch_approval(repository, project_id)
+    latest_audit = latest_external_dispatch_audit(repository, project_id)
     items = [
         _slack_dispatch_preview(operating_loop),
         _telegram_dispatch_preview(operating_loop),
@@ -96,6 +105,16 @@ def project_external_dispatch_preview_package(repository, project_id: str) -> di
             "blocked_item_count": len(blocked_items),
         },
         "items": items,
+        "approval": _dispatch_approval_state(
+            approval=approval,
+            ready=operating_loop_ready,
+            latest_audit=latest_audit,
+        ),
+        "audit": _dispatch_audit_state(
+            approval=approval,
+            ready=operating_loop_ready,
+            latest_audit=latest_audit,
+        ),
         "next_actions": _dispatch_preview_next_actions(
             operating_loop=operating_loop,
             ready=operating_loop_ready,
@@ -106,6 +125,130 @@ def project_external_dispatch_preview_package(repository, project_id: str) -> di
         {"project_external_dispatch_preview": json.dumps(payload, sort_keys=True)}
     )
     return payload
+
+
+def request_external_dispatch_approval(repository, project_id: str) -> str:
+    package = project_external_dispatch_preview_package(repository, project_id)
+    approval = package["approval"]
+    if not approval["request_allowed"]:
+        raise ValueError(approval["blocker"])
+    preview_fingerprint = _fingerprint_json(_preview_snapshot(package))
+    item_count = package["queue"]["item_count"]
+    decision_id = repository.create_founder_decision(
+        title=f"Approve external dispatch preview for {package['project']['name']}",
+        urgency="urgent",
+        decision_type=EXTERNAL_DISPATCH_DECISION_TYPE,
+        source=EXTERNAL_DISPATCH_DECISION_SOURCE,
+        owner_agent_id="chief-of-staff",
+        project_id=project_id,
+        stage_id=EXTERNAL_DISPATCH_STAGE_ID,
+        slack_channel="#founder-command",
+        telegram_policy="Telegram only if dispatch approval blocks active execution.",
+        context=(
+            f"Approve the reviewed external dispatch preview for {package['project']['name']}. "
+            "This approval does not send Slack, Telegram, or Kanban messages."
+        ),
+        evidence=(
+            f"Preview items: {item_count}. Preview SHA256: {preview_fingerprint}. "
+            "External dispatch remains disabled and requires a later live connector gate."
+        ),
+        requires_founder_approval=True,
+    )
+    return decision_id
+
+
+def consume_external_dispatch_preview_approval(repository, project_id: str) -> dict:
+    package = project_external_dispatch_preview_package(repository, project_id)
+    audit_state = package["audit"]
+    if not audit_state["consume_allowed"]:
+        raise ValueError(audit_state["blocker"])
+    decision = repository.get_founder_decision(package["approval"]["id"])
+    if decision is None or decision["status"] != "approved":
+        raise ValueError("Founder approval is required.")
+    audit = _external_dispatch_audit(package=package, decision=decision)
+    event_id = repository.create_audit_event(
+        project_id=project_id,
+        event_type=EXTERNAL_DISPATCH_AUDIT_EVENT_TYPE,
+        status="consumed",
+        actor_agent_id="chief-of-staff",
+        source_table="founder_decisions",
+        source_id=decision["id"],
+        summary=(
+            "External dispatch preview approval consumed into immutable no-send "
+            "audit evidence."
+        ),
+        payload={
+            "audit": audit,
+            "decision_id": decision["id"],
+            "preview_sha256": audit["preview_fingerprint"]["sha256"],
+            "external_dispatch_enabled": False,
+            "real_send_allowed": False,
+        },
+    )
+    events = repository.list_audit_events(
+        project_id=project_id,
+        event_type=EXTERNAL_DISPATCH_AUDIT_EVENT_TYPE,
+        limit=1,
+    )
+    event = events[0] if events else {"id": event_id, "payload": {"audit": audit}}
+    assert_no_secret_values({"external_dispatch_audit": json.dumps(event, sort_keys=True)})
+    return event
+
+
+def external_dispatch_approval(repository, project_id: str) -> dict:
+    decisions = [
+        decision
+        for decision in repository.list_founder_decisions(
+            project_id=project_id,
+            decision_type=EXTERNAL_DISPATCH_DECISION_TYPE,
+        )
+        if decision["source"] == EXTERNAL_DISPATCH_DECISION_SOURCE
+    ]
+    approved = next(
+        (decision for decision in decisions if decision["status"] == "approved"),
+        None,
+    )
+    if approved:
+        return _approval_reference(approved)
+    open_decision = next(
+        (
+            decision
+            for decision in decisions
+            if decision["status"] not in RESOLVED_DECISION_STATUSES
+        ),
+        None,
+    )
+    if open_decision:
+        return _approval_reference(open_decision)
+    return {
+        "id": "",
+        "status": "",
+        "stage_id": "",
+        "artifact_id": "",
+        "request_open": False,
+        "founder_approved": False,
+    }
+
+
+def latest_external_dispatch_audit(repository, project_id: str) -> dict:
+    events = repository.list_audit_events(
+        project_id=project_id,
+        event_type=EXTERNAL_DISPATCH_AUDIT_EVENT_TYPE,
+        limit=1,
+    )
+    if not events:
+        return {}
+    event = events[0]
+    audit = (event.get("payload") or {}).get("audit") or {}
+    return {
+        "event_id": event["id"],
+        "status": event["status"],
+        "schema": audit.get("schema", ""),
+        "preview_fingerprint": audit.get("preview_fingerprint", {}),
+        "approval_consumption": audit.get("approval_consumption", {}),
+        "post_run_review": audit.get("post_run_review", {}),
+        "created_at": event.get("created_at", ""),
+    }
 
 
 def _slack_lane(
@@ -405,3 +548,133 @@ def _preview_status(lane: Mapping) -> str:
     if lane["status"] in {"ready", "linked"}:
         return "ready_for_review"
     return "blocked"
+
+
+def _dispatch_approval_state(
+    *,
+    approval: Mapping,
+    ready: bool,
+    latest_audit: Mapping,
+) -> dict:
+    request_open = bool(approval.get("request_open"))
+    founder_approved = bool(approval.get("founder_approved"))
+    request_allowed = ready and not request_open and not founder_approved and not latest_audit
+    if latest_audit:
+        blocker = "Dispatch preview approval already consumed."
+    elif not ready:
+        blocker = "External operating loop must be ready before dispatch approval."
+    elif request_open:
+        blocker = "Dispatch approval request is already open."
+    elif founder_approved:
+        blocker = "Dispatch approval is approved and ready for audit consumption."
+    else:
+        blocker = ""
+    return {
+        **dict(approval),
+        "request_allowed": request_allowed,
+        "request_open": request_open,
+        "founder_approved": founder_approved,
+        "blocker": blocker,
+    }
+
+
+def _dispatch_audit_state(
+    *,
+    approval: Mapping,
+    ready: bool,
+    latest_audit: Mapping,
+) -> dict:
+    founder_approved = bool(approval.get("founder_approved"))
+    consume_allowed = ready and founder_approved and not latest_audit
+    if latest_audit:
+        blocker = "Dispatch preview approval already consumed."
+    elif not ready:
+        blocker = "External operating loop must be ready before audit consumption."
+    elif not founder_approved:
+        blocker = "Founder approval is required."
+    else:
+        blocker = ""
+    return {
+        "consume_allowed": consume_allowed,
+        "blocker": blocker,
+        "latest": dict(latest_audit),
+        "policy": (
+            "Consuming approval records immutable preview evidence only. It does "
+            "not send Slack, Telegram, or Kanban messages."
+        ),
+    }
+
+
+def _approval_reference(decision: Mapping) -> dict:
+    status = decision["status"]
+    return {
+        "id": decision["id"],
+        "status": status,
+        "stage_id": decision.get("stage_id") or "",
+        "artifact_id": decision.get("artifact_id") or "",
+        "request_open": status not in RESOLVED_DECISION_STATUSES,
+        "founder_approved": status == "approved",
+    }
+
+
+def _external_dispatch_audit(
+    *,
+    package: Mapping,
+    decision: Mapping,
+) -> dict:
+    snapshot = _preview_snapshot(package)
+    item_fingerprints = [
+        {
+            "id": item["id"],
+            "platform": item["platform"],
+            "action": item["action"],
+            "sha256": _fingerprint_json(item),
+            "command_sha256": _fingerprint_text(item["command_preview"]),
+            "dispatch_enabled": bool(item["dispatch_enabled"]),
+            "runs_automatically": bool(item["runs_automatically"]),
+        }
+        for item in package["items"]
+    ]
+    return {
+        "schema": PROJECT_EXTERNAL_DISPATCH_AUDIT_SCHEMA,
+        "immutable": True,
+        "project_id": package["project"]["id"],
+        "preview_fingerprint": {
+            "sha256": _fingerprint_json(snapshot),
+            "schema": package["schema"],
+        },
+        "approval_consumption": {
+            "decision_id": decision["id"],
+            "decision_status": decision["status"],
+            "status": "consumed",
+            "source": decision["source"],
+            "decision_type": decision["decision_type"],
+            "stage_id": decision.get("stage_id") or "",
+        },
+        "item_fingerprints": item_fingerprints,
+        "post_run_review": {
+            "status": "dispatch_preview_audited_no_send",
+            "external_dispatch_enabled": False,
+            "real_send_allowed": False,
+            "next_gate": "separate live connector runner approval",
+        },
+    }
+
+
+def _preview_snapshot(package: Mapping) -> dict:
+    return {
+        "schema": package["schema"],
+        "project": package["project"],
+        "policy": package["policy"],
+        "readiness": package["readiness"],
+        "queue": package["queue"],
+        "items": package["items"],
+    }
+
+
+def _fingerprint_json(value: Mapping | Sequence) -> str:
+    return _fingerprint_text(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def _fingerprint_text(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()

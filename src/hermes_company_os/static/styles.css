@@ -659,6 +659,7 @@ textarea {
 .status-pill.verified,
 .status-pill.linked,
 .status-pill.ready_for_review,
+.status-pill.consumed,
 .readiness-card.ready .status-pill,
 .readiness-card.configured .status-pill {
   background: #d9eee7;

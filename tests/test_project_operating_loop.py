@@ -109,6 +109,14 @@ def lane(payload: dict, lane_id: str) -> dict:
     return next(item for item in payload["lanes"] if item["id"] == lane_id)
 
 
+def external_dispatch_decision(app, project_id: str) -> dict:
+    decisions = app.state.repository.list_founder_decisions(
+        project_id=project_id,
+        decision_type="external_action_approval",
+    )
+    return next(item for item in decisions if item["source"] == "external_dispatch_preview")
+
+
 def test_project_operating_loop_json_defaults_to_safe_locked_state(tmp_path):
     app, client = app_and_client(tmp_path)
     project_id = create_structured_project(client)
@@ -217,6 +225,143 @@ def test_external_dispatch_preview_defaults_to_no_send_locked_state(tmp_path):
     assert secret_violations(
         {
             "dispatch_preview": json.dumps(payload, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_external_dispatch_approval_request_opens_founder_only_decision(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-approval",
+        follow_redirects=False,
+    )
+    package = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    project_page = client.get(f"/projects/{project_id}")
+    decision = external_dispatch_decision(app, project_id)
+
+    assert response.status_code == 303
+    assert decision["decision_type"] == "external_action_approval"
+    assert decision["source"] == "external_dispatch_preview"
+    assert decision["requires_founder_approval"] == 1
+    assert decision["status"] == "needed"
+    assert decision["stage_id"] == "external_operating_loop"
+    assert "Approve external dispatch preview" in decision["title"]
+    assert package["approval"]["id"] == decision["id"]
+    assert package["approval"]["status"] == "needed"
+    assert package["approval"]["request_open"] is True
+    assert package["approval"]["request_allowed"] is False
+    assert package["audit"]["consume_allowed"] is False
+    assert project_page.status_code == 200
+    assert "Open dispatch approval" in project_page.text
+    assert decision["id"] in project_page.text
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(package, sort_keys=True),
+            "decision": json.dumps(decision, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_external_dispatch_audit_requires_approved_founder_decision(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+    client.post(
+        f"/projects/{project_id}/external-dispatch-approval",
+        follow_redirects=False,
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-audit",
+        follow_redirects=False,
+    )
+    package = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    events = app.state.repository.list_audit_events(
+        project_id=project_id,
+        event_type="external_dispatch_preview_audit_consumed",
+    )
+
+    assert response.status_code == 409
+    assert "Founder approval is required" in response.json()["detail"]
+    assert package["audit"]["consume_allowed"] is False
+    assert package["audit"]["blocker"] == "Founder approval is required."
+    assert events == []
+
+
+def test_external_dispatch_audit_consumes_approval_into_immutable_no_send_evidence(
+    tmp_path,
+):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+    client.post(
+        f"/projects/{project_id}/external-dispatch-approval",
+        follow_redirects=False,
+    )
+    decision = external_dispatch_decision(app, project_id)
+    app.state.repository.update_founder_decision(
+        decision["id"],
+        status="approved",
+        decision="Founder approves recording no-send dispatch preview evidence.",
+        founder_confirmed=True,
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-audit",
+        follow_redirects=False,
+    )
+    second_response = client.post(
+        f"/projects/{project_id}/external-dispatch-audit",
+        follow_redirects=False,
+    )
+    package = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    project_page = client.get(f"/projects/{project_id}")
+    events = app.state.repository.list_audit_events(
+        project_id=project_id,
+        event_type="external_dispatch_preview_audit_consumed",
+    )
+    event = events[0]
+    audit = event["payload"]["audit"]
+
+    assert response.status_code == 303
+    assert second_response.status_code == 409
+    assert "already consumed" in second_response.json()["detail"]
+    assert len(events) == 1
+    assert event["status"] == "consumed"
+    assert event["source_table"] == "founder_decisions"
+    assert event["source_id"] == decision["id"]
+    assert audit["schema"] == "project_external_dispatch_audit_v1"
+    assert audit["immutable"] is True
+    assert audit["approval_consumption"]["decision_id"] == decision["id"]
+    assert audit["approval_consumption"]["status"] == "consumed"
+    assert audit["approval_consumption"]["decision_status"] == "approved"
+    assert audit["preview_fingerprint"]["sha256"]
+    assert audit["preview_fingerprint"]["schema"] == "project_external_dispatch_preview_v1"
+    assert audit["item_fingerprints"]
+    assert all(item["dispatch_enabled"] is False for item in audit["item_fingerprints"])
+    assert all(item["runs_automatically"] is False for item in audit["item_fingerprints"])
+    assert audit["post_run_review"]["external_dispatch_enabled"] is False
+    assert audit["post_run_review"]["real_send_allowed"] is False
+    assert package["audit"]["latest"]["event_id"] == event["id"]
+    assert package["audit"]["latest"]["schema"] == "project_external_dispatch_audit_v1"
+    assert package["audit"]["consume_allowed"] is False
+    assert package["audit"]["blocker"] == "Dispatch preview approval already consumed."
+    assert project_page.status_code == 200
+    assert "Dispatch approval consumed" in project_page.text
+    assert "Preview fingerprint" in project_page.text
+    assert "External dispatch still disabled" in project_page.text
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(package, sort_keys=True),
+            "audit_event": json.dumps(event, sort_keys=True),
             "project_page": project_page.text,
         }
     ) == []
