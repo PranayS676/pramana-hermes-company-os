@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 PROJECT_OPERATING_LOOP_SCHEMA = "project_operating_loop_v1"
+PROJECT_EXTERNAL_DISPATCH_PREVIEW_SCHEMA = "project_external_dispatch_preview_v1"
 
 
 def project_operating_loop_package(repository, project_id: str) -> dict:
@@ -57,6 +58,53 @@ def project_operating_loop_package(repository, project_id: str) -> dict:
         "next_actions": _next_actions(lanes),
     }
     assert_no_secret_values({"project_operating_loop": json.dumps(payload, sort_keys=True)})
+    return payload
+
+
+def project_external_dispatch_preview_package(repository, project_id: str) -> dict:
+    operating_loop = project_operating_loop_package(repository, project_id)
+    workflow_items = repository.list_project_workflow_items(project_id)
+    operating_loop_ready = bool(operating_loop["aggregate"]["ready"])
+    items = [
+        _slack_dispatch_preview(operating_loop),
+        _telegram_dispatch_preview(operating_loop),
+        *_kanban_dispatch_previews(operating_loop, workflow_items),
+    ]
+    ready_items = [item for item in items if item["status"] == "ready_for_review"]
+    blocked_items = [item for item in items if item["status"] == "blocked"]
+    payload = {
+        "schema": PROJECT_EXTERNAL_DISPATCH_PREVIEW_SCHEMA,
+        "project": operating_loop["project"],
+        "policy": {
+            "external_dispatch_enabled": False,
+            "manual_review_required": True,
+            "real_send_allowed": False,
+            "preview_only": True,
+            "approval_gate": "founder_review_required_before_live_dispatch",
+        },
+        "readiness": {
+            "operating_loop_status": operating_loop["aggregate"]["status"],
+            "operating_loop_ready": operating_loop_ready,
+            "blocker_count": operating_loop["aggregate"]["blocker_count"],
+        },
+        "queue": {
+            "status": "ready_for_review" if operating_loop_ready else "blocked",
+            "item_count": len(items),
+            "preview_item_count": len(items),
+            "sendable_item_count": 0,
+            "ready_item_count": len(ready_items),
+            "blocked_item_count": len(blocked_items),
+        },
+        "items": items,
+        "next_actions": _dispatch_preview_next_actions(
+            operating_loop=operating_loop,
+            ready=operating_loop_ready,
+            project_id=project_id,
+        ),
+    }
+    assert_no_secret_values(
+        {"project_external_dispatch_preview": json.dumps(payload, sort_keys=True)}
+    )
     return payload
 
 
@@ -217,3 +265,143 @@ def _next_actions(lanes: Sequence[Mapping]) -> list[dict[str, str]]:
             }
         )
     return actions
+
+
+def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
+    project = operating_loop["project"]
+    lane = _lane_by_id(operating_loop, "slack")
+    return {
+        "id": "slack-standup-preview",
+        "platform": "slack",
+        "lane_id": "slack",
+        "label": "Slack standup preview",
+        "status": _preview_status(lane),
+        "action": "post_message_preview",
+        "owner_agent_id": "chief-of-staff",
+        "target_input_key": "slack_channel_agent_standup",
+        "target_label": "agent standup channel",
+        "message_preview": (
+            f"Project {project['name']}: founder-reviewed workflow handoff is ready "
+            "for routine agent coordination. Review the dashboard before any "
+            "external dispatch."
+        ),
+        "command_preview": (
+            "slack.chat.postMessage channel=${slack_channel_agent_standup} "
+            "text=<reviewed project handoff>"
+        ),
+        "dispatch_enabled": False,
+        "runs_automatically": False,
+        "manual_review_required": True,
+        "blockers": lane["blockers"],
+    }
+
+
+def _telegram_dispatch_preview(operating_loop: Mapping) -> dict:
+    project = operating_loop["project"]
+    lane = _lane_by_id(operating_loop, "telegram")
+    return {
+        "id": "telegram-urgent-alert-preview",
+        "platform": "telegram",
+        "lane_id": "telegram",
+        "label": "Telegram urgent alert preview",
+        "status": _preview_status(lane),
+        "action": "send_urgent_alert_preview",
+        "owner_agent_id": "chief-of-staff",
+        "target_input_key": "founder_telegram_user_id",
+        "target_label": "founder urgent recipient",
+        "urgent_only": True,
+        "requires_urgent_condition": True,
+        "message_preview": (
+            f"Urgent founder alert preview for {project['name']}: a decision, "
+            "failure, or schedule risk needs founder attention. Chief of Staff "
+            "reviews before send."
+        ),
+        "command_preview": (
+            "telegram.sendMessage chat_id=${founder_telegram_user_id} "
+            "text=<urgent founder alert>"
+        ),
+        "dispatch_enabled": False,
+        "runs_automatically": False,
+        "manual_review_required": True,
+        "blockers": lane["blockers"],
+    }
+
+
+def _kanban_dispatch_previews(
+    operating_loop: Mapping,
+    workflow_items: Sequence[Mapping],
+) -> list[dict]:
+    lane = _lane_by_id(operating_loop, "kanban")
+    previews = []
+    for item in workflow_items:
+        if item["kanban_task_id"] or not item["task_id"]:
+            continue
+        title = str(item["title"])
+        task_id = str(item["task_id"])
+        owner_agent_id = str(item["owner_agent_id"])
+        previews.append(
+            {
+                "id": f"kanban-task-create-preview-{task_id}",
+                "platform": "hermes-kanban",
+                "lane_id": "kanban",
+                "label": "Kanban task create preview",
+                "status": _preview_status(lane),
+                "action": "create_task_preview",
+                "owner_agent_id": owner_agent_id,
+                "owner_name": item.get("owner_name", owner_agent_id),
+                "workflow_item_id": item["id"],
+                "task_id": task_id,
+                "idempotency_key": task_id,
+                "title": title,
+                "message_preview": (
+                    f"Create Hermes Kanban task for {item.get('owner_name', owner_agent_id)}: "
+                    f"{title}"
+                ),
+                "command_preview": (
+                    f"hermes kanban create {json.dumps(title)} "
+                    f"--assignee {owner_agent_id} --idempotency-key {task_id} --json"
+                ),
+                "dispatch_enabled": False,
+                "runs_automatically": False,
+                "manual_review_required": True,
+                "blockers": lane["blockers"],
+            }
+        )
+    return previews
+
+
+def _dispatch_preview_next_actions(
+    *,
+    operating_loop: Mapping,
+    ready: bool,
+    project_id: str,
+) -> list[dict[str, str]]:
+    if ready:
+        return [
+            {
+                "label": "Review previews",
+                "href": f"/projects/{project_id}#external-dispatch-preview",
+                "detail": (
+                    "Founder reviews Slack, Telegram, and Kanban previews before "
+                    "any live connector work is allowed."
+                ),
+            }
+        ]
+    return [
+        {
+            "label": action["label"],
+            "href": action["href"],
+            "detail": action["detail"],
+        }
+        for action in operating_loop["next_actions"]
+    ]
+
+
+def _lane_by_id(operating_loop: Mapping, lane_id: str) -> Mapping:
+    return next(lane for lane in operating_loop["lanes"] if lane["id"] == lane_id)
+
+
+def _preview_status(lane: Mapping) -> str:
+    if lane["status"] in {"ready", "linked"}:
+        return "ready_for_review"
+    return "blocked"

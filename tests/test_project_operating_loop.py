@@ -182,3 +182,87 @@ def test_project_operating_loop_reports_ready_external_handoff_without_dispatchi
             "project_page": project_page.text,
         }
     ) == []
+
+
+def test_external_dispatch_preview_defaults_to_no_send_locked_state(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+
+    response = client.get(f"/projects/{project_id}/external-dispatch-preview.json")
+    project_page = client.get(f"/projects/{project_id}")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["schema"] == "project_external_dispatch_preview_v1"
+    assert payload["project"]["id"] == project_id
+    assert payload["policy"]["external_dispatch_enabled"] is False
+    assert payload["policy"]["manual_review_required"] is True
+    assert payload["policy"]["real_send_allowed"] is False
+    assert payload["queue"]["status"] == "blocked"
+    assert payload["queue"]["sendable_item_count"] == 0
+    assert payload["readiness"]["operating_loop_ready"] is False
+    assert {item["id"] for item in payload["items"]} >= {
+        "slack-standup-preview",
+        "telegram-urgent-alert-preview",
+    }
+    assert all(item["dispatch_enabled"] is False for item in payload["items"])
+    assert all(item["runs_automatically"] is False for item in payload["items"])
+    assert project_page.status_code == 200
+    assert "External Dispatch Preview" in project_page.text
+    assert "Dispatch remains disabled" in project_page.text
+    assert "Review previews" in project_page.text
+    assert f'href="/projects/{project_id}/external-dispatch-preview.json"' in (
+        project_page.text
+    )
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(payload, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_external_dispatch_preview_builds_ready_no_send_handoff_queue(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+
+    response = client.get(f"/projects/{project_id}/external-dispatch-preview.json")
+    project_page = client.get(f"/projects/{project_id}")
+    payload = response.json()
+    kanban_items = [
+        item for item in payload["items"] if item["platform"] == "hermes-kanban"
+    ]
+    workflow_count = lane(
+        client.get(f"/projects/{project_id}/operating-loop.json").json(),
+        "kanban",
+    )["workflow_task_count"]
+
+    assert response.status_code == 200
+    assert payload["queue"]["status"] == "ready_for_review"
+    assert payload["queue"]["item_count"] == len(payload["items"])
+    assert payload["queue"]["sendable_item_count"] == 0
+    assert payload["queue"]["preview_item_count"] == len(payload["items"])
+    assert payload["readiness"]["operating_loop_ready"] is True
+    assert all(item["dispatch_enabled"] is False for item in payload["items"])
+    assert all(item["runs_automatically"] is False for item in payload["items"])
+    assert any(item["label"] == "Slack standup preview" for item in payload["items"])
+    assert any(
+        item["label"] == "Telegram urgent alert preview" for item in payload["items"]
+    )
+    assert len(kanban_items) == workflow_count
+    assert all(item["label"] == "Kanban task create preview" for item in kanban_items)
+    assert all(item["idempotency_key"].startswith("task-") for item in kanban_items)
+    assert all("hermes kanban create" in item["command_preview"] for item in kanban_items)
+    assert project_page.status_code == 200
+    assert "Ready for founder review" in project_page.text
+    assert "Slack standup preview" in project_page.text
+    assert "Telegram urgent alert preview" in project_page.text
+    assert "Kanban task create preview" in project_page.text
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(payload, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []

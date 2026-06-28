@@ -258,7 +258,10 @@ from hermes_company_os.project_memory import (
     project_memory_markdown,
     project_memory_package,
 )
-from hermes_company_os.project_operating_loop import project_operating_loop_package
+from hermes_company_os.project_operating_loop import (
+    project_external_dispatch_preview_package,
+    project_operating_loop_package,
+)
 from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
     project_workflow_markdown,
@@ -4716,6 +4719,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         multi_agent_review = multi_agent_review_package(repository, project_id)
         project_memory = project_memory_package(repository, project_id)
         operating_loop = project_operating_loop_package(repository, project_id)
+        external_dispatch_preview = project_external_dispatch_preview_package(
+            repository,
+            project_id,
+        )
         project_activity_events = repository.list_audit_events(
             project_id=project_id,
             limit=12,
@@ -4753,6 +4760,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "multi_agent_review": multi_agent_review,
                 "project_memory": project_memory,
                 "operating_loop": operating_loop,
+                "external_dispatch_preview": external_dispatch_preview,
                 "project_activity_events": project_activity_events,
                 "memory_reuse_policy": memory_reuse_policy_summary(
                     FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY
@@ -4796,6 +4804,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return project_operating_loop_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/external-dispatch-preview.json")
+    def project_external_dispatch_preview_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_external_dispatch_preview_package(repository, project_id)
 
     @app.get("/projects/{project_id}/codex-execution.json")
     def project_codex_execution_json(request: Request, project_id: str) -> dict:

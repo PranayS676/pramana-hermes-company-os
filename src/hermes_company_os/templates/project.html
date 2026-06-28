@@ -105,6 +105,11 @@
 {% set operating_loop_aggregate = operating_loop_package.aggregate|default({}, true) %}
 {% set operating_loop_lanes = operating_loop_package.lanes|default([], true) %}
 {% set operating_loop_next_actions = operating_loop_package.next_actions|default([], true) %}
+{% set dispatch_preview_package = external_dispatch_preview|default({}, true) %}
+{% set dispatch_preview_policy = dispatch_preview_package.policy|default({}, true) %}
+{% set dispatch_preview_queue = dispatch_preview_package.queue|default({}, true) %}
+{% set dispatch_preview_items = dispatch_preview_package["items"]|default([], true) %}
+{% set dispatch_preview_next_actions = dispatch_preview_package.next_actions|default([], true) %}
 {% set memory_categories = memory_category_options|default([], true) %}
 {% set memory_confidences = memory_confidence_options|default([], true) %}
 {% set memory_owners = memory_owner_options|default([], true) %}
@@ -1198,6 +1203,77 @@
             >
               <i data-lucide="braces"></i>
               Operating loop JSON
+            </a>
+          </section>
+
+          <section class="panel dispatch-preview-panel" id="external-dispatch-preview">
+            <div class="panel-header">
+              <div>
+                <h2>External Dispatch Preview</h2>
+                <p class="panel-kicker">
+                  {% if dispatch_preview_queue.status == "ready_for_review" %}
+                  Ready for founder review. Dispatch remains disabled until a separate live connector approval.
+                  {% else %}
+                  Dispatch remains disabled while operating-loop readiness is blocked.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ dispatch_preview_queue.status|default('blocked', true) }}">
+                {{ dispatch_preview_queue.status|default("blocked", true)|replace("_", " ") }}
+              </span>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>Dispatch policy</span>
+                <strong>
+                  {% if dispatch_preview_policy.external_dispatch_enabled %}
+                  Live dispatch enabled
+                  {% else %}
+                  Dispatch remains disabled
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="readiness-line">
+                <span>Preview items</span>
+                <strong>{{ dispatch_preview_queue.preview_item_count|default(0, true) }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Sendable items</span>
+                <strong>{{ dispatch_preview_queue.sendable_item_count|default(0, true) }}</strong>
+              </div>
+            </div>
+            {% if dispatch_preview_items %}
+            <div class="quality-check-list" aria-label="External dispatch preview queue">
+              <h3>Review previews</h3>
+              {% for item in dispatch_preview_items %}
+              <div class="quality-check-row dispatch-preview-row">
+                <span>
+                  {{ item.label }}
+                  <small>{{ item.platform }} · {{ item.owner_agent_id }}</small>
+                </span>
+                <span class="status-pill {{ item.status }}">
+                  {{ item.status|replace("_", " ") }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if dispatch_preview_next_actions %}
+            <div class="quality-check-list" aria-label="External dispatch preview next actions">
+              {% for action in dispatch_preview_next_actions %}
+              <a class="quality-check-row linked-readiness-line" href="{{ action.href }}">
+                <span>{{ action.label }}</span>
+                <span>{{ action.detail }}</span>
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/external-dispatch-preview.json"
+            >
+              <i data-lucide="braces"></i>
+              Dispatch preview JSON
             </a>
           </section>
 
