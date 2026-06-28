@@ -1880,6 +1880,68 @@ summary {
   text-transform: uppercase;
 }
 
+.memory-policy-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.9fr);
+  gap: 10px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.memory-policy-card > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.memory-policy-card span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.memory-policy-card strong,
+.memory-policy-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-policy-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.audit-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.audit-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  background: #eef6f3;
+  border: 1px solid #9ec7bd;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.audit-chip.muted {
+  background: var(--panel-muted);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
 .memory-entry-list {
   display: grid;
   gap: 10px;
@@ -2135,6 +2197,7 @@ summary {
     .founder-signal-grid,
     .memory-summary-strip,
     .memory-export-actions,
+    .memory-policy-card,
     .memory-entry-row,
     .memory-create-form,
     .stage-decision-summary,

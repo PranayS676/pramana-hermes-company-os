@@ -57,6 +57,34 @@ def memory_confidence_options() -> list[dict[str, str]]:
     ]
 
 
+def memory_reuse_policy_summary(
+    policy: ProductWizardMemoryPolicy = FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+) -> dict[str, Any]:
+    allowed_categories = [
+        {
+            "id": category,
+            "label": MEMORY_CATEGORY_LABELS.get(
+                category,
+                category.replace("_", " ").title(),
+            ),
+        }
+        for category in policy.allowed_categories
+        if category in MEMORY_CATEGORIES
+    ]
+    payload = {
+        "schema": "project_memory_reuse_policy_v1",
+        "enabled": bool(policy.enabled),
+        "source": policy.source,
+        "max_entries": max(0, min(policy.max_entries, 20)),
+        "allowed_categories": allowed_categories,
+        "allowed_category_ids": [category["id"] for category in allowed_categories],
+    }
+    assert_no_secret_values(
+        {"project_memory_reuse_policy": json.dumps(payload, sort_keys=True)}
+    )
+    return payload
+
+
 def normalize_memory_category(category: str) -> str:
     normalized = category.strip().lower().replace("-", "_").replace(" ", "_")
     if normalized not in MEMORY_CATEGORIES:

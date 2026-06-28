@@ -438,6 +438,7 @@ def test_generate_current_stage_injects_founder_approved_memory(tmp_path):
         project_id=project_id,
         stage_id="research",
     )[0]
+    project_page = client.get(f"/projects/{project_id}")
     raw_artifact = json.dumps(artifact, sort_keys=True)
 
     assert response.status_code == 303
@@ -452,9 +453,18 @@ def test_generate_current_stage_injects_founder_approved_memory(tmp_path):
     assert generation_run["memory_ids"] == [approved_memory_id]
     assert generation_run["source_artifact_ids"] == []
     assert "Keep public demo data synthetic" in artifact["markdown_content"]
+    assert project_page.status_code == 200
+    assert "Memory used" in project_page.text
+    assert approved_memory_id in project_page.text
+    assert "Prompt memory context" in project_page.text
+    assert "Auto-reuse policy" in project_page.text
+    assert "Allowed auto-reuse categories" in project_page.text
+    assert "founder_approved_product_wizard_memory_policy_v1" in project_page.text
     assert "Customer quote requires explicit artifact approval" not in raw_artifact
     assert "Stale architecture standard" not in raw_artifact
-    assert secret_violations({"memory_artifact": raw_artifact}) == []
+    assert secret_violations(
+        {"memory_artifact": raw_artifact, "project_page": project_page.text}
+    ) == []
 
 
 def test_live_operator_console_shows_enabled_config_without_running_command(tmp_path):

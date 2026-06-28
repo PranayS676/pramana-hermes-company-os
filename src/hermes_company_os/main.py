@@ -252,6 +252,7 @@ from hermes_company_os.progress_board import (
 from hermes_company_os.project_memory import (
     memory_category_options,
     memory_confidence_options,
+    memory_reuse_policy_summary,
     product_wizard_memory_context,
     project_memory_markdown,
     project_memory_package,
@@ -545,6 +546,7 @@ def artifact_view(artifact: dict | None) -> dict | None:
     title = metadata.get("title") or artifact["stage_id"].replace("_", " ").title()
     checks = metadata.get("checks") if isinstance(metadata.get("checks"), list) else []
     source_artifact_ids = metadata.get("source_artifact_ids")
+    memory_ids = metadata.get("memory_ids")
     supporting_agent_ids = metadata.get("supporting_agent_ids")
     return {
         **artifact,
@@ -557,6 +559,7 @@ def artifact_view(artifact: dict | None) -> dict | None:
         "source_artifact_ids": (
             source_artifact_ids if isinstance(source_artifact_ids, list) else []
         ),
+        "memory_ids": memory_ids if isinstance(memory_ids, list) else [],
         "supporting_agent_ids": (
             supporting_agent_ids if isinstance(supporting_agent_ids, list) else []
         ),
@@ -608,11 +611,13 @@ def generation_run_view(run: dict | None) -> dict | None:
     if run is None:
         return None
     source_artifact_ids = run.get("source_artifact_ids")
+    memory_ids = run.get("memory_ids")
     return {
         **run,
         "source_artifact_ids": (
             source_artifact_ids if isinstance(source_artifact_ids, list) else []
         ),
+        "memory_ids": memory_ids if isinstance(memory_ids, list) else [],
     }
 
 
@@ -4712,6 +4717,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "codex_execution": codex_execution,
                 "multi_agent_review": multi_agent_review,
                 "project_memory": project_memory,
+                "memory_reuse_policy": memory_reuse_policy_summary(
+                    FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY
+                ),
                 "memory_category_options": memory_category_options(),
                 "memory_confidence_options": memory_confidence_options(),
                 "memory_owner_options": memory_owner_options,

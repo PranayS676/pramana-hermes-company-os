@@ -56,13 +56,16 @@
 {% set artifact_body = artifact.body|default(artifact.summary|default(project.founder_idea, true), true) %}
 {% set artifact_checks = artifact.quality_checks|default([], true) %}
 {% set artifact_sources = artifact.source_artifact_ids|default([], true) %}
+{% set artifact_memory_ids = artifact.memory_ids|default([], true) %}
 {% set artifact_sections = artifact.sections|default([], true) %}
 {% set generation_run = latest_generation_run|default(artifact.generation_run|default({}, true), true) %}
 {% set generation_run_sources = generation_run.source_artifact_ids|default([], true) %}
+{% set generation_run_memory_ids = generation_run.memory_ids|default([], true) %}
 {% set live_readiness = live_hermes_readiness|default({}, true) %}
 {% set live_readiness_checks = live_readiness.checks|default([], true) %}
 {% set live_operator = live_hermes_operator|default({}, true) %}
 {% set live_operator_preview = live_operator.command_preview|default({}, true) %}
+{% set live_operator_preview_memory_ids = live_operator_preview.memory_ids|default([], true) %}
 {% set live_operator_prompt_handoff = live_operator_preview.prompt_handoff|default({}, true) %}
 {% set live_operator_output_parser = live_operator_preview.output_parser|default({}, true) %}
 {% set live_operator_checks = live_operator.checklist|default([], true) %}
@@ -94,6 +97,8 @@
 {% set memory_aggregate = memory_package.aggregate|default({}, true) %}
 {% set memory_entries = memory_package.entries|default([], true) %}
 {% set reusable_memory_entries = memory_package.reusable_entries|default([], true) %}
+{% set memory_reuse = memory_reuse_policy|default({}, true) %}
+{% set memory_reuse_categories = memory_reuse.allowed_categories|default([], true) %}
 {% set memory_categories = memory_category_options|default([], true) %}
 {% set memory_confidences = memory_confidence_options|default([], true) %}
 {% set memory_owners = memory_owner_options|default([], true) %}
@@ -460,6 +465,14 @@
                 <code>{{ live_operator_prompt_handoff.contract|default("product_wizard_prompt_contract_v1", true) }} {{ live_operator_prompt_handoff.sha256|default("pending", true) }}</code>
               </div>
               <div>
+                <span>Prompt memory context</span>
+                {% if live_operator_preview_memory_ids %}
+                <strong>{{ live_operator_preview_memory_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>No approved memory in prompt.</strong>
+                {% endif %}
+              </div>
+              <div>
                 <span>Output parser</span>
                 <code>{{ live_operator_output_parser.name|default("product_wizard_artifact_v1", true) }} {{ live_operator_output_parser.status|default("pending", true) }}</code>
               </div>
@@ -615,6 +628,16 @@
                 {% endif %}
               </div>
               <div>
+                <span>Memory used</span>
+                {% if artifact_memory_ids %}
+                <strong>{{ artifact_memory_ids|join(", ") }}</strong>
+                {% elif generation_run_memory_ids %}
+                <strong>{{ generation_run_memory_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>No approved memory context used.</strong>
+                {% endif %}
+              </div>
+              <div>
                 <span>Supporting agents</span>
                 {% if artifact.supporting_agent_ids %}
                 <strong>{{ artifact.supporting_agent_ids|join(", ") }}</strong>
@@ -696,6 +719,26 @@
               <span>Total: {{ memory_aggregate.total_count|default(0, true) }}</span>
               <span>Stale: {{ memory_aggregate.stale_count|default(0, true) }}</span>
               <span>Retired: {{ memory_aggregate.retired_count|default(0, true) }}</span>
+            </div>
+            <div class="memory-policy-card" aria-label="Project memory auto-reuse policy">
+              <div>
+                <span>Auto-reuse policy</span>
+                <strong>{{ memory_reuse.source|default("product_wizard_memory_policy_disabled", true) }}</strong>
+                <small>
+                  {% if memory_reuse.enabled %}enabled{% else %}disabled{% endif %}
+                  - max {{ memory_reuse.max_entries|default(0, true) }} entries per prompt
+                </small>
+              </div>
+              <div>
+                <span>Allowed auto-reuse categories</span>
+                <div class="audit-chip-list">
+                  {% for category in memory_reuse_categories %}
+                  <span class="audit-chip">{{ category.label }}</span>
+                  {% else %}
+                  <span class="audit-chip muted">None</span>
+                  {% endfor %}
+                </div>
+              </div>
             </div>
             <div class="memory-entry-list" aria-label="Project memory entries">
               {% for entry in memory_entries %}

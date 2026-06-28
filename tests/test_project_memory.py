@@ -258,10 +258,16 @@ def test_project_memory_exports_and_ui_render_reviewable_context(tmp_path):
     assert 'id="project-memory"' in project_page.text
     assert "Project Memory" in project_page.text
     assert "Reusable context" in project_page.text
+    assert "Auto-reuse policy" in project_page.text
+    assert "Allowed auto-reuse categories" in project_page.text
+    assert "founder_approved_product_wizard_memory_policy_v1" in project_page.text
+    assert "Founder preference" in project_page.text
     assert "Keep public demo data synthetic" in project_page.text
     assert "Memory package JSON" in project_page.text
     assert css.status_code == 200
     assert ".project-memory-panel" in css.text
+    assert ".memory-policy-card" in css.text
+    assert ".audit-chip-list" in css.text
     assert ".memory-entry-row" in css.text
     assert secret_violations(
         {
