@@ -71,6 +71,18 @@ def decode_codex_execution_run(row: sqlite3.Row) -> dict:
     return run
 
 
+def decode_project_review_record(row: sqlite3.Row) -> dict:
+    record = dict(row)
+    for column, target, fallback in (
+        ("artifact_ids_json", "artifact_ids", []),
+        ("checks_json", "checks", []),
+        ("findings_json", "findings", []),
+    ):
+        raw_json = record.get(column, "").strip()
+        record[target] = json.loads(raw_json) if raw_json else fallback
+    return record
+
+
 def safe_generation_error(message: str) -> str:
     cleaned = message.strip()
     if not cleaned:
@@ -2441,6 +2453,117 @@ class CompanyRepository:
             )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown Codex execution run: {run_id}")
+
+    def create_project_review_record(
+        self,
+        *,
+        source_key: str,
+        project_id: str,
+        review_batch_id: str,
+        reviewer_agent_id: str,
+        reviewer_name: str,
+        reviewer_role: str,
+        verdict: str,
+        summary: str,
+        artifact_ids: list[str] | tuple[str, ...],
+        checks: list[dict] | tuple[dict, ...],
+        findings: list[dict] | tuple[dict, ...],
+    ) -> str:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        if verdict not in {"approved", "needs_revision", "blocked"}:
+            raise ValueError(f"Unsupported project review verdict: {verdict}")
+        artifact_json = json.dumps(list(artifact_ids), sort_keys=True)
+        checks_json = json.dumps(list(checks), sort_keys=True)
+        findings_json = json.dumps(list(findings), sort_keys=True)
+        assert_no_secret_values(
+            {
+                "project_review_source_key": source_key,
+                "project_review_batch_id": review_batch_id,
+                "project_review_reviewer_agent_id": reviewer_agent_id,
+                "project_review_reviewer_name": reviewer_name,
+                "project_review_reviewer_role": reviewer_role,
+                "project_review_verdict": verdict,
+                "project_review_summary": summary,
+                "project_review_artifacts": artifact_json,
+                "project_review_checks": checks_json,
+                "project_review_findings": findings_json,
+            }
+        )
+        review_id = f"review-{uuid4().hex[:10]}"
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO project_review_records (
+                    id, source_key, project_id, review_batch_id, reviewer_agent_id,
+                    reviewer_name, reviewer_role, verdict, summary,
+                    artifact_ids_json, checks_json, findings_json, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    review_id,
+                    source_key.strip(),
+                    project_id,
+                    review_batch_id.strip(),
+                    reviewer_agent_id.strip(),
+                    reviewer_name.strip(),
+                    reviewer_role.strip(),
+                    verdict.strip(),
+                    summary.strip(),
+                    artifact_json,
+                    checks_json,
+                    findings_json,
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT id FROM project_review_records WHERE source_key = ?",
+                (source_key.strip(),),
+            ).fetchone()
+        if row is None:
+            raise sqlite3.IntegrityError("Project review record was not persisted.")
+        return row["id"]
+
+    def list_project_review_records(
+        self,
+        project_id: str,
+        *,
+        review_batch_id: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        filters = ["project_id = ?"]
+        parameters: list[str | int] = [project_id]
+        if review_batch_id:
+            filters.append("review_batch_id = ?")
+            parameters.append(review_batch_id)
+        parameters.append(max(1, min(limit, 100)))
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM project_review_records
+                WHERE {" AND ".join(filters)}
+                ORDER BY
+                    CASE reviewer_agent_id
+                        WHEN 'qa-critic' THEN 1
+                        WHEN 'test-automation-agent' THEN 2
+                        WHEN 'product-manager' THEN 3
+                        WHEN 'engineering-manager' THEN 4
+                        WHEN 'ui-ux-research-agent' THEN 5
+                        ELSE 99
+                    END,
+                    created_at DESC,
+                    id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [decode_project_review_record(row) for row in rows]
 
     def save_stage_artifact_draft(
         self,

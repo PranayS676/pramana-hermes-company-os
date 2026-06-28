@@ -192,6 +192,11 @@ from hermes_company_os.messaging_verification_import import (
     messaging_verification_template_markdown,
     parse_messaging_verification_reply,
 )
+from hermes_company_os.multi_agent_review import (
+    generate_multi_agent_review,
+    multi_agent_review_markdown,
+    multi_agent_review_package,
+)
 from hermes_company_os.product_wizard import ProductWizardIntake
 from hermes_company_os.profile_acceptance import (
     profile_acceptance_json,
@@ -4651,6 +4656,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         task_stage_approved = project_task_stage_approved(repository, project_id)
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         codex_execution = codex_execution_package(repository, project_id)
+        multi_agent_review = multi_agent_review_package(repository, project_id)
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -4661,6 +4667,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_ready": not kanban_blocker,
                 "kanban_blocker": kanban_blocker,
                 "codex_execution": codex_execution,
+                "multi_agent_review": multi_agent_review,
                 "wizard_stages": [stage_view(stage) for stage in wizard_stages],
                 "current_stage": stage_view(review_stage) if review_stage else None,
                 "actionable_stage": stage_view(current_stage) if current_stage else None,
@@ -4694,6 +4701,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return codex_execution_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/multi-agent-review.json")
+    def project_multi_agent_review_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return multi_agent_review_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/multi-agent-review.md")
+    def project_multi_agent_review_markdown(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = multi_agent_review_package(repository, project_id)
+        return PlainTextResponse(multi_agent_review_markdown(package))
+
+    @app.post("/projects/{project_id}/multi-agent-review")
+    def generate_project_multi_agent_review(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            generate_multi_agent_review(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#multi-agent-review",
+            status_code=303,
+        )
 
     @app.get("/projects/{project_id}/codex-execution.md")
     def project_codex_execution_markdown(request: Request, project_id: str):

@@ -87,6 +87,9 @@
 {% set codex_branch_plan = codex_package.branch_plan|default({}, true) %}
 {% set codex_runner = codex_package.runner|default({}, true) %}
 {% set codex_latest_run = codex_runner.latest_run|default({}, true) %}
+{% set review_package = multi_agent_review|default({}, true) %}
+{% set review_aggregate = review_package.aggregate|default({}, true) %}
+{% set review_records = review_package.reviewers|default([], true) %}
 {% set intake = project.intake|default({}, true) %}
 
 <!doctype html>
@@ -718,6 +721,78 @@
               <p class="empty-state">No agent work items have been created for this project.</p>
               {% endfor %}
             </div>
+          </section>
+
+          <section class="panel" id="multi-agent-review">
+            <div class="panel-header">
+              <div>
+                <h2>Multi-agent Review</h2>
+                <p class="panel-kicker">
+                  {% if review_aggregate.status == "approved" %}
+                  Review approved - {{ review_aggregate.reviewer_count }} reviewer records.
+                  {% elif review_package.ready %}
+                  Approved artifacts are ready for reviewer acceptance checks.
+                  {% else %}
+                  Review waits for approved code plan and acceptance package.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ review_aggregate.status|default('blocked', true) }}">
+                {{ review_aggregate.status|default("blocked", true) }}
+              </span>
+            </div>
+            {% if review_records %}
+            <div class="quality-check-list" aria-label="Multi-agent review records">
+              {% for reviewer in review_records %}
+              <div class="quality-check-row">
+                <span>{{ reviewer.reviewer_name }} <code>{{ reviewer.reviewer_agent_id }}</code></span>
+                <span class="status-pill {{ reviewer.verdict }}">{{ reviewer.verdict }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state gate-copy">
+              {% if review_package.blocker %}
+              {{ review_package.blocker }}
+              {% else %}
+              Run the reviewer loop to create QA, test automation, product, engineering,
+              and UI/UX research acceptance records.
+              {% endif %}
+            </p>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/multi-agent-review.json"
+            >
+              <i data-lucide="braces"></i>
+              Review package JSON
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/multi-agent-review.md"
+            >
+              <i data-lucide="file-text"></i>
+              Review package MD
+            </a>
+            {% if review_package.ready and review_aggregate.status != "approved" %}
+            <form method="post" action="/projects/{{ project.id }}/multi-agent-review">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="scan-search"></i>
+                Run multi-agent review
+              </button>
+            </form>
+            {% elif not review_package.ready %}
+            <button
+              class="secondary-button full-width-button"
+              type="button"
+              disabled
+            >
+              <i data-lucide="lock"></i>
+              Run multi-agent review
+            </button>
+            {% else %}
+            <span class="status-pill approved">Review approved</span>
+            {% endif %}
           </section>
         </div>
 

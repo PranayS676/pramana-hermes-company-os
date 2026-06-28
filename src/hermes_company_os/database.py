@@ -93,6 +93,31 @@ CREATE INDEX IF NOT EXISTS idx_codex_execution_runs_decision
 ON codex_execution_runs(decision_id);
 """
 
+PROJECT_REVIEW_RECORDS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_review_records (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    review_batch_id TEXT NOT NULL,
+    reviewer_agent_id TEXT NOT NULL,
+    reviewer_name TEXT NOT NULL,
+    reviewer_role TEXT NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN ('approved', 'needs_revision', 'blocked')),
+    summary TEXT NOT NULL,
+    artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    checks_json TEXT NOT NULL DEFAULT '[]',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_review_records_project_batch
+ON project_review_records(project_id, review_batch_id);
+
+CREATE INDEX IF NOT EXISTS idx_project_review_records_project_created
+ON project_review_records(project_id, created_at DESC);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -399,6 +424,7 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
         connection.executescript(GENERATION_RUNS_SCHEMA)
         connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
+        connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
@@ -407,6 +433,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
     connection.executescript(GENERATION_RUNS_SCHEMA)
     connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
+    connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
