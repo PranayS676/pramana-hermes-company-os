@@ -212,6 +212,11 @@
                   {% if item.decision_id %}
                   <span><strong>Decision</strong><a href="/decisions/{{ item.decision_id }}">{{ item.decision_status }}</a></span>
                   {% endif %}
+                  <span>
+                    <strong>Profile handoff</strong>
+                    <a href="/queue/{{ item.id }}/handoff.json">Handoff JSON</a>
+                    <a href="/queue/{{ item.id }}/handoff.md">Handoff MD</a>
+                  </span>
                 </div>
                 {% if item.status == "blocked" %}
                 <div class="queue-blocker">

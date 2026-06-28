@@ -200,6 +200,10 @@ from hermes_company_os.profile_artifacts import (
     profile_manifest_json,
     profile_soul_markdown,
 )
+from hermes_company_os.profile_handoff_contracts import (
+    profile_handoff_contract,
+    profile_handoff_contract_markdown,
+)
 from hermes_company_os.profile_installation import (
     profile_installation_json,
     profile_installation_markdown,
@@ -4249,6 +4253,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (sqlite3.IntegrityError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
+
+    @app.get("/queue/{work_item_id}/handoff.json")
+    def agent_work_item_handoff_json(request: Request, work_item_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        work_item = repository.get_agent_work_item(work_item_id)
+        if work_item is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        return profile_handoff_contract(repository, work_item)
+
+    @app.get("/queue/{work_item_id}/handoff.md")
+    def agent_work_item_handoff_markdown(request: Request, work_item_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        work_item = repository.get_agent_work_item(work_item_id)
+        if work_item is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        contract = profile_handoff_contract(repository, work_item)
+        return PlainTextResponse(profile_handoff_contract_markdown(contract))
 
     @app.get("/decisions")
     def founder_decision_inbox(

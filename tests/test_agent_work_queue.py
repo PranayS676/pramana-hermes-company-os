@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -144,6 +146,74 @@ def test_product_wizard_project_syncs_read_first_queue_items(tmp_path):
         {
             "project_page": project_page.text,
             "agent_page": agent_page.text,
+            "queue_page": queue_page.text,
+        }
+    ) == []
+
+
+def test_queue_item_exports_runnable_profile_handoff_contracts(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    research_item = next(
+        item
+        for item in app.state.repository.list_agent_work_items(project_id=project_id)
+        if item["stage_id"] == "research"
+    )
+    code_plan_item = next(
+        item
+        for item in app.state.repository.list_agent_work_items(project_id=project_id)
+        if item["stage_id"] == "code_plan"
+    )
+
+    json_response = client.get(f"/queue/{research_item['id']}/handoff.json")
+    markdown_response = client.get(f"/queue/{research_item['id']}/handoff.md")
+    code_plan_response = client.get(f"/queue/{code_plan_item['id']}/handoff.json")
+    queue_page = client.get(f"/queue?project_id={project_id}")
+    payload = json_response.json()
+    code_plan_payload = code_plan_response.json()
+
+    assert json_response.status_code == 200
+    assert payload["schema"] == "profile_handoff_contract_v1"
+    assert payload["contract_id"] == f"profile-handoff:{research_item['id']}"
+    assert payload["work_item"]["id"] == research_item["id"]
+    assert payload["delegation"]["from_agent_id"] == "chief-of-staff"
+    assert payload["delegation"]["to_agent_id"] == "research-agent"
+    assert payload["delegation"]["supporting_agent_ids"] == []
+    assert payload["execution"]["mode"] == "manual_profile_handoff"
+    assert payload["execution"]["external_execution_enabled"] is False
+    assert payload["execution"]["command_preview"] == [
+        "hermes",
+        "profiles",
+        "run",
+        "research-agent",
+        "--handoff-contract",
+        f"profile-handoff:{research_item['id']}",
+        "--output",
+        "agent-handoff-result-json",
+    ]
+    assert payload["inputs"]["project_id"] == project_id
+    assert payload["inputs"]["stage_id"] == "research"
+    assert payload["review_gates"]["founder_action_required"] is False
+    assert code_plan_response.status_code == 200
+    assert code_plan_payload["delegation"]["to_agent_id"] == "backend-engineer"
+    assert code_plan_payload["delegation"]["supporting_agent_ids"] == [
+        "frontend-engineer",
+        "cloud-infra-agent",
+    ]
+    assert code_plan_payload["acceptance"]["source"] == "stage_contract"
+    assert "No external execution is started by this contract." in payload["prompt"]
+    assert markdown_response.status_code == 200
+    assert "Profile Handoff Contract" in markdown_response.text
+    assert "research-agent" in markdown_response.text
+    assert "hermes profiles run research-agent" in markdown_response.text
+    assert queue_page.status_code == 200
+    assert "Handoff JSON" in queue_page.text
+    assert "Handoff MD" in queue_page.text
+    assert secret_violations(
+        {
+            "handoff_json": json.dumps(payload, sort_keys=True),
+            "code_plan_handoff_json": json.dumps(code_plan_payload, sort_keys=True),
+            "handoff_markdown": markdown_response.text,
             "queue_page": queue_page.text,
         }
     ) == []
