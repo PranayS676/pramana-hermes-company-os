@@ -71,6 +71,10 @@
 {% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
 {% set live_operator_last_runner = live_operator_last_run.runner|default({}, true) %}
 {% set live_operator_last_preflight = live_operator_last_run.operator_preflight|default({}, true) %}
+{% set live_operator_last_audit = live_operator_last_run.execution_audit|default({}, true) %}
+{% set live_operator_last_audit_command = live_operator_last_audit.command_fingerprint|default({}, true) %}
+{% set live_operator_last_audit_approval = live_operator_last_audit.approval_consumption|default({}, true) %}
+{% set live_operator_last_audit_review = live_operator_last_audit.post_run_review|default({}, true) %}
 {% set live_run_confirmation = live_operator.run_confirmation|default({}, true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
@@ -486,6 +490,22 @@
                 <div>
                   <span>Run token</span>
                   <strong>{{ live_operator_last_preflight.run_confirmation_decision_id|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Execution audit</span>
+                  <strong>{{ live_operator_last_audit.schema|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Command fingerprint</span>
+                  <strong>{{ live_operator_last_audit_command.sha256|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Approval consumed</span>
+                  <strong>{{ live_operator_last_audit_approval.status|default("not recorded", true) }} {{ live_operator_last_audit_approval.consumed_by_generation_run_id|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Post-run review</span>
+                  <strong>{{ live_operator_last_audit_review.status|default("not recorded", true) }}</strong>
                 </div>
               </div>
             </div>

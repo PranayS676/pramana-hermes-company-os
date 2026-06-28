@@ -786,6 +786,22 @@ def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp
         run_confirmation_id
     )
     assert metadata["operator_preflight"]["external_execution_enabled"] is True
+    audit = metadata["execution_audit"]
+    assert audit["schema"] == "live_hermes_execution_audit_v1"
+    assert audit["immutable"] is True
+    assert audit["generation_run_id"] == generation_run["id"]
+    assert audit["command_fingerprint"]["sha256"]
+    assert audit["command_fingerprint"]["command_preview"] == metadata["command_preview"]
+    assert audit["prompt_fingerprint"]["sha256"] == metadata["prompt_handoff"]["sha256"]
+    assert audit["approval_consumption"]["decision_id"] == run_confirmation_id
+    assert audit["approval_consumption"]["consumed_by_generation_run_id"] == (
+        generation_run["id"]
+    )
+    assert audit["approval_consumption"]["status"] == "consumed"
+    assert audit["output_fingerprints"]["stdout_sha256"] == (
+        metadata["stdout_capture"]["sha256"]
+    )
+    assert audit["post_run_review"]["status"] == "awaiting_founder_review"
     assert metadata["duration_ms"] == 17
     assert metadata["stdout_capture"]["bytes"] > 0
     assert metadata["stderr_capture"]["bytes"] > 0
@@ -802,6 +818,9 @@ def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp
     assert "fake_test_runner" in project_page.text
     assert "Pilot confirmation" in project_page.text
     assert "verified" in project_page.text
+    assert "Execution audit" in project_page.text
+    assert "Approval consumed" in project_page.text
+    assert generation_run["id"] in project_page.text
     assert "one-run confirmation ready" not in project_page.text
     assert "Request one-run confirmation" in project_page.text
     assert live_decision_id in project_page.text

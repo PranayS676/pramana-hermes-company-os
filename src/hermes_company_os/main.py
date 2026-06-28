@@ -639,6 +639,9 @@ def live_hermes_operator_console(
     operator_preflight = generation_metadata.get("operator_preflight")
     if not isinstance(operator_preflight, dict):
         operator_preflight = {}
+    execution_audit = generation_metadata.get("execution_audit")
+    if not isinstance(execution_audit, dict):
+        execution_audit = {}
     live_run_possible = (
         settings.hermes_live_execution_enabled and live_ready and run_confirmed
     )
@@ -766,6 +769,7 @@ def live_hermes_operator_console(
             "stderr_capture": stderr_capture,
             "runner": runner,
             "operator_preflight": operator_preflight,
+            "execution_audit": execution_audit,
         },
     }
 
@@ -801,6 +805,7 @@ def artifact_with_live_hermes_pilot_evidence(
     mode: GenerationMode,
     confirmation: str,
     run_confirmation,
+    generation_run_id: str,
 ):
     if mode != LIVE_HERMES_GENERATION_MODE:
         return artifact
@@ -819,7 +824,65 @@ def artifact_with_live_hermes_pilot_evidence(
         "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
         "external_execution_enabled": True,
     }
+    generation_metadata["execution_audit"] = live_hermes_execution_audit(
+        generation_metadata,
+        run_confirmation=run_confirmation,
+        generation_run_id=generation_run_id,
+    )
     return replace(artifact, generation_metadata=generation_metadata)
+
+
+def live_hermes_execution_audit(
+    generation_metadata: dict,
+    *,
+    run_confirmation,
+    generation_run_id: str,
+) -> dict:
+    command_preview = [
+        str(part) for part in generation_metadata.get("command_preview", [])
+    ]
+    prompt_handoff = generation_metadata.get("prompt_handoff")
+    if not isinstance(prompt_handoff, dict):
+        prompt_handoff = {}
+    stdout_capture = generation_metadata.get("stdout_capture")
+    if not isinstance(stdout_capture, dict):
+        stdout_capture = {}
+    stderr_capture = generation_metadata.get("stderr_capture")
+    if not isinstance(stderr_capture, dict):
+        stderr_capture = {}
+    decision_id = run_confirmation.decision_id if run_confirmation else ""
+    return {
+        "schema": "live_hermes_execution_audit_v1",
+        "immutable": True,
+        "generation_run_id": generation_run_id,
+        "command_fingerprint": {
+            "sha256": hashlib.sha256(
+                "\n".join(command_preview).encode("utf-8")
+            ).hexdigest(),
+            "command_preview": command_preview,
+        },
+        "prompt_fingerprint": {
+            "sha256": str(prompt_handoff.get("sha256", "")),
+            "contract": str(
+                prompt_handoff.get("contract", "product_wizard_prompt_contract_v1")
+            ),
+        },
+        "approval_consumption": {
+            "decision_id": decision_id,
+            "consumed_by_generation_run_id": generation_run_id,
+            "status": "consumed" if decision_id else "not_recorded",
+        },
+        "output_fingerprints": {
+            "stdout_sha256": str(stdout_capture.get("sha256", "")),
+            "stderr_sha256": str(stderr_capture.get("sha256", "")),
+            "stdout_bytes": int(stdout_capture.get("bytes", 0) or 0),
+            "stderr_bytes": int(stderr_capture.get("bytes", 0) or 0),
+        },
+        "post_run_review": {
+            "status": "awaiting_founder_review",
+            "next_action": "Review the live Hermes artifact before stage approval.",
+        },
+    }
 
 
 def product_wizard_generation_service(
@@ -4674,6 +4737,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 mode=resolved_generation_mode,
                 confirmation=live_pilot_confirmation,
                 run_confirmation=live_hermes_run_confirmation,
+                generation_run_id=generation_run_id,
             )
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -4792,6 +4856,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 mode=resolved_generation_mode,
                 confirmation=live_pilot_confirmation,
                 run_confirmation=live_hermes_run_confirmation,
+                generation_run_id=generation_run_id,
             )
             if latest_artifact and latest_artifact["status"] == "approved":
                 repository.request_stage_revision(
