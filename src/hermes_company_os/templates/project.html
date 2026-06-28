@@ -240,9 +240,15 @@
             <h2>Agent Activity</h2>
             <p class="panel-kicker">Recent project changes with their source records.</p>
           </div>
-          <span class="status-pill {% if activity_events %}ready{% else %}manual{% endif %}">
-            {{ activity_events|length }} events
-          </span>
+          <div class="panel-header-actions">
+            <span class="status-pill {% if activity_events %}ready{% else %}manual{% endif %}">
+              {{ activity_events|length }} events
+            </span>
+            <a class="secondary-button link-button-muted" href="/projects/{{ project.id }}/activity.json">
+              <i data-lucide="braces"></i>
+              Activity JSON
+            </a>
+          </div>
         </div>
         {% if activity_events %}
         <div class="activity-event-list" role="list">

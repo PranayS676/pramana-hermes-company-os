@@ -3333,8 +3333,10 @@ class CompanyRepository:
             ).fetchone()
             if next_stage is None:
                 project_status = "wizard_complete"
+                next_stage_id = ""
             else:
                 project_status = "wizard_active"
+                next_stage_id = next_stage["stage_id"]
                 if next_stage["status"] == "waiting":
                     connection.execute(
                         """
@@ -3354,14 +3356,31 @@ class CompanyRepository:
                 """,
                 (now, project_status, project_id),
             )
+            self._insert_audit_event(
+                connection,
+                project_id=project_id,
+                event_type="stage_approved",
+                status="approved",
+                actor_agent_id=stage["owner_agent_id"],
+                source_table="product_wizard_project_stages",
+                source_id=stage["id"],
+                summary=f"Stage approved: {stage_id}.",
+                payload={
+                    "stage_id": stage_id,
+                    "artifact_id": artifact["id"],
+                    "project_status": project_status,
+                    "next_stage_id": next_stage_id,
+                },
+            )
 
     def request_stage_revision(
         self,
         project_id: str,
         stage_id: str,
         notes: str = "",
+        reason: str = "",
     ) -> None:
-        assert_no_secret_values({"revision_notes": notes})
+        assert_no_secret_values({"revision_notes": notes, "revision_reason": reason})
         stage = self.get_project_wizard_stage(project_id, stage_id)
         if stage is None:
             raise sqlite3.IntegrityError(
@@ -3403,6 +3422,22 @@ class CompanyRepository:
                 WHERE id = ?
                 """,
                 (now, "wizard_active", project_id),
+            )
+            self._insert_audit_event(
+                connection,
+                project_id=project_id,
+                event_type="stage_revision_requested",
+                status="needs_revision",
+                actor_agent_id=stage["owner_agent_id"],
+                source_table="product_wizard_project_stages",
+                source_id=stage["id"],
+                summary=f"Stage revision requested: {stage_id}.",
+                payload={
+                    "stage_id": stage_id,
+                    "artifact_id": latest_artifact_id or "",
+                    "reason": reason.strip(),
+                    "notes": notes.strip(),
+                },
             )
 
     def block_stage(

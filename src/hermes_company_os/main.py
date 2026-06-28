@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -619,6 +620,34 @@ def generation_run_view(run: dict | None) -> dict | None:
         ),
         "memory_ids": memory_ids if isinstance(memory_ids, list) else [],
     }
+
+
+def project_activity_package(
+    repository: CompanyRepository,
+    project: dict,
+    *,
+    limit: int = 50,
+) -> dict:
+    events = []
+    for event in repository.list_audit_events(project_id=project["id"], limit=limit):
+        event_payload = dict(event)
+        event_payload.pop("payload_json", None)
+        events.append(event_payload)
+    payload = {
+        "schema": "project_activity_package_v1",
+        "project": {
+            "id": project["id"],
+            "name": project["name"],
+            "status": project["status"],
+        },
+        "aggregate": {
+            "event_count": len(events),
+            "latest_event_type": events[0]["event_type"] if events else "",
+        },
+        "events": events,
+    }
+    assert_no_secret_values({"project_activity_package": json.dumps(payload, sort_keys=True)})
+    return payload
 
 
 def live_hermes_operator_console(
@@ -4750,6 +4779,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/projects/{project_id}/activity.json")
+    def project_activity_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_activity_package(repository, project)
+
     @app.get("/projects/{project_id}/codex-execution.json")
     def project_codex_execution_json(request: Request, project_id: str) -> dict:
         repository: CompanyRepository = request.app.state.repository
@@ -4778,9 +4815,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         try:
-            generate_multi_agent_review(repository, project_id)
+            package = generate_multi_agent_review(repository, project_id)
         except ValueError as exc:
+            repository.create_audit_event(
+                project_id=project_id,
+                event_type="multi_agent_review_blocked",
+                status="blocked",
+                actor_agent_id="qa-critic",
+                source_table="company_projects",
+                source_id=project_id,
+                summary=f"Multi-agent review blocked: {exc}",
+                payload={"blocker": str(exc)},
+            )
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        repository.create_audit_event(
+            project_id=project_id,
+            event_type="multi_agent_review_completed",
+            status=package["aggregate"]["status"],
+            actor_agent_id="qa-critic",
+            source_table="project_review_records",
+            source_id=package["review_batch_id"],
+            summary=(
+                "Multi-agent review completed with "
+                f"{package['aggregate']['reviewer_count']} reviewer records."
+            ),
+            payload={
+                "review_batch_id": package["review_batch_id"],
+                "reviewer_count": package["aggregate"]["reviewer_count"],
+                "required_reviewer_count": package["aggregate"]["required_reviewer_count"],
+                "status": package["aggregate"]["status"],
+            },
+        )
         return RedirectResponse(
             f"/projects/{project_id}#multi-agent-review",
             status_code=303,
@@ -5401,6 +5466,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 project_id=project_id,
                 stage_id=resolved_stage_id,
                 notes=revision_note,
+                reason=revision_reason,
             )
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
@@ -5444,8 +5510,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Project not found")
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         if kanban_blocker:
+            repository.create_audit_event(
+                project_id=project_id,
+                event_type="kanban_push_blocked",
+                status="blocked",
+                actor_agent_id="chief-of-staff",
+                source_table="company_projects",
+                source_id=project_id,
+                summary=f"Kanban push blocked: {kanban_blocker}",
+                payload={"blocker": kanban_blocker},
+            )
             raise HTTPException(status_code=409, detail=kanban_blocker)
         workflow_items = repository.list_project_workflow_items(project_id)
+        pending_items = [
+            item
+            for item in workflow_items
+            if not item["kanban_task_id"] and item["task_id"]
+        ]
+        repository.create_audit_event(
+            project_id=project_id,
+            event_type="kanban_push_started",
+            status="running",
+            actor_agent_id="chief-of-staff",
+            source_table="company_projects",
+            source_id=project_id,
+            summary=f"Kanban push started for {len(pending_items)} project tasks.",
+            payload={"pending_task_count": len(pending_items)},
+        )
         for item in workflow_items:
             if item["kanban_task_id"] or not item["task_id"]:
                 continue
@@ -5461,6 +5552,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repository.complete_run(run_id, output=result.output, error=result.error)
             if result.ok and result.task_id:
                 repository.attach_kanban_task(task["id"], result.task_id)
+                repository.create_audit_event(
+                    project_id=project_id,
+                    event_type="kanban_task_linked",
+                    status="succeeded",
+                    actor_agent_id=task["owner_agent_id"],
+                    source_table="tasks",
+                    source_id=task["id"],
+                    summary=f"Kanban task linked: {task['title']}.",
+                    payload={
+                        "run_id": run_id,
+                        "kanban_task_id": result.task_id,
+                        "workflow_item_id": item["id"],
+                        "owner_agent_id": task["owner_agent_id"],
+                    },
+                )
                 repository.update_kanban_check(
                     check_id="kanban-task-create",
                     status="verified",

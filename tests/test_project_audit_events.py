@@ -6,6 +6,7 @@ import sqlite3
 from fastapi.testclient import TestClient
 
 from hermes_company_os.database import initialize_database
+from hermes_company_os.kanban_client import KanbanResult
 from hermes_company_os.main import create_app
 from hermes_company_os.product_wizard import generate_wizard_artifact
 from hermes_company_os.repository import CompanyRepository
@@ -28,6 +29,8 @@ STRUCTURED_INTAKE = {
     "success_metrics": "Reduce first-pass diligence synthesis time by 40 percent.",
 }
 
+WIZARD_STAGE_IDS = ["research", "prd", "architecture", "tasks", "code_plan", "acceptance"]
+
 
 class CapturingGenerationService:
     def __init__(self):
@@ -44,6 +47,19 @@ class CapturingGenerationService:
         )
 
 
+class FakeKanbanClient:
+    def __init__(self) -> None:
+        self.created_tasks: list[dict] = []
+
+    def diagnostics(self) -> KanbanResult:
+        return KanbanResult(ok=True, output='{"ok": true}')
+
+    def create_task(self, task: dict) -> KanbanResult:
+        self.created_tasks.append(task)
+        task_id = f"kb_{len(self.created_tasks)}"
+        return KanbanResult(ok=True, output=f'{{"id": "{task_id}"}}', task_id=task_id)
+
+
 def app_and_client(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     return app, TestClient(app)
@@ -57,6 +73,31 @@ def create_structured_project(client: TestClient) -> str:
     )
     assert response.status_code == 303, response.text
     return response.headers["location"].rsplit("/", 1)[-1]
+
+
+def generate_and_approve_current_stage(app, client: TestClient, project_id: str) -> str:
+    current = app.state.repository.next_actionable_stage(project_id)
+    assert current is not None
+    stage_id = current["stage_id"]
+    generated = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+    assert generated.status_code == 303, generated.text
+    approved = client.post(
+        f"/projects/{project_id}/stages/{stage_id}/approve",
+        follow_redirects=False,
+    )
+    assert approved.status_code == 303, approved.text
+    return stage_id
+
+
+def approve_until_stage(app, client: TestClient, project_id: str, target_stage_id: str) -> None:
+    for _ in range(len(WIZARD_STAGE_IDS)):
+        stage_id = generate_and_approve_current_stage(app, client, project_id)
+        if stage_id == target_stage_id:
+            return
+    raise AssertionError(f"Did not reach {target_stage_id}.")
 
 
 def initialized_repository(tmp_path) -> CompanyRepository:
@@ -108,6 +149,34 @@ def test_project_audit_schema_and_repository_list_project_events(tmp_path):
     assert secret_violations({"audit_event": json.dumps(events[0], sort_keys=True)}) == []
 
 
+def test_project_activity_json_exports_recent_events(tmp_path):
+    app, client = app_and_client(tmp_path)
+    generation_service = CapturingGenerationService()
+    app.state.generation_service = generation_service
+    project_id = create_structured_project(client)
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+    export_response = client.get(f"/projects/{project_id}/activity.json")
+    payload = export_response.json()
+
+    assert response.status_code == 303
+    assert export_response.status_code == 200
+    assert payload["schema"] == "project_activity_package_v1"
+    assert payload["project"]["id"] == project_id
+    assert payload["aggregate"]["event_count"] >= 2
+    assert payload["events"][0]["event_label"]
+    assert payload["events"][0]["source_table"]
+    assert payload["events"][0]["source_id"]
+    assert "payload_json" not in payload["events"][0]
+    assert "generation_succeeded" in {
+        event["event_type"] for event in payload["events"]
+    }
+    assert secret_violations({"activity_json": json.dumps(payload, sort_keys=True)}) == []
+
+
 def test_generation_route_records_project_activity_events(tmp_path):
     app, client = app_and_client(tmp_path)
     generation_service = CapturingGenerationService()
@@ -144,6 +213,8 @@ def test_generation_route_records_project_activity_events(tmp_path):
     assert 'id="project-activity"' in project_page.text
     assert "Agent Activity" in project_page.text
     assert "Generation succeeded" in project_page.text
+    assert "Activity JSON" in project_page.text
+    assert f'href="/projects/{project_id}/activity.json"' in project_page.text
     assert generation_run["id"] in project_page.text
     assert css.status_code == 200
     assert ".project-activity-panel" in css.text
@@ -196,6 +267,54 @@ def test_founder_decision_lifecycle_records_activity_events(tmp_path):
     assert secret_violations({"audit_events": json.dumps(events, sort_keys=True)}) == []
 
 
+def test_stage_approval_and_revision_routes_record_activity_events(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+
+    generated = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+    approved = client.post(
+        f"/projects/{project_id}/stages/research/approve",
+        follow_redirects=False,
+    )
+    revision = client.post(
+        f"/projects/{project_id}/stages/research/revision",
+        data={
+            "revision_reason": "evidence_gap",
+            "revision_request": "Add clearer primary-source evidence before PRD.",
+        },
+        follow_redirects=False,
+    )
+    events = app.state.repository.list_audit_events(project_id=project_id)
+    approval_event = next(
+        event for event in events if event["event_type"] == "stage_approved"
+    )
+    revision_event = next(
+        event for event in events if event["event_type"] == "stage_revision_requested"
+    )
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert generated.status_code == 303
+    assert approved.status_code == 303
+    assert revision.status_code == 303
+    assert approval_event["source_table"] == "product_wizard_project_stages"
+    assert approval_event["payload"]["stage_id"] == "research"
+    assert approval_event["payload"]["artifact_id"]
+    assert revision_event["source_table"] == "product_wizard_project_stages"
+    assert revision_event["payload"]["stage_id"] == "research"
+    assert revision_event["payload"]["reason"] == "evidence_gap"
+    assert "Stage approved" in project_page.text
+    assert "Stage revision requested" in project_page.text
+    assert secret_violations(
+        {
+            "audit_events": json.dumps(events, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
 def test_memory_routes_record_project_activity_and_render_timeline(tmp_path):
     app, client = app_and_client(tmp_path)
     project_id = create_structured_project(client)
@@ -243,3 +362,71 @@ def test_memory_routes_record_project_activity_and_render_timeline(tmp_path):
             "project_page": project_page.text,
         }
     ) == []
+
+
+def test_multi_agent_review_routes_record_blocked_and_completed_activity(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+
+    blocked = client.post(
+        f"/projects/{project_id}/multi-agent-review",
+        follow_redirects=False,
+    )
+    approve_until_stage(app, client, project_id, "acceptance")
+    completed = client.post(
+        f"/projects/{project_id}/multi-agent-review",
+        follow_redirects=False,
+    )
+    records = app.state.repository.list_project_review_records(project_id)
+    events = app.state.repository.list_audit_events(project_id=project_id)
+    blocked_event = next(
+        event for event in events if event["event_type"] == "multi_agent_review_blocked"
+    )
+    completed_event = next(
+        event for event in events if event["event_type"] == "multi_agent_review_completed"
+    )
+
+    assert blocked.status_code == 409
+    assert completed.status_code == 303
+    assert len(records) == 5
+    assert blocked_event["source_table"] == "company_projects"
+    assert blocked_event["source_id"] == project_id
+    assert "approved code plan and acceptance package" in blocked_event["summary"]
+    assert completed_event["source_table"] == "project_review_records"
+    assert completed_event["payload"]["reviewer_count"] == 5
+    assert completed_event["payload"]["status"] == "approved"
+    assert secret_violations({"audit_events": json.dumps(events, sort_keys=True)}) == []
+
+
+def test_project_kanban_route_records_blocked_and_linked_activity(tmp_path):
+    app = create_app(Settings(database_path=tmp_path / "company.db"))
+    app.state.kanban_client = FakeKanbanClient()
+    project_id = app.state.repository.create_project_with_workflow(
+        name="Acme AI",
+        founder_idea="AI operating company for small businesses.",
+    )
+    client = TestClient(app)
+
+    blocked = client.post(f"/projects/{project_id}/kanban", follow_redirects=False)
+    for check in app.state.repository.list_kanban_checks():
+        app.state.repository.update_kanban_check(
+            check_id=check["id"],
+            status="verified",
+            evidence="Verified before project handoff.",
+        )
+    pushed = client.post(f"/projects/{project_id}/kanban", follow_redirects=False)
+    events = app.state.repository.list_audit_events(project_id=project_id)
+    event_types = [event["event_type"] for event in events]
+    linked_events = [
+        event for event in events if event["event_type"] == "kanban_task_linked"
+    ]
+
+    assert blocked.status_code == 409
+    assert pushed.status_code == 303
+    assert "kanban_push_blocked" in event_types
+    assert "kanban_push_started" in event_types
+    assert linked_events
+    assert len(linked_events) == len(app.state.kanban_client.created_tasks)
+    assert linked_events[0]["source_table"] == "tasks"
+    assert linked_events[0]["payload"]["kanban_task_id"].startswith("kb_")
+    assert secret_violations({"audit_events": json.dumps(events, sort_keys=True)}) == []
