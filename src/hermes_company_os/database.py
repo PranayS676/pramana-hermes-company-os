@@ -64,6 +64,35 @@ CREATE INDEX IF NOT EXISTS idx_generation_runs_project_stage_created
 ON generation_runs(project_id, stage_id, created_at DESC);
 """
 
+CODEX_EXECUTION_RUNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS codex_execution_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    decision_id TEXT NOT NULL REFERENCES founder_decisions(id),
+    package_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (
+        status IN ('queued', 'blocked', 'completed', 'failed', 'cancelled')
+    ),
+    runner_mode TEXT NOT NULL,
+    external_execution_enabled INTEGER NOT NULL DEFAULT 0,
+    branch_name TEXT NOT NULL,
+    worktree_path TEXT NOT NULL,
+    source_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    command_preview_json TEXT NOT NULL DEFAULT '[]',
+    approval_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    audit_json TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_codex_execution_runs_project_created
+ON codex_execution_runs(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_codex_execution_runs_decision
+ON codex_execution_runs(decision_id);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -369,6 +398,7 @@ def initialize_database(database_path: Path) -> None:
         )
         connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
         connection.executescript(GENERATION_RUNS_SCHEMA)
+        connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
@@ -376,6 +406,7 @@ def initialize_database(database_path: Path) -> None:
 def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
     connection.executescript(GENERATION_RUNS_SCHEMA)
+    connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

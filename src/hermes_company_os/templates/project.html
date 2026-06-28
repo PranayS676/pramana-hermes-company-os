@@ -85,6 +85,8 @@
 {% set codex_state = codex_package.execution|default({}, true) %}
 {% set codex_gates = codex_package.approval_gates|default({}, true) %}
 {% set codex_branch_plan = codex_package.branch_plan|default({}, true) %}
+{% set codex_runner = codex_package.runner|default({}, true) %}
+{% set codex_latest_run = codex_runner.latest_run|default({}, true) %}
 {% set intake = project.intake|default({}, true) %}
 
 <!doctype html>
@@ -809,9 +811,13 @@
               <i data-lucide="square-terminal"></i>
             </div>
             <p class="empty-state gate-copy" id="codex-gate-reason">
-              {% if codex_state.founder_approved_for_execution %}
+              {% if codex_runner.queue_open %}
+              Codex runner queued. Approval consumed into a source-only audit record;
+              actual branch, worktree, and Codex process execution remain disabled.
+              {% elif codex_state.founder_approved_for_execution %}
               Codex execution is founder-approved. Real workstream launch is still disabled
-              until a separate runner implementation exists.
+              until a separate runner implementation exists. You can queue the disabled
+              runner record to preserve approval consumption evidence.
               {% elif codex_state.approval_request_open %}
               Open Codex execution approval: {{ codex_state.decision_id }}.
               {% elif codex_state.ready_for_founder_approval %}
@@ -837,6 +843,28 @@
             <p class="panel-kicker">
               Branch preview: <code>{{ codex_branch_plan.branch_name }}</code>
             </p>
+            {% endif %}
+            {% if codex_latest_run %}
+            <div class="quality-check-list" aria-label="Codex runner evidence">
+              <div class="quality-check-row">
+                <span>Runner status</span>
+                <span class="status-pill {{ codex_latest_run.status }}">
+                  {{ codex_latest_run.status }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Approval consumed</span>
+                <span>{{ codex_latest_run.decision_id }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>Run ID</span>
+                <span>{{ codex_latest_run.id }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>External execution</span>
+                <span class="status-pill manual">External execution disabled</span>
+              </div>
+            </div>
             {% endif %}
             <a
               class="secondary-button link-button-muted full-width-button"
@@ -869,6 +897,16 @@
             </a>
             {% elif codex_state.founder_approved_for_execution %}
             <span class="status-pill ready">founder-approved</span>
+            {% endif %}
+            {% if codex_runner.queue_request_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="list-start"></i>
+                Queue Codex runner
+              </button>
+            </form>
+            {% elif codex_runner.queue_open %}
+            <span class="status-pill queued">Codex runner queued</span>
             {% endif %}
             <button
               class="secondary-button full-width-button"

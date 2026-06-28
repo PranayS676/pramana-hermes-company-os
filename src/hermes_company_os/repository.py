@@ -57,6 +57,20 @@ def decode_generation_run(row: sqlite3.Row) -> dict:
     return run
 
 
+def decode_codex_execution_run(row: sqlite3.Row) -> dict:
+    run = dict(row)
+    run["external_execution_enabled"] = bool(run["external_execution_enabled"])
+    for column, target, fallback in (
+        ("source_artifact_ids_json", "source_artifact_ids", []),
+        ("command_preview_json", "command_preview", []),
+        ("approval_snapshot_json", "approval_snapshot", {}),
+        ("audit_json", "audit", {}),
+    ):
+        raw_json = run.get(column, "").strip()
+        run[target] = json.loads(raw_json) if raw_json else fallback
+    return run
+
+
 def safe_generation_error(message: str) -> str:
     cleaned = message.strip()
     if not cleaned:
@@ -2259,6 +2273,123 @@ class CompanyRepository:
             artifact_id=artifact_id,
             limit=1,
         )
+        return runs[0] if runs else None
+
+    def create_codex_execution_run(
+        self,
+        *,
+        run_id: str,
+        project_id: str,
+        decision_id: str,
+        package_id: str,
+        status: str,
+        runner_mode: str,
+        external_execution_enabled: bool,
+        branch_name: str,
+        worktree_path: str,
+        source_artifact_ids: list[str] | tuple[str, ...],
+        command_preview: list[dict] | tuple[dict, ...],
+        approval_snapshot: dict,
+        audit: dict,
+        error: str = "",
+    ) -> str:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        if self.get_founder_decision(decision_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown founder decision: {decision_id}")
+        if status not in {"queued", "blocked", "completed", "failed", "cancelled"}:
+            raise ValueError(f"Unsupported Codex execution status: {status}")
+        source_json = json.dumps(list(source_artifact_ids), sort_keys=True)
+        command_json = json.dumps(list(command_preview), sort_keys=True)
+        approval_json = json.dumps(approval_snapshot, sort_keys=True)
+        audit_json = json.dumps(audit, sort_keys=True)
+        assert_no_secret_values(
+            {
+                "codex_execution_run_id": run_id,
+                "codex_execution_package_id": package_id,
+                "codex_execution_status": status,
+                "codex_execution_runner_mode": runner_mode,
+                "codex_execution_branch_name": branch_name,
+                "codex_execution_worktree_path": worktree_path,
+                "codex_execution_sources": source_json,
+                "codex_execution_commands": command_json,
+                "codex_execution_approval": approval_json,
+                "codex_execution_audit": audit_json,
+                "codex_execution_error": error,
+            }
+        )
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO codex_execution_runs (
+                    id, project_id, decision_id, package_id, status, runner_mode,
+                    external_execution_enabled, branch_name, worktree_path,
+                    source_artifact_ids_json, command_preview_json,
+                    approval_snapshot_json, audit_json, error, created_at,
+                    completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    project_id,
+                    decision_id,
+                    package_id.strip(),
+                    status.strip(),
+                    runner_mode.strip(),
+                    1 if external_execution_enabled else 0,
+                    branch_name.strip(),
+                    worktree_path.strip(),
+                    source_json,
+                    command_json,
+                    approval_json,
+                    audit_json,
+                    error.strip(),
+                    now,
+                    now if status in {"completed", "failed", "cancelled"} else None,
+                ),
+            )
+        return run_id
+
+    def get_codex_execution_run(self, run_id: str) -> dict | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM codex_execution_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+        return decode_codex_execution_run(row) if row else None
+
+    def list_codex_execution_runs(
+        self,
+        project_id: str,
+        *,
+        status: str = "",
+        limit: int = 20,
+    ) -> list[dict]:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        filters = ["project_id = ?"]
+        parameters: list[str | int] = [project_id]
+        if status:
+            filters.append("status = ?")
+            parameters.append(status)
+        parameters.append(max(1, min(limit, 100)))
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM codex_execution_runs
+                WHERE {" AND ".join(filters)}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [decode_codex_execution_run(row) for row in rows]
+
+    def latest_codex_execution_run(self, project_id: str) -> dict | None:
+        runs = self.list_codex_execution_runs(project_id=project_id, limit=1)
         return runs[0] if runs else None
 
     def save_stage_artifact_draft(

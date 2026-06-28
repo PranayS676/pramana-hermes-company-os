@@ -205,3 +205,95 @@ def test_codex_execution_package_requests_founder_approval_once_after_acceptance
             "decision": json.dumps(codex_decisions[0], sort_keys=True),
         }
     ) == []
+
+
+def test_codex_execution_runner_queue_requires_approved_founder_decision(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    approve_until_stage(app, client, project_id, "acceptance")
+
+    response = client.post(
+        f"/projects/{project_id}/codex-execution-run",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 409
+    assert "Founder approval is required" in response.json()["detail"]
+    assert app.state.repository.list_codex_execution_runs(project_id) == []
+
+
+def test_codex_execution_runner_consumes_approval_into_source_only_audit(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    approve_until_stage(app, client, project_id, "acceptance")
+    client.post(
+        f"/projects/{project_id}/codex-execution-approval",
+        follow_redirects=False,
+    )
+    decision = next(
+        item
+        for item in app.state.repository.list_founder_decisions(
+            project_id=project_id,
+            stage_id="acceptance",
+            decision_type=CODEX_EXECUTION_DECISION_TYPE,
+        )
+        if item["source"] == CODEX_EXECUTION_DECISION_SOURCE
+    )
+    app.state.repository.update_founder_decision(
+        decision["id"],
+        status="approved",
+        decision="Founder approves queuing the source-only Codex runner.",
+        founder_confirmed=True,
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/codex-execution-run",
+        follow_redirects=False,
+    )
+    second_response = client.post(
+        f"/projects/{project_id}/codex-execution-run",
+        follow_redirects=False,
+    )
+    runs = app.state.repository.list_codex_execution_runs(project_id)
+    package = client.get(f"/projects/{project_id}/codex-execution.json").json()
+    project_page = client.get(f"/projects/{project_id}")
+    run = runs[0]
+    audit = run["audit"]
+
+    assert response.status_code == 303
+    assert second_response.status_code == 409
+    assert "already queued" in second_response.json()["detail"]
+    assert len(runs) == 1
+    assert run["status"] == "queued"
+    assert run["runner_mode"] == "source_only_disabled"
+    assert run["external_execution_enabled"] is False
+    assert run["decision_id"] == decision["id"]
+    assert run["branch_name"] == "codex/atlas-brief/implementation-v1"
+    assert run["source_artifact_ids"]
+    assert run["command_preview"][0]["command"] == (
+        "git switch -c codex/atlas-brief/implementation-v1"
+    )
+    assert audit["schema"] == "codex_execution_run_audit_v1"
+    assert audit["immutable"] is True
+    assert audit["run_id"] == run["id"]
+    assert audit["approval_consumption"]["decision_id"] == decision["id"]
+    assert audit["approval_consumption"]["status"] == "consumed"
+    assert audit["approval_consumption"]["consumed_by_run_id"] == run["id"]
+    assert audit["package_fingerprint"]["sha256"]
+    assert audit["command_fingerprints"][0]["sha256"]
+    assert package["runner"]["latest_run"]["id"] == run["id"]
+    assert package["runner"]["latest_run"]["status"] == "queued"
+    assert package["runner"]["queue_open"] is True
+    assert package["runner"]["queue_request_allowed"] is False
+    assert project_page.status_code == 200
+    assert "Codex runner queued" in project_page.text
+    assert "Approval consumed" in project_page.text
+    assert run["id"] in project_page.text
+    assert "External execution disabled" in project_page.text
+    assert secret_violations(
+        {
+            "codex_execution_package": json.dumps(package, sort_keys=True),
+            "codex_execution_run": json.dumps(run, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from hashlib import sha256
 from typing import Any
+from uuid import uuid4
 
 from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
 from hermes_company_os.product_wizard import STAGE_CONTRACTS
@@ -13,6 +15,8 @@ CODEX_EXECUTION_SCHEMA = "codex_project_execution_package_v1"
 CODEX_EXECUTION_DECISION_SOURCE = "codex_project_execution"
 CODEX_EXECUTION_DECISION_TYPE = "external_action_approval"
 CODEX_EXECUTION_STAGE_ID = "acceptance"
+CODEX_EXECUTION_RUNNER_MODE = "source_only_disabled"
+ACTIVE_CODEX_RUN_STATUSES = frozenset({"queued", "blocked"})
 
 
 def codex_execution_package(repository, project_id: str) -> dict[str, Any]:
@@ -29,6 +33,7 @@ def codex_execution_package(repository, project_id: str) -> dict[str, Any]:
         "acceptance",
     )
     approval = codex_execution_approval(repository, project_id)
+    latest_run = repository.latest_codex_execution_run(project_id)
     project_slug = _safe_slug(project["name"] or project_id)
     code_plan_gate = _artifact_gate("code_plan", "Code plan", code_plan_artifact)
     acceptance_gate = _artifact_gate(
@@ -80,6 +85,12 @@ def codex_execution_package(repository, project_id: str) -> dict[str, Any]:
                 "create branches, create worktrees, spawn chats, or run commands."
             ),
         },
+        "runner": _runner_state(
+            latest_run,
+            founder_approved=founder_approved,
+            approval_request_open=approval_request_open,
+            artifact_missing_gates=artifact_missing_gates,
+        ),
         "approval_gates": {
             "code_plan": code_plan_gate,
             "acceptance": acceptance_gate,
@@ -108,12 +119,52 @@ def codex_execution_package(repository, project_id: str) -> dict[str, Any]:
     return payload
 
 
+def queue_codex_execution_run(repository, project_id: str) -> dict[str, Any]:
+    package = codex_execution_package(repository, project_id)
+    runner = package["runner"]
+    if not runner["queue_request_allowed"]:
+        raise ValueError(runner["blocker"])
+    decision = repository.get_founder_decision(package["execution"]["decision_id"])
+    if decision is None or decision["status"] != "approved":
+        raise ValueError("Founder approval is required before queuing Codex execution.")
+
+    run_id = f"codex-run-{uuid4().hex[:10]}"
+    source_artifact_ids = [artifact["id"] for artifact in package["source_artifacts"]]
+    approval_snapshot = _approval_snapshot(decision)
+    audit = _run_audit(
+        package=package,
+        run_id=run_id,
+        approval_snapshot=approval_snapshot,
+    )
+    repository.create_codex_execution_run(
+        run_id=run_id,
+        project_id=project_id,
+        decision_id=decision["id"],
+        package_id=package["package_id"],
+        status="queued",
+        runner_mode=CODEX_EXECUTION_RUNNER_MODE,
+        external_execution_enabled=False,
+        branch_name=package["branch_plan"]["branch_name"],
+        worktree_path=package["branch_plan"]["worktree_path"],
+        source_artifact_ids=source_artifact_ids,
+        command_preview=package["command_preview"],
+        approval_snapshot=approval_snapshot,
+        audit=audit,
+    )
+    run = repository.get_codex_execution_run(run_id)
+    assert run is not None
+    assert_no_secret_values({"codex_execution_run": json.dumps(run, sort_keys=True)})
+    return run
+
+
 def codex_execution_markdown(package: Mapping[str, Any]) -> str:
     gates = package["approval_gates"]
     source_artifacts = package["source_artifacts"]
     command_preview = package["command_preview"]
     workstreams = package["workstreams"]
     checklist = package["acceptance_checklist"]
+    runner = package["runner"]
+    latest_run = runner.get("latest_run") or {}
     lines = [
         f"# Codex Project Execution Package: {package['project']['name']}",
         "",
@@ -137,9 +188,28 @@ def codex_execution_markdown(package: Mapping[str, Any]) -> str:
         "",
         "No branch or worktree is created by this export.",
         "",
-        "## Approval Gates",
+        "## Runner State",
         "",
+        f"- Runner mode: `{runner['mode']}`",
+        f"- Queue request allowed: `{str(runner['queue_request_allowed']).lower()}`",
+        f"- Queue open: `{str(runner['queue_open']).lower()}`",
+        "- External execution enabled: `false`",
     ]
+    if latest_run:
+        lines.extend(
+            [
+                f"- Latest run: `{latest_run['id']}`",
+                f"- Latest run status: `{latest_run['status']}`",
+                f"- Approval consumed: `{latest_run['decision_id']}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Approval Gates",
+            "",
+        ]
+    )
     for gate in gates.values():
         lines.append(
             f"- `{gate['id']}`: {gate['status']} - {gate['detail']}"
@@ -210,6 +280,135 @@ def codex_execution_approval(repository, project_id: str) -> dict[str, str]:
             "artifact_id": open_decision.get("artifact_id") or "",
         }
     return {"id": "", "status": "", "stage_id": "", "artifact_id": ""}
+
+
+def _runner_state(
+    latest_run: Mapping[str, Any] | None,
+    *,
+    founder_approved: bool,
+    approval_request_open: bool,
+    artifact_missing_gates: list[str],
+) -> dict[str, Any]:
+    run_summary = _run_summary(latest_run)
+    queue_open = bool(
+        latest_run and latest_run["status"] in ACTIVE_CODEX_RUN_STATUSES
+    )
+    queue_request_allowed = (
+        founder_approved and not artifact_missing_gates and not queue_open
+    )
+    if queue_open:
+        blocker = f"Codex execution is already queued in {latest_run['id']}."
+    elif artifact_missing_gates:
+        blocker = (
+            "Approve required artifacts before queuing Codex execution: "
+            + ", ".join(artifact_missing_gates)
+            + "."
+        )
+    elif not founder_approved:
+        blocker = "Founder approval is required before queuing Codex execution."
+    elif approval_request_open:
+        blocker = "Founder approval is still pending."
+    else:
+        blocker = ""
+    return {
+        "mode": CODEX_EXECUTION_RUNNER_MODE,
+        "external_execution_enabled": False,
+        "queue_request_allowed": queue_request_allowed,
+        "queue_open": queue_open,
+        "latest_run": run_summary,
+        "blocker": blocker,
+        "policy": (
+            "Queueing records approval consumption and source-only runner intent. "
+            "It does not run Git, create worktrees, or start Codex processes."
+        ),
+    }
+
+
+def _run_summary(run: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not run:
+        return {}
+    audit = run.get("audit") or {}
+    approval = audit.get("approval_consumption") or {}
+    return {
+        "id": run["id"],
+        "status": run["status"],
+        "runner_mode": run["runner_mode"],
+        "external_execution_enabled": bool(run["external_execution_enabled"]),
+        "decision_id": run["decision_id"],
+        "branch_name": run["branch_name"],
+        "worktree_path": run["worktree_path"],
+        "approval_consumption": approval,
+        "created_at": run["created_at"],
+    }
+
+
+def _approval_snapshot(decision: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "decision_id": decision["id"],
+        "status": decision["status"],
+        "source": decision["source"],
+        "decision_type": decision["decision_type"],
+        "project_id": decision.get("project_id") or "",
+        "stage_id": decision.get("stage_id") or "",
+        "artifact_id": decision.get("artifact_id") or "",
+        "resolved_at": decision.get("resolved_at") or "",
+        "updated_at": decision.get("updated_at") or "",
+    }
+
+
+def _run_audit(
+    *,
+    package: Mapping[str, Any],
+    run_id: str,
+    approval_snapshot: Mapping[str, str],
+) -> dict[str, Any]:
+    package_fingerprint = _fingerprint_json(package)
+    command_fingerprints = [
+        {
+            "id": command["id"],
+            "sha256": _fingerprint_text(command["command"]),
+            "runs_automatically": bool(command["runs_automatically"]),
+        }
+        for command in package["command_preview"]
+    ]
+    return {
+        "schema": "codex_execution_run_audit_v1",
+        "immutable": True,
+        "run_id": run_id,
+        "package_id": package["package_id"],
+        "package_fingerprint": {
+            "sha256": package_fingerprint,
+            "schema": package["schema"],
+        },
+        "approval_consumption": {
+            "decision_id": approval_snapshot["decision_id"],
+            "decision_status": approval_snapshot["status"],
+            "status": "consumed",
+            "consumed_by_run_id": run_id,
+            "source": approval_snapshot["source"],
+        },
+        "source_artifacts": [
+            {
+                "id": artifact["id"],
+                "stage_id": artifact["stage_id"],
+                "version": artifact["version"],
+                "status": artifact["status"],
+            }
+            for artifact in package["source_artifacts"]
+        ],
+        "branch_plan": {
+            "branch_name": package["branch_plan"]["branch_name"],
+            "worktree_path": package["branch_plan"]["worktree_path"],
+            "create_branch": False,
+            "create_worktree": False,
+        },
+        "command_fingerprints": command_fingerprints,
+        "post_queue_review": {
+            "status": "awaiting_founder_or_operator_review",
+            "external_execution_enabled": False,
+            "next_gate": "explicit real Codex runner implementation approval",
+        },
+    }
 
 
 def _artifact_gate(
@@ -372,6 +571,14 @@ def _acceptance_checklist() -> list[dict[str, str]]:
             "label": "Founder-visible summary and verification evidence are reviewed before push.",
         },
     ]
+
+
+def _fingerprint_json(value: Mapping[str, Any]) -> str:
+    return _fingerprint_text(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def _fingerprint_text(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
 
 
 def _safe_slug(value: str) -> str:
