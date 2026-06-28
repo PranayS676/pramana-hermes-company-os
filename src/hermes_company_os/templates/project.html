@@ -84,6 +84,7 @@
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
 {% set founder_decision_items = founder_decisions|default([], true) %}
 {% set queue_items = agent_work_items|default([], true) %}
+{% set activity_events = project_activity_events|default([], true) %}
 {% set codex_package = codex_execution|default({}, true) %}
 {% set codex_state = codex_package.execution|default({}, true) %}
 {% set codex_gates = codex_package.approval_gates|default({}, true) %}
@@ -231,6 +232,53 @@
           <i data-lucide="list-checks"></i>
           Open project queue
         </a>
+      </section>
+
+      <section class="project-activity-panel" id="project-activity" aria-label="Project agent activity">
+        <div class="panel-header inline-panel-header">
+          <div>
+            <h2>Agent Activity</h2>
+            <p class="panel-kicker">Recent project changes with their source records.</p>
+          </div>
+          <span class="status-pill {% if activity_events %}ready{% else %}manual{% endif %}">
+            {{ activity_events|length }} events
+          </span>
+        </div>
+        {% if activity_events %}
+        <div class="activity-event-list" role="list">
+          {% for event in activity_events %}
+          <div class="activity-event-row {{ event.status }}" role="listitem">
+            <span class="activity-event-icon" aria-hidden="true">
+              {% if "generation" in event.event_type %}
+              <i data-lucide="sparkles"></i>
+              {% elif "memory" in event.event_type %}
+              <i data-lucide="brain"></i>
+              {% elif "decision" in event.event_type %}
+              <i data-lucide="gavel"></i>
+              {% elif "codex" in event.event_type %}
+              <i data-lucide="square-terminal"></i>
+              {% else %}
+              <i data-lucide="activity"></i>
+              {% endif %}
+            </span>
+            <div class="activity-event-main">
+              <div>
+                <strong>{{ event.event_label }}</strong>
+                <span class="status-pill {{ event.status }}">{{ event.status }}</span>
+              </div>
+              <p>{{ event.summary }}</p>
+              <small>
+                {{ event.source_table }} / {{ event.source_id }}
+                {% if event.actor_name %}- {{ event.actor_name }}{% endif %}
+              </small>
+            </div>
+            <time datetime="{{ event.created_at }}">{{ event.created_at[:16] }}</time>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">No project activity has been recorded yet.</p>
+        {% endif %}
       </section>
 
       <section class="stage-timeline-panel">

@@ -152,6 +152,27 @@ CREATE INDEX IF NOT EXISTS idx_project_memory_entries_updated
 ON project_memory_entries(updated_at DESC);
 """
 
+AUDIT_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS audit_events (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    actor_agent_id TEXT REFERENCES agents(id),
+    source_table TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_project_created
+ON audit_events(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_source
+ON audit_events(source_table, source_id);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -460,6 +481,7 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
         connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
         connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+        connection.executescript(AUDIT_EVENTS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
@@ -470,6 +492,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
     connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
     connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+    connection.executescript(AUDIT_EVENTS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

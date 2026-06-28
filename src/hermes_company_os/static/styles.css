@@ -1542,6 +1542,93 @@ summary {
   overflow-wrap: anywhere;
 }
 
+.project-activity-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.activity-event-list {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-event-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+  min-height: 70px;
+  padding: 10px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.activity-event-row.failed,
+.activity-event-row.blocked {
+  background: #fff1f2;
+  border-color: #f2c1c8;
+}
+
+.activity-event-row.succeeded,
+.activity-event-row.approved {
+  background: #eef6f3;
+  border-color: #9ec7bd;
+}
+
+.activity-event-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--accent-strong);
+}
+
+.activity-event-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.activity-event-main > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.activity-event-main strong,
+.activity-event-main p,
+.activity-event-main small,
+.activity-event-row time {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-event-main p,
+.activity-event-main small,
+.activity-event-row time {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.activity-event-row time {
+  justify-self: end;
+  text-align: right;
+}
+
 .stage-timeline-panel {
   margin-bottom: 18px;
   padding: 14px;
@@ -2207,9 +2294,15 @@ summary {
     .revision-form,
     .live-pilot-form,
     .project-decision-strip,
+    .activity-event-row,
     .queue-row,
     .queue-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .activity-event-row time {
+    justify-self: start;
+    text-align: left;
   }
 
   .queue-controls {

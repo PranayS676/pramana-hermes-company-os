@@ -12,6 +12,7 @@ from hermes_company_os.agent_work_queue import (
     validate_queue_state,
     validate_queue_transition,
 )
+from hermes_company_os.audit_events import enrich_audit_event
 from hermes_company_os.database import connect, decode_capabilities, decode_many
 from hermes_company_os.founder_decisions import (
     RESOLVED_DECISION_STATUSES,
@@ -95,6 +96,13 @@ def decode_project_memory_entry(row: sqlite3.Row) -> dict:
     return enrich_memory_entry(dict(row))
 
 
+def decode_audit_event(row: sqlite3.Row) -> dict:
+    event = dict(row)
+    raw_payload = event["payload_json"].strip()
+    event["payload"] = json.loads(raw_payload) if raw_payload else {}
+    return enrich_audit_event(event)
+
+
 def safe_generation_error(message: str) -> str:
     cleaned = message.strip()
     if not cleaned:
@@ -136,6 +144,132 @@ def decode_agent_work_item(row: sqlite3.Row) -> dict:
 class CompanyRepository:
     def __init__(self, database_path: Path):
         self.database_path = database_path
+
+    def _insert_audit_event(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        project_id: str | None,
+        event_type: str,
+        status: str,
+        actor_agent_id: str | None,
+        source_table: str,
+        source_id: str,
+        summary: str,
+        payload: dict | None = None,
+    ) -> str:
+        cleaned = {
+            "project_id": (project_id or "").strip(),
+            "event_type": event_type.strip(),
+            "status": status.strip(),
+            "actor_agent_id": (actor_agent_id or "").strip(),
+            "source_table": source_table.strip(),
+            "source_id": source_id.strip(),
+            "summary": summary.strip(),
+        }
+        required = ("event_type", "status", "source_table", "source_id", "summary")
+        missing = [field for field in required if not cleaned[field]]
+        if missing:
+            raise ValueError(f"Missing audit event fields: {', '.join(missing)}")
+        try:
+            payload_json = json.dumps(payload or {}, sort_keys=True)
+        except TypeError as exc:
+            raise ValueError("Audit event payload must be JSON serializable.") from exc
+        assert_no_secret_values(
+            {
+                **cleaned,
+                "payload_json": payload_json,
+            }
+        )
+        event_id = f"audit-{uuid4().hex[:10]}"
+        connection.execute(
+            """
+            INSERT INTO audit_events (
+                id, project_id, event_type, status, actor_agent_id,
+                source_table, source_id, summary, payload_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                cleaned["project_id"] or None,
+                cleaned["event_type"],
+                cleaned["status"],
+                cleaned["actor_agent_id"] or None,
+                cleaned["source_table"],
+                cleaned["source_id"],
+                cleaned["summary"],
+                payload_json,
+                utc_now(),
+            ),
+        )
+        return event_id
+
+    def create_audit_event(
+        self,
+        *,
+        project_id: str = "",
+        event_type: str,
+        status: str,
+        actor_agent_id: str = "",
+        source_table: str,
+        source_id: str,
+        summary: str,
+        payload: dict | None = None,
+    ) -> str:
+        normalized_project_id = project_id.strip()
+        normalized_actor_id = actor_agent_id.strip()
+        if normalized_project_id and self.get_project(normalized_project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {normalized_project_id}")
+        if normalized_actor_id:
+            self.assert_agent_exists(normalized_actor_id)
+        with connect(self.database_path) as connection:
+            return self._insert_audit_event(
+                connection,
+                project_id=normalized_project_id,
+                event_type=event_type,
+                status=status,
+                actor_agent_id=normalized_actor_id,
+                source_table=source_table,
+                source_id=source_id,
+                summary=summary,
+                payload=payload,
+            )
+
+    def list_audit_events(
+        self,
+        project_id: str = "",
+        *,
+        event_type: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        normalized_project_id = project_id.strip()
+        if normalized_project_id and self.get_project(normalized_project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {normalized_project_id}")
+        filters: list[str] = []
+        parameters: list[str | int] = []
+        if normalized_project_id:
+            filters.append("project_id = ?")
+            parameters.append(normalized_project_id)
+        if event_type:
+            filters.append("event_type = ?")
+            parameters.append(event_type.strip())
+        parameters.append(max(1, min(limit, 200)))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT audit_events.*,
+                       agents.name AS actor_name
+                FROM audit_events
+                LEFT JOIN agents ON agents.id = audit_events.actor_agent_id
+                {where_clause}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        return [decode_audit_event(row) for row in rows]
 
     def list_agents(self) -> list[dict]:
         with connect(self.database_path) as connection:
@@ -834,6 +968,9 @@ class CompanyRepository:
         )
         decision_id = f"decision-{uuid4().hex[:10]}"
         now = utc_now()
+        normalized_project_id = (project_id or "").strip()
+        normalized_stage_id = (stage_id or "").strip()
+        normalized_artifact_id = (artifact_id or "").strip()
         founder_required = (
             founder_only_decision_type(normalized_type)
             if requires_founder_approval is None
@@ -859,9 +996,9 @@ class CompanyRepository:
                     normalized_type,
                     source.strip(),
                     owner_agent_id,
-                    (project_id or "").strip() or None,
-                    (stage_id or "").strip() or None,
-                    (artifact_id or "").strip() or None,
+                    normalized_project_id or None,
+                    normalized_stage_id or None,
+                    normalized_artifact_id or None,
                     slack_channel.strip(),
                     telegram_policy.strip(),
                     context.strip(),
@@ -874,6 +1011,24 @@ class CompanyRepository:
                     now,
                 ),
             )
+            if normalized_project_id:
+                self._insert_audit_event(
+                    connection,
+                    project_id=normalized_project_id,
+                    event_type="founder_decision_created",
+                    status=status.strip(),
+                    actor_agent_id=owner_agent_id,
+                    source_table="founder_decisions",
+                    source_id=decision_id,
+                    summary=f"Founder decision opened: {title.strip()}",
+                    payload={
+                        "decision_type": normalized_type,
+                        "status": status.strip(),
+                        "stage_id": normalized_stage_id,
+                        "artifact_id": normalized_artifact_id,
+                        "requires_founder_approval": founder_required,
+                    },
+                )
         return decision_id
 
     def update_founder_decision(
@@ -923,6 +1078,29 @@ class CompanyRepository:
                     decision_id,
                 ),
             )
+            if current.get("project_id"):
+                event_type = (
+                    "founder_decision_resolved"
+                    if status in RESOLVED_DECISION_STATUSES
+                    else "founder_decision_updated"
+                )
+                self._insert_audit_event(
+                    connection,
+                    project_id=current["project_id"],
+                    event_type=event_type,
+                    status=status.strip(),
+                    actor_agent_id=current["owner_agent_id"],
+                    source_table="founder_decisions",
+                    source_id=decision_id,
+                    summary=f"Founder decision {status.strip()}: {current['title']}",
+                    payload={
+                        "decision_type": current["decision_type"],
+                        "status": status.strip(),
+                        "stage_id": current.get("stage_id") or "",
+                        "artifact_id": current.get("artifact_id") or "",
+                        "resolved_at": resolved_at or "",
+                    },
+                )
 
     def resolve_project_stage_decisions(
         self,
@@ -2139,7 +2317,8 @@ class CompanyRepository:
     ) -> str:
         if self.get_project(project_id) is None:
             raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
-        if self.get_project_wizard_stage(project_id, stage_id) is None:
+        stage = self.get_project_wizard_stage(project_id, stage_id)
+        if stage is None:
             raise sqlite3.IntegrityError(
                 f"Unknown product wizard stage: {project_id}/{stage_id}"
             )
@@ -2186,6 +2365,22 @@ class CompanyRepository:
                     None,
                 ),
             )
+            self._insert_audit_event(
+                connection,
+                project_id=project_id,
+                event_type="generation_started",
+                status="running",
+                actor_agent_id=stage["owner_agent_id"],
+                source_table="generation_runs",
+                source_id=run_id,
+                summary=f"Generation started for {stage_id}.",
+                payload={
+                    "stage_id": stage_id,
+                    "generation_mode": cleaned_mode,
+                    "source_artifact_ids": cleaned_sources,
+                    "memory_ids": cleaned_memory_ids,
+                },
+            )
         return run_id
 
     def complete_generation_run(
@@ -2195,6 +2390,9 @@ class CompanyRepository:
         source_artifact_ids: list[str] | tuple[str, ...] | None = None,
         memory_ids: list[str] | tuple[str, ...] | None = None,
     ) -> None:
+        current = self.get_generation_run(run_id)
+        if current is None:
+            raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
         values_to_check = {"generation_run_id": run_id, "artifact_id": artifact_id}
         source_json = None
         memory_json = None
@@ -2210,6 +2408,13 @@ class CompanyRepository:
             values_to_check["memory_ids"] = memory_json
         assert_no_secret_values(values_to_check)
         now = utc_now()
+        final_source_ids = current["source_artifact_ids"]
+        final_memory_ids = current["memory_ids"]
+        if source_json is not None:
+            final_source_ids = json.loads(source_json)
+        if memory_json is not None:
+            final_memory_ids = json.loads(memory_json)
+        stage = self.get_project_wizard_stage(current["project_id"], current["stage_id"])
         with connect(self.database_path) as connection:
             if source_json is None and memory_json is None:
                 cursor = connection.execute(
@@ -2265,8 +2470,29 @@ class CompanyRepository:
                 )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
+        with connect(self.database_path) as connection:
+            self._insert_audit_event(
+                connection,
+                project_id=current["project_id"],
+                event_type="generation_succeeded",
+                status="succeeded",
+                actor_agent_id=stage["owner_agent_id"] if stage else None,
+                source_table="generation_runs",
+                source_id=run_id,
+                summary=f"Generation succeeded for {current['stage_id']}.",
+                payload={
+                    "stage_id": current["stage_id"],
+                    "generation_mode": current["generation_mode"],
+                    "artifact_id": artifact_id,
+                    "source_artifact_ids": final_source_ids,
+                    "memory_ids": final_memory_ids,
+                },
+            )
 
     def fail_generation_run(self, run_id: str, error: str) -> None:
+        current = self.get_generation_run(run_id)
+        if current is None:
+            raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
         safe_error = safe_generation_error(error)
         assert_no_secret_values(
             {
@@ -2288,6 +2514,23 @@ class CompanyRepository:
             )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")
+        stage = self.get_project_wizard_stage(current["project_id"], current["stage_id"])
+        with connect(self.database_path) as connection:
+            self._insert_audit_event(
+                connection,
+                project_id=current["project_id"],
+                event_type="generation_failed",
+                status="failed",
+                actor_agent_id=stage["owner_agent_id"] if stage else None,
+                source_table="generation_runs",
+                source_id=run_id,
+                summary=f"Generation failed for {current['stage_id']}.",
+                payload={
+                    "stage_id": current["stage_id"],
+                    "generation_mode": current["generation_mode"],
+                    "error": safe_error,
+                },
+            )
 
     def get_generation_run(self, run_id: str) -> dict | None:
         with connect(self.database_path) as connection:
@@ -2360,7 +2603,8 @@ class CompanyRepository:
     ) -> str:
         if self.get_project(project_id) is None:
             raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
-        if self.get_founder_decision(decision_id) is None:
+        decision = self.get_founder_decision(decision_id)
+        if decision is None:
             raise sqlite3.IntegrityError(f"Unknown founder decision: {decision_id}")
         if status not in {"queued", "blocked", "completed", "failed", "cancelled"}:
             raise ValueError(f"Unsupported Codex execution status: {status}")
@@ -2414,6 +2658,24 @@ class CompanyRepository:
                     now,
                     now if status in {"completed", "failed", "cancelled"} else None,
                 ),
+            )
+            self._insert_audit_event(
+                connection,
+                project_id=project_id,
+                event_type="codex_execution_queued",
+                status=status.strip(),
+                actor_agent_id=decision["owner_agent_id"],
+                source_table="codex_execution_runs",
+                source_id=run_id,
+                summary=f"Codex execution {status.strip()} for {package_id.strip()}.",
+                payload={
+                    "decision_id": decision_id,
+                    "package_id": package_id.strip(),
+                    "runner_mode": runner_mode.strip(),
+                    "external_execution_enabled": external_execution_enabled,
+                    "branch_name": branch_name.strip(),
+                    "source_artifact_ids": list(source_artifact_ids),
+                },
             )
         return run_id
 
@@ -2506,6 +2768,22 @@ class CompanyRepository:
             )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown Codex execution run: {run_id}")
+        with connect(self.database_path) as connection:
+            self._insert_audit_event(
+                connection,
+                project_id=current["project_id"],
+                event_type="codex_execution_updated",
+                status=status.strip(),
+                actor_agent_id="chief-of-staff",
+                source_table="codex_execution_runs",
+                source_id=run_id,
+                summary=f"Codex execution updated to {status.strip()}.",
+                payload={
+                    "decision_id": current["decision_id"],
+                    "runner_mode": runner_mode.strip(),
+                    "external_execution_enabled": external_execution_enabled,
+                },
+            )
 
     def create_project_review_record(
         self,
@@ -2670,7 +2948,7 @@ class CompanyRepository:
         memory_id = f"memory-{uuid4().hex[:10]}"
         now = utc_now()
         with connect(self.database_path) as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO project_memory_entries (
                     id, source_key, project_id, category, memory_type,
@@ -2706,6 +2984,23 @@ class CompanyRepository:
                 "SELECT id FROM project_memory_entries WHERE source_key = ?",
                 (normalized_source_key,),
             ).fetchone()
+            if row is not None and cursor.rowcount > 0 and normalized_project_id:
+                self._insert_audit_event(
+                    connection,
+                    project_id=normalized_project_id,
+                    event_type="memory_created",
+                    status=normalized_status,
+                    actor_agent_id=owner_agent_id,
+                    source_table="project_memory_entries",
+                    source_id=row["id"],
+                    summary=f"Project memory captured: {title.strip()}",
+                    payload={
+                        "category": normalized_category,
+                        "memory_type": memory_type.strip(),
+                        "status": normalized_status,
+                        "pinned": pinned,
+                    },
+                )
         if row is None:
             raise sqlite3.IntegrityError("Project memory entry was not persisted.")
         return row["id"]
@@ -2843,6 +3138,18 @@ class CompanyRepository:
             parameters.append(1 if pinned else 0)
         if not updates:
             return
+        next_status = (
+            normalize_memory_status(status) if status is not None else current["status"]
+        )
+        next_pinned = bool(pinned) if pinned is not None else bool(current["pinned"])
+        event_type = "memory_updated"
+        if status is not None and next_status != current["status"]:
+            event_type = {
+                "retired": "memory_retired",
+                "active": "memory_reactivated",
+            }.get(next_status, "memory_updated")
+        elif pinned is not None and next_pinned != bool(current["pinned"]):
+            event_type = "memory_pinned" if next_pinned else "memory_unpinned"
         candidate = {
             "memory_status": status or current["status"],
             "memory_title": title if title is not None else current["title"],
@@ -2871,6 +3178,24 @@ class CompanyRepository:
             )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown project memory entry: {memory_id}")
+        if current.get("project_id"):
+            with connect(self.database_path) as connection:
+                self._insert_audit_event(
+                    connection,
+                    project_id=current["project_id"],
+                    event_type=event_type,
+                    status=next_status,
+                    actor_agent_id=current["owner_agent_id"],
+                    source_table="project_memory_entries",
+                    source_id=memory_id,
+                    summary=f"Project memory {next_status}: {current['title']}",
+                    payload={
+                        "category": current["category"],
+                        "memory_type": current["memory_type"],
+                        "status": next_status,
+                        "pinned": next_pinned,
+                    },
+                )
 
     def save_stage_artifact_draft(
         self,

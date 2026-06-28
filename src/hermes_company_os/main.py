@@ -4685,6 +4685,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         codex_execution = codex_execution_package(repository, project_id)
         multi_agent_review = multi_agent_review_package(repository, project_id)
         project_memory = project_memory_package(repository, project_id)
+        project_activity_events = repository.list_audit_events(
+            project_id=project_id,
+            limit=12,
+        )
         founder_decisions = repository.list_founder_decisions(
             project_id=project_id,
             limit=6,
@@ -4717,6 +4721,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "codex_execution": codex_execution,
                 "multi_agent_review": multi_agent_review,
                 "project_memory": project_memory,
+                "project_activity_events": project_activity_events,
                 "memory_reuse_policy": memory_reuse_policy_summary(
                     FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY
                 ),
