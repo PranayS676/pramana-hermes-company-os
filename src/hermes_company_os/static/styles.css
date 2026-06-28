@@ -1855,6 +1855,119 @@ summary {
   white-space: pre-wrap;
 }
 
+.project-memory-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.memory-summary-strip,
+.memory-export-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.memory-summary-strip span {
+  min-height: 42px;
+  padding: 10px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.memory-entry-list {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid #9db2b8;
+  border-radius: 8px;
+}
+
+.memory-entry-row.reusable {
+  border-left-color: var(--accent);
+}
+
+.memory-entry-row.stale {
+  border-left-color: var(--amber);
+}
+
+.memory-entry-row.retired {
+  background: #f7f7f7;
+  border-left-color: #879199;
+}
+
+.memory-entry-row strong,
+.memory-entry-row small,
+.memory-entry-row p {
+  display: block;
+  min-width: 0;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.memory-entry-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.memory-entry-row p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.memory-entry-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.memory-create-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.memory-create-form h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.94rem;
+}
+
+.memory-create-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.memory-create-form button {
+  align-self: end;
+}
+
 .artifact-preview {
   padding: 14px;
   background: var(--panel-muted);
@@ -2020,6 +2133,10 @@ summary {
     .wizard-field-grid,
     .intake-grid,
     .founder-signal-grid,
+    .memory-summary-strip,
+    .memory-export-actions,
+    .memory-entry-row,
+    .memory-create-form,
     .stage-decision-summary,
     .review-contract-grid,
     .operator-command-grid,

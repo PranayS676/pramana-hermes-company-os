@@ -246,6 +246,12 @@ from hermes_company_os.progress_board import (
     progress_board_json,
     progress_board_markdown,
 )
+from hermes_company_os.project_memory import (
+    memory_category_options,
+    memory_confidence_options,
+    project_memory_markdown,
+    project_memory_package,
+)
 from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
     project_workflow_markdown,
@@ -4658,6 +4664,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         codex_execution = codex_execution_package(repository, project_id)
         multi_agent_review = multi_agent_review_package(repository, project_id)
+        project_memory = project_memory_package(repository, project_id)
         founder_decisions = repository.list_founder_decisions(
             project_id=project_id,
             limit=6,
@@ -4677,6 +4684,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             codex_execution=codex_execution,
             multi_agent_review=multi_agent_review,
         )
+        memory_owner_options = repository.list_agents()
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -4688,6 +4696,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_blocker": kanban_blocker,
                 "codex_execution": codex_execution,
                 "multi_agent_review": multi_agent_review,
+                "project_memory": project_memory,
+                "memory_category_options": memory_category_options(),
+                "memory_confidence_options": memory_confidence_options(),
+                "memory_owner_options": memory_owner_options,
                 "founder_control_summary": founder_control_summary,
                 "wizard_stages": [stage_view(stage) for stage in wizard_stages],
                 "current_stage": stage_view(review_stage) if review_stage else None,
@@ -4745,6 +4757,92 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"/projects/{project_id}#multi-agent-review",
             status_code=303,
         )
+
+    @app.get("/projects/{project_id}/memory.json")
+    def project_memory_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_memory_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/memory.md")
+    def project_memory_markdown_route(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = project_memory_package(repository, project_id)
+        return PlainTextResponse(project_memory_markdown(package))
+
+    @app.post("/projects/{project_id}/memory")
+    def create_project_memory(
+        request: Request,
+        project_id: str,
+        category: str = Form(...),
+        memory_type: str = Form("context"),
+        owner_agent_id: str = Form("chief-of-staff"),
+        source: str = Form("founder-memory-form"),
+        title: str = Form(...),
+        summary: str = Form(...),
+        body: str = Form(...),
+        confidence: str = Form("medium"),
+        pinned: str | None = Form(None),
+        review_after: str = Form(""),
+        expires_at: str = Form(""),
+        source_artifact_id: str = Form(""),
+        source_decision_id: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            repository.create_project_memory_entry(
+                project_id=project_id,
+                category=category,
+                memory_type=memory_type,
+                owner_agent_id=owner_agent_id,
+                source=source,
+                title=title,
+                summary=summary,
+                body=body,
+                confidence=confidence,
+                status="active",
+                pinned=bool(pinned),
+                review_after=review_after,
+                expires_at=expires_at,
+                source_artifact_id=source_artifact_id,
+                source_decision_id=source_decision_id,
+            )
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
+
+    @app.post("/projects/{project_id}/memory/{memory_id}")
+    def update_project_memory(
+        request: Request,
+        project_id: str,
+        memory_id: str,
+        memory_action: str = Form("pin"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        entry = repository.get_project_memory_entry(memory_id)
+        if entry is None or (entry["project_id"] and entry["project_id"] != project_id):
+            raise HTTPException(status_code=404, detail="Project memory entry not found")
+        try:
+            if memory_action == "retire":
+                repository.update_project_memory_entry(memory_id, status="retired")
+            elif memory_action == "pin":
+                repository.update_project_memory_entry(memory_id, pinned=True)
+            elif memory_action == "unpin":
+                repository.update_project_memory_entry(memory_id, pinned=False)
+            elif memory_action == "reactivate":
+                repository.update_project_memory_entry(memory_id, status="active")
+            else:
+                raise ValueError(f"Unsupported memory action: {memory_action}")
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
 
     @app.get("/projects/{project_id}/codex-execution.md")
     def project_codex_execution_markdown(request: Request, project_id: str):

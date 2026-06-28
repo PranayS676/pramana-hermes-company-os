@@ -90,6 +90,13 @@
 {% set review_package = multi_agent_review|default({}, true) %}
 {% set review_aggregate = review_package.aggregate|default({}, true) %}
 {% set review_records = review_package.reviewers|default([], true) %}
+{% set memory_package = project_memory|default({}, true) %}
+{% set memory_aggregate = memory_package.aggregate|default({}, true) %}
+{% set memory_entries = memory_package.entries|default([], true) %}
+{% set reusable_memory_entries = memory_package.reusable_entries|default([], true) %}
+{% set memory_categories = memory_category_options|default([], true) %}
+{% set memory_confidences = memory_confidence_options|default([], true) %}
+{% set memory_owners = memory_owner_options|default([], true) %}
 {% set founder_control = founder_control_summary|default({}, true) %}
 {% set founder_action = founder_control.next_action|default({}, true) %}
 {% set founder_signals = founder_control.signals|default([], true) %}
@@ -670,6 +677,159 @@
                 <strong>{{ intake.success_metric|default("Not specified", true) }}</strong>
               </div>
             </div>
+          </section>
+
+          <section class="panel project-memory-panel" id="project-memory">
+            <div class="panel-header">
+              <div>
+                <h2>Project Memory</h2>
+                <p class="panel-kicker">
+                  Reusable context for founder decisions, strategy, standards, risks, and launch lessons.
+                </p>
+              </div>
+              <span class="status-pill {% if memory_aggregate.reusable_count %}ready{% else %}manual{% endif %}">
+                {{ memory_aggregate.reusable_count|default(0, true) }} reusable
+              </span>
+            </div>
+            <div class="memory-summary-strip" aria-label="Project memory summary">
+              <span>Reusable context: {{ memory_aggregate.reusable_count|default(0, true) }}</span>
+              <span>Total: {{ memory_aggregate.total_count|default(0, true) }}</span>
+              <span>Stale: {{ memory_aggregate.stale_count|default(0, true) }}</span>
+              <span>Retired: {{ memory_aggregate.retired_count|default(0, true) }}</span>
+            </div>
+            <div class="memory-entry-list" aria-label="Project memory entries">
+              {% for entry in memory_entries %}
+              <div class="memory-entry-row {% if entry.reusable %}reusable{% elif entry.status == 'retired' %}retired{% else %}stale{% endif %}">
+                <div>
+                  <span class="status-pill {{ entry.status }}">{{ entry.status }}</span>
+                  {% if entry.reusable %}
+                  <span class="status-pill ready">Reusable context</span>
+                  {% elif entry.expired or entry.review_due %}
+                  <span class="status-pill needed">review needed</span>
+                  {% endif %}
+                  {% if entry.pinned %}
+                  <span class="status-pill planned">pinned</span>
+                  {% endif %}
+                  <strong>{{ entry.title }}</strong>
+                  <small>
+                    {{ entry.category_label }} - {{ entry.scope_label }} - {{ entry.confidence }}
+                    - {{ entry.owner_name|default(entry.owner_agent_id, true) }}
+                  </small>
+                  <p>{{ entry.summary }}</p>
+                </div>
+                <div class="memory-entry-actions">
+                  {% if entry.status != "retired" %}
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="{% if entry.pinned %}unpin{% else %}pin{% endif %}">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="{% if entry.pinned %}pin-off{% else %}pin{% endif %}"></i>
+                      {% if entry.pinned %}Unpin{% else %}Pin{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="retire">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="archive"></i>
+                      Retire
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="reactivate">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="rotate-ccw"></i>
+                      Reactivate
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">
+                No project memory yet. Add founder-approved preferences, decisions, standards,
+                or launch lessons before allowing agents to reuse context.
+              </p>
+              {% endfor %}
+            </div>
+            <div class="memory-export-actions">
+              <a
+                class="secondary-button link-button-muted full-width-button"
+                href="/projects/{{ project.id }}/memory.json"
+              >
+                <i data-lucide="braces"></i>
+                Memory package JSON
+              </a>
+              <a
+                class="secondary-button link-button-muted full-width-button"
+                href="/projects/{{ project.id }}/memory.md"
+              >
+                <i data-lucide="file-text"></i>
+                Memory package MD
+              </a>
+            </div>
+            <form class="memory-create-form" method="post" action="/projects/{{ project.id }}/memory">
+              <h3>Add founder-approved memory</h3>
+              <label>
+                Category
+                <select name="category">
+                  {% for option in memory_categories %}
+                  <option value="{{ option.id }}">{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Type
+                <input name="memory_type" value="context" autocomplete="off">
+              </label>
+              <label>
+                Owner
+                <select name="owner_agent_id">
+                  {% for owner in memory_owners %}
+                  <option value="{{ owner.id }}" {% if owner.id == "chief-of-staff" %}selected{% endif %}>{{ owner.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Confidence
+                <select name="confidence">
+                  {% for option in memory_confidences %}
+                  <option value="{{ option.id }}" {% if option.id == "medium" %}selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-span">
+                Title
+                <input name="title" placeholder="Founder preference, standard, accepted risk, or lesson">
+              </label>
+              <label class="form-span">
+                Summary
+                <input name="summary" placeholder="One sentence the founder can review quickly">
+              </label>
+              <label class="form-span">
+                Body
+                <textarea name="body" rows="3" placeholder="Reusable context. Do not include credentials or customer secrets."></textarea>
+              </label>
+              <label>
+                Source
+                <input name="source" value="founder-memory-form" autocomplete="off">
+              </label>
+              <label>
+                Review after
+                <input name="review_after" type="datetime-local">
+              </label>
+              <label>
+                Expires at
+                <input name="expires_at" type="datetime-local">
+              </label>
+              <label class="checkbox-label">
+                <input name="pinned" type="checkbox">
+                Pin for founder review
+              </label>
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="brain"></i>
+                Save memory
+              </button>
+            </form>
           </section>
 
           <section class="panel artifact-panel">

@@ -19,6 +19,12 @@ from hermes_company_os.founder_decisions import (
     founder_only_decision_type,
     normalize_decision_type,
 )
+from hermes_company_os.project_memory import (
+    enrich_memory_entry,
+    normalize_memory_category,
+    normalize_memory_confidence,
+    normalize_memory_status,
+)
 from hermes_company_os.secret_guard import assert_no_secret_values, secret_violations
 
 
@@ -81,6 +87,10 @@ def decode_project_review_record(row: sqlite3.Row) -> dict:
         raw_json = record.get(column, "").strip()
         record[target] = json.loads(raw_json) if raw_json else fallback
     return record
+
+
+def decode_project_memory_entry(row: sqlite3.Row) -> dict:
+    return enrich_memory_entry(dict(row))
 
 
 def safe_generation_error(message: str) -> str:
@@ -2564,6 +2574,260 @@ class CompanyRepository:
                 parameters,
             ).fetchall()
         return [decode_project_review_record(row) for row in rows]
+
+    def create_project_memory_entry(
+        self,
+        *,
+        source_key: str = "",
+        project_id: str = "",
+        category: str,
+        memory_type: str,
+        owner_agent_id: str,
+        source: str,
+        title: str,
+        summary: str,
+        body: str,
+        confidence: str,
+        status: str = "active",
+        pinned: bool = False,
+        review_after: str = "",
+        expires_at: str = "",
+        source_artifact_id: str = "",
+        source_decision_id: str = "",
+    ) -> str:
+        normalized_project_id = project_id.strip()
+        if normalized_project_id and self.get_project(normalized_project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {normalized_project_id}")
+        self.assert_agent_exists(owner_agent_id)
+        normalized_category = normalize_memory_category(category)
+        normalized_confidence = normalize_memory_confidence(confidence)
+        normalized_status = normalize_memory_status(status)
+        if source_decision_id and self.get_founder_decision(source_decision_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown founder decision: {source_decision_id}")
+        normalized_source_key = source_key.strip() or (
+            f"project_memory:{normalized_project_id or 'company'}:{uuid4().hex[:12]}"
+        )
+        values_to_check = {
+            "memory_source_key": normalized_source_key,
+            "memory_category": normalized_category,
+            "memory_type": memory_type,
+            "memory_owner_agent_id": owner_agent_id,
+            "memory_source": source,
+            "memory_source_artifact_id": source_artifact_id,
+            "memory_source_decision_id": source_decision_id,
+            "memory_title": title,
+            "memory_summary": summary,
+            "memory_body": body,
+            "memory_confidence": normalized_confidence,
+            "memory_status": normalized_status,
+            "memory_review_after": review_after,
+            "memory_expires_at": expires_at,
+        }
+        assert_no_secret_values(values_to_check)
+        memory_id = f"memory-{uuid4().hex[:10]}"
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO project_memory_entries (
+                    id, source_key, project_id, category, memory_type,
+                    owner_agent_id, source, source_artifact_id, source_decision_id,
+                    title, summary, body, confidence, status, pinned,
+                    review_after, expires_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    memory_id,
+                    normalized_source_key,
+                    normalized_project_id or None,
+                    normalized_category,
+                    memory_type.strip(),
+                    owner_agent_id.strip(),
+                    source.strip(),
+                    source_artifact_id.strip(),
+                    source_decision_id.strip() or None,
+                    title.strip(),
+                    summary.strip(),
+                    body.strip(),
+                    normalized_confidence,
+                    normalized_status,
+                    1 if pinned else 0,
+                    review_after.strip(),
+                    expires_at.strip(),
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT id FROM project_memory_entries WHERE source_key = ?",
+                (normalized_source_key,),
+            ).fetchone()
+        if row is None:
+            raise sqlite3.IntegrityError("Project memory entry was not persisted.")
+        return row["id"]
+
+    def get_project_memory_entry(self, memory_id: str) -> dict | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT project_memory_entries.*,
+                       agents.name AS owner_name
+                FROM project_memory_entries
+                JOIN agents ON agents.id = project_memory_entries.owner_agent_id
+                WHERE project_memory_entries.id = ?
+                """,
+                (memory_id,),
+            ).fetchone()
+        return decode_project_memory_entry(row) if row else None
+
+    def list_project_memory_entries(
+        self,
+        project_id: str = "",
+        *,
+        include_company_wide: bool = False,
+        include_retired: bool = False,
+        include_expired: bool = False,
+        reusable_only: bool = False,
+        category: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        normalized_project_id = project_id.strip()
+        if normalized_project_id and self.get_project(normalized_project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {normalized_project_id}")
+        filters: list[str] = []
+        parameters: list[str | int] = []
+        if normalized_project_id:
+            if include_company_wide:
+                filters.append(
+                    "(project_memory_entries.project_id = ? "
+                    "OR project_memory_entries.project_id IS NULL)"
+                )
+            else:
+                filters.append("project_memory_entries.project_id = ?")
+            parameters.append(normalized_project_id)
+        elif not include_company_wide:
+            filters.append("project_memory_entries.project_id IS NULL")
+        if not include_retired:
+            filters.append("project_memory_entries.status != 'retired'")
+        if reusable_only:
+            filters.append("project_memory_entries.status = 'active'")
+        if category:
+            filters.append("project_memory_entries.category = ?")
+            parameters.append(normalize_memory_category(category))
+        parameters.append(max(1, min(limit, 200)))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT project_memory_entries.*,
+                       agents.name AS owner_name
+                FROM project_memory_entries
+                JOIN agents ON agents.id = project_memory_entries.owner_agent_id
+                {where_clause}
+                ORDER BY
+                    CASE WHEN project_memory_entries.project_id IS NULL THEN 1 ELSE 0 END,
+                    project_memory_entries.pinned DESC,
+                    project_memory_entries.updated_at DESC,
+                    project_memory_entries.title
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        entries = [decode_project_memory_entry(row) for row in rows]
+        if not include_expired:
+            entries = [
+                entry
+                for entry in entries
+                if not entry["expired"] and not entry["review_due"]
+            ]
+        if reusable_only:
+            entries = [entry for entry in entries if entry["reusable"]]
+        return entries
+
+    def list_reusable_project_memory_entries(
+        self,
+        project_id: str = "",
+        *,
+        category: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        return self.list_project_memory_entries(
+            project_id=project_id,
+            include_company_wide=True,
+            include_retired=False,
+            include_expired=False,
+            reusable_only=True,
+            category=category,
+            limit=limit,
+        )
+
+    def update_project_memory_entry(
+        self,
+        memory_id: str,
+        *,
+        status: str | None = None,
+        pinned: bool | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        body: str | None = None,
+        confidence: str | None = None,
+        review_after: str | None = None,
+        expires_at: str | None = None,
+    ) -> None:
+        current = self.get_project_memory_entry(memory_id)
+        if current is None:
+            raise sqlite3.IntegrityError(f"Unknown project memory entry: {memory_id}")
+        updates: list[str] = []
+        parameters: list[str | int] = []
+
+        def set_text(column: str, value: str | None, *, normalize=None) -> None:
+            if value is None:
+                return
+            normalized = normalize(value) if normalize else value.strip()
+            updates.append(f"{column} = ?")
+            parameters.append(normalized)
+
+        set_text("status", status, normalize=normalize_memory_status)
+        set_text("title", title)
+        set_text("summary", summary)
+        set_text("body", body)
+        set_text("confidence", confidence, normalize=normalize_memory_confidence)
+        set_text("review_after", review_after)
+        set_text("expires_at", expires_at)
+        if pinned is not None:
+            updates.append("pinned = ?")
+            parameters.append(1 if pinned else 0)
+        if not updates:
+            return
+        candidate = {
+            "memory_status": status or current["status"],
+            "memory_title": title if title is not None else current["title"],
+            "memory_summary": summary if summary is not None else current["summary"],
+            "memory_body": body if body is not None else current["body"],
+            "memory_confidence": confidence or current["confidence"],
+            "memory_review_after": (
+                review_after if review_after is not None else current["review_after"]
+            ),
+            "memory_expires_at": (
+                expires_at if expires_at is not None else current["expires_at"]
+            ),
+        }
+        assert_no_secret_values(candidate)
+        updates.append("updated_at = ?")
+        parameters.append(utc_now())
+        parameters.append(memory_id)
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                f"""
+                UPDATE project_memory_entries
+                SET {", ".join(updates)}
+                WHERE id = ?
+                """,
+                parameters,
+            )
+        if cursor.rowcount == 0:
+            raise sqlite3.IntegrityError(f"Unknown project memory entry: {memory_id}")
 
     def save_stage_artifact_draft(
         self,

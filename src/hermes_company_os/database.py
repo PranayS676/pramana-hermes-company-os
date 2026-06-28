@@ -118,6 +118,39 @@ CREATE INDEX IF NOT EXISTS idx_project_review_records_project_created
 ON project_review_records(project_id, created_at DESC);
 """
 
+PROJECT_MEMORY_ENTRIES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_memory_entries (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    memory_type TEXT NOT NULL,
+    owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+    source TEXT NOT NULL,
+    source_artifact_id TEXT DEFAULT '',
+    source_decision_id TEXT REFERENCES founder_decisions(id),
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    body TEXT NOT NULL,
+    confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+    status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'retired')),
+    pinned INTEGER NOT NULL DEFAULT 0,
+    review_after TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project_status
+ON project_memory_entries(project_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_category
+ON project_memory_entries(category);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_updated
+ON project_memory_entries(updated_at DESC);
+"""
+
 
 def connect(database_path: Path) -> sqlite3.Connection:
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -425,6 +458,7 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(GENERATION_RUNS_SCHEMA)
         connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
         connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
+        connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
@@ -434,6 +468,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(GENERATION_RUNS_SCHEMA)
     connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
     connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
+    connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
