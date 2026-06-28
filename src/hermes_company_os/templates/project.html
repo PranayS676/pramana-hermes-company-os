@@ -100,6 +100,11 @@
 {% set reusable_memory_entries = memory_package.reusable_entries|default([], true) %}
 {% set memory_reuse = memory_reuse_policy|default({}, true) %}
 {% set memory_reuse_categories = memory_reuse.allowed_categories|default([], true) %}
+{% set operating_loop_package = operating_loop|default({}, true) %}
+{% set operating_loop_policy = operating_loop_package.policy|default({}, true) %}
+{% set operating_loop_aggregate = operating_loop_package.aggregate|default({}, true) %}
+{% set operating_loop_lanes = operating_loop_package.lanes|default([], true) %}
+{% set operating_loop_next_actions = operating_loop_package.next_actions|default([], true) %}
 {% set memory_categories = memory_category_options|default([], true) %}
 {% set memory_confidences = memory_confidence_options|default([], true) %}
 {% set memory_owners = memory_owner_options|default([], true) %}
@@ -1134,6 +1139,66 @@
               </div>
               {% endif %}
             </div>
+          </section>
+
+          <section class="panel operating-loop-panel" id="external-operating-loop">
+            <div class="panel-header">
+              <div>
+                <h2>External Operating Loop</h2>
+                <p class="panel-kicker">
+                  {% if operating_loop_aggregate.ready %}
+                  Operating loop ready. Manual review only; no external dispatch is enabled.
+                  {% else %}
+                  External dispatch disabled until Slack, Telegram, and Kanban gates are ready.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ operating_loop_aggregate.status|default('blocked', true) }}">
+                {{ operating_loop_aggregate.status|default("blocked", true) }}
+              </span>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>External dispatch</span>
+                <strong>
+                  {% if operating_loop_policy.external_dispatch_enabled %}
+                  External dispatch enabled
+                  {% else %}
+                  External dispatch disabled
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="readiness-line">
+                <span>Dispatch mode</span>
+                <strong>Manual review only</strong>
+              </div>
+              {% for lane in operating_loop_lanes %}
+              <a class="readiness-line linked-readiness-line" href="{{ lane.setup_href }}">
+                <span>{{ lane.label }}</span>
+                <strong>{{ lane.status }}</strong>
+                {% if lane.blockers %}
+                <small>{{ lane.blockers|first }}</small>
+                {% endif %}
+              </a>
+              {% endfor %}
+            </div>
+            {% if operating_loop_next_actions %}
+            <div class="quality-check-list" aria-label="External operating loop next actions">
+              {% for action in operating_loop_next_actions %}
+              <a class="quality-check-row linked-readiness-line" href="{{ action.href }}">
+                <span>{{ action.label }}</span>
+                <span>{{ action.detail }}</span>
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/operating-loop.json"
+            >
+              <i data-lucide="braces"></i>
+              Operating loop JSON
+            </a>
           </section>
 
           <section class="panel kanban-gate-panel" id="kanban-push">

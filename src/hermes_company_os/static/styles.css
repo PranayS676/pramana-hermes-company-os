@@ -657,6 +657,7 @@ textarea {
 .status-pill.approved,
 .status-pill.done,
 .status-pill.verified,
+.status-pill.linked,
 .readiness-card.ready .status-pill,
 .readiness-card.configured .status-pill {
   background: #d9eee7;
@@ -2188,6 +2189,13 @@ summary {
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.readiness-line small {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .artifact-version-list {
