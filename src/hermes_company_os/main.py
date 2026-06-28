@@ -74,6 +74,7 @@ from hermes_company_os.first_run import (
     first_run_markdown,
     first_run_powershell,
 )
+from hermes_company_os.founder_control import project_founder_control_summary
 from hermes_company_os.founder_decisions import (
     DECISION_TYPE_LABELS,
     RESOLVED_DECISION_STATUSES,
@@ -4657,6 +4658,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         codex_execution = codex_execution_package(repository, project_id)
         multi_agent_review = multi_agent_review_package(repository, project_id)
+        founder_decisions = repository.list_founder_decisions(
+            project_id=project_id,
+            limit=6,
+        )
+        agent_work_items = repository.list_agent_work_items(
+            project_id=project_id,
+            limit=8,
+        )
+        founder_control_summary = project_founder_control_summary(
+            project=project,
+            active_stage=stage_view(review_stage) if review_stage else None,
+            latest_artifact=latest_artifact,
+            founder_decisions=founder_decisions,
+            agent_work_items=agent_work_items,
+            task_stage_approved=task_stage_approved,
+            kanban_ready=not kanban_blocker,
+            codex_execution=codex_execution,
+            multi_agent_review=multi_agent_review,
+        )
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -4668,6 +4688,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_blocker": kanban_blocker,
                 "codex_execution": codex_execution,
                 "multi_agent_review": multi_agent_review,
+                "founder_control_summary": founder_control_summary,
                 "wizard_stages": [stage_view(stage) for stage in wizard_stages],
                 "current_stage": stage_view(review_stage) if review_stage else None,
                 "actionable_stage": stage_view(current_stage) if current_stage else None,
@@ -4684,14 +4705,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "selected_artifact_id": artifact_id,
                 "revision_reasons": REVISION_REASON_LABELS,
                 "task_stage_approved": task_stage_approved,
-                "founder_decisions": repository.list_founder_decisions(
-                    project_id=project_id,
-                    limit=6,
-                ),
-                "agent_work_items": repository.list_agent_work_items(
-                    project_id=project_id,
-                    limit=8,
-                ),
+                "founder_decisions": founder_decisions,
+                "agent_work_items": agent_work_items,
             },
         )
 

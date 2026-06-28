@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from hermes_company_os.database import initialize_database
 from hermes_company_os.main import create_app
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.secret_guard import secret_violations
 from hermes_company_os.settings import Settings
 
 STRUCTURED_INTAKE = {
@@ -229,3 +230,61 @@ def test_product_wizard_generation_creates_project_review_decision(tmp_path):
     assert approved.status_code == 303
     assert saved_decision["status"] == "approved"
     assert saved_decision["resolved_at"]
+
+
+def test_project_page_surfaces_founder_control_summary(tmp_path):
+    _, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+
+    project_page = client.get(f"/projects/{project_id}")
+    css = client.get("/static/styles.css")
+
+    assert project_page.status_code == 200
+    assert 'aria-label="Founder control summary"' in project_page.text
+    assert "Founder Control Summary" in project_page.text
+    assert "Next Founder Action" in project_page.text
+    assert "Generate Research artifact" in project_page.text
+    assert 'href="#current-stage"' in project_page.text
+    for label in (
+        "Current stage",
+        "Artifact state",
+        "Open decisions",
+        "Queue blockers",
+        "Codex handoff",
+        "Review loop",
+    ):
+        assert label in project_page.text
+    assert "Research" in project_page.text
+    assert "0 blockers" in project_page.text
+    assert "locked" in project_page.text
+    assert "blocked" in project_page.text
+    assert css.status_code == 200
+    assert ".founder-control-summary" in css.text
+    assert ".founder-action-card" in css.text
+    assert ".founder-signal-grid" in css.text
+    assert secret_violations(
+        {
+            "project_page": project_page.text,
+            "css": css.text,
+        }
+    ) == []
+
+
+def test_project_founder_control_summary_prioritizes_open_decisions(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+
+    generated = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert generated.status_code == 303
+    assert project_page.status_code == 200
+    assert "Review project decisions" in project_page.text
+    assert "1 open decision" in project_page.text
+    assert "Open project decisions" in project_page.text
+    assert "Approve Research artifact for Atlas Brief" in project_page.text
+    assert app.state.repository.list_founder_decisions(project_id=project_id)
+    assert secret_violations({"project_page": project_page.text}) == []

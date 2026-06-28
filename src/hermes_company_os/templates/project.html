@@ -90,6 +90,9 @@
 {% set review_package = multi_agent_review|default({}, true) %}
 {% set review_aggregate = review_package.aggregate|default({}, true) %}
 {% set review_records = review_package.reviewers|default([], true) %}
+{% set founder_control = founder_control_summary|default({}, true) %}
+{% set founder_action = founder_control.next_action|default({}, true) %}
+{% set founder_signals = founder_control.signals|default([], true) %}
 {% set intake = project.intake|default({}, true) %}
 
 <!doctype html>
@@ -133,6 +136,48 @@
             Kanban gated
             {% endif %}
           </span>
+        </div>
+      </section>
+
+      <section class="founder-control-summary" aria-label="Founder control summary">
+        <div class="founder-control-heading">
+          <span>Founder Control Summary</span>
+        </div>
+        <div class="founder-action-card {{ founder_action.status|default('manual', true) }}">
+          <span>Next Founder Action</span>
+          <h2>{{ founder_action.label|default("Continue staged review", true) }}</h2>
+          <p>{{ founder_action.detail|default("Open the current stage and review the next gate.", true) }}</p>
+          <a
+            class="primary-button link-button full-width-button"
+            href="{{ founder_action.href|default('#current-stage', true) }}"
+          >
+            <i data-lucide="{{ founder_action.icon|default('arrow-right', true) }}"></i>
+            {{ founder_action.cta_label|default("Open current stage", true) }}
+          </a>
+        </div>
+        <div class="founder-signal-grid" role="list">
+          {% for signal in founder_signals %}
+          {% if signal.href %}
+          <a
+            class="founder-signal {{ signal.status|default('manual', true) }}"
+            href="{{ signal.href }}"
+            role="listitem"
+          >
+            <span>{{ signal.label }}</span>
+            <strong>{{ signal.value }}</strong>
+            <small>{{ signal.detail }}</small>
+          </a>
+          {% else %}
+          <div
+            class="founder-signal {{ signal.status|default('manual', true) }}"
+            role="listitem"
+          >
+            <span>{{ signal.label }}</span>
+            <strong>{{ signal.value }}</strong>
+            <small>{{ signal.detail }}</small>
+          </div>
+          {% endif %}
+          {% endfor %}
         </div>
       </section>
 
@@ -207,7 +252,7 @@
 
       <section class="project-stage-grid">
         <div class="stage-main-column">
-          <section class="panel current-stage-panel">
+          <section class="panel current-stage-panel" id="current-stage">
             <div class="panel-header">
               <div>
                 <h2>{{ active_stage_label }}</h2>
@@ -834,7 +879,7 @@
             </div>
           </section>
 
-          <section class="panel kanban-gate-panel">
+          <section class="panel kanban-gate-panel" id="kanban-push">
             <div class="panel-header">
               <div>
                 <h2>Kanban Push</h2>
