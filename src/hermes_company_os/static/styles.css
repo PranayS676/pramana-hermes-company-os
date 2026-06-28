@@ -1552,6 +1552,32 @@ summary {
   min-width: 0;
 }
 
+.live-pilot-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 220px;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+
+.live-pilot-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.live-pilot-form small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .live-mode-gate small {
   color: var(--muted);
   font-size: 0.78rem;
@@ -1869,6 +1895,7 @@ summary {
     .operator-command-grid,
     .quality-check-row,
     .revision-form,
+    .live-pilot-form,
     .project-decision-strip,
     .queue-row,
     .queue-meta-grid {

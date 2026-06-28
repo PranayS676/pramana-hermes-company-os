@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -329,6 +330,10 @@ from hermes_company_os.verification_evidence import (
 )
 
 PACKAGE_ROOT = Path(__file__).parent
+LIVE_HERMES_PILOT_CONFIRMATION_PHRASE = "RUN LIVE HERMES"
+LIVE_HERMES_PILOT_CONFIRMATION_ERROR = (
+    "Live Hermes manual pilot blocked: type RUN LIVE HERMES before real execution."
+)
 DECISION_STATUS_OPTIONS = ("needed", "blocked", "approved", "rejected", "deferred")
 REVISION_REASON_LABELS = {
     "evidence_gap": "Evidence gap",
@@ -631,6 +636,12 @@ def live_hermes_operator_console(
     runner = generation_metadata.get("runner")
     if not isinstance(runner, dict):
         runner = {}
+    operator_preflight = generation_metadata.get("operator_preflight")
+    if not isinstance(operator_preflight, dict):
+        operator_preflight = {}
+    live_run_possible = (
+        settings.hermes_live_execution_enabled and live_ready and run_confirmed
+    )
 
     return {
         "execution_enabled": settings.hermes_live_execution_enabled,
@@ -640,8 +651,13 @@ def live_hermes_operator_console(
         "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
         "timeout_seconds": settings.hermes_timeout_seconds,
         "command_preview": preview,
-        "live_run_possible": (
-            settings.hermes_live_execution_enabled and live_ready and run_confirmed
+        "live_run_possible": live_run_possible,
+        "pilot_confirmation_phrase": LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+        "pilot_status": "ready" if live_run_possible else "blocked",
+        "pilot_detail": (
+            "Type the confirmation phrase to consume the one-run token and start the pilot."
+            if live_run_possible
+            else "Complete execution flag, readiness, and one-run confirmation first."
         ),
         "run_confirmation": run_confirmation or {},
         "run_confirmation_ready": run_confirmed,
@@ -725,6 +741,16 @@ def live_hermes_operator_console(
                     "secret-shaped errors are redacted."
                 ),
             },
+            {
+                "id": "manual_pilot_confirmation",
+                "label": "Manual pilot confirmation",
+                "status": "ready" if live_run_possible else "needed",
+                "detail": (
+                    "Founder can type the pilot phrase in the stage action panel."
+                    if live_run_possible
+                    else "The pilot phrase is accepted only after all live gates pass."
+                ),
+            },
         ],
         "last_run": {
             "available": bool(generation_metadata),
@@ -739,6 +765,7 @@ def live_hermes_operator_console(
             "stdout_capture": stdout_capture,
             "stderr_capture": stderr_capture,
             "runner": runner,
+            "operator_preflight": operator_preflight,
         },
     }
 
@@ -751,6 +778,48 @@ def live_hermes_gate_for(
     if run_confirmation:
         gate = gate.with_run_confirmation(run_confirmation.fresh)
     return gate
+
+
+def validate_live_hermes_pilot_confirmation(
+    *,
+    settings: Settings,
+    mode: GenerationMode,
+    confirmation: str,
+) -> None:
+    if mode != LIVE_HERMES_GENERATION_MODE:
+        return
+    if not settings.hermes_live_execution_enabled:
+        return
+    if confirmation.strip() != LIVE_HERMES_PILOT_CONFIRMATION_PHRASE:
+        raise ValueError(LIVE_HERMES_PILOT_CONFIRMATION_ERROR)
+
+
+def artifact_with_live_hermes_pilot_evidence(
+    *,
+    artifact,
+    settings: Settings,
+    mode: GenerationMode,
+    confirmation: str,
+    run_confirmation,
+):
+    if mode != LIVE_HERMES_GENERATION_MODE:
+        return artifact
+    if not settings.hermes_live_execution_enabled:
+        return artifact
+    generation_metadata = dict(artifact.generation_metadata)
+    generation_metadata["operator_preflight"] = {
+        "manual_pilot_confirmation": "verified",
+        "confirmation_phrase_sha256": hashlib.sha256(
+            confirmation.strip().encode("utf-8")
+        ).hexdigest(),
+        "run_confirmation_decision_id": (
+            run_confirmation.decision_id if run_confirmation else ""
+        ),
+        "run_confirmation_fresh": bool(run_confirmation and run_confirmation.fresh),
+        "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
+        "external_execution_enabled": True,
+    }
+    return replace(artifact, generation_metadata=generation_metadata)
 
 
 def product_wizard_generation_service(
@@ -4530,6 +4599,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project_id: str,
         stage_id: str,
         generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+        live_pilot_confirmation: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
@@ -4592,7 +4662,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 and not live_hermes_run_confirmation.fresh
             ):
                 raise ValueError(live_hermes_run_confirmation.blocker)
+            validate_live_hermes_pilot_confirmation(
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+            )
             artifact = generation_service.generate_stage(generation_request)
+            artifact = artifact_with_live_hermes_pilot_evidence(
+                artifact=artifact,
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+                run_confirmation=live_hermes_run_confirmation,
+            )
             repository.resolve_project_stage_decisions(
                 project_id=project_id,
                 stage_id=resolved_stage_id,
@@ -4631,6 +4713,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project_id: str,
         stage_id: str,
         generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+        live_pilot_confirmation: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
@@ -4697,7 +4780,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 and not live_hermes_run_confirmation.fresh
             ):
                 raise ValueError(live_hermes_run_confirmation.blocker)
+            validate_live_hermes_pilot_confirmation(
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+            )
             artifact = generation_service.generate_stage(generation_request)
+            artifact = artifact_with_live_hermes_pilot_evidence(
+                artifact=artifact,
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+                run_confirmation=live_hermes_run_confirmation,
+            )
             if latest_artifact and latest_artifact["status"] == "approved":
                 repository.request_stage_revision(
                     project_id=project_id,

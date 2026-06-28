@@ -70,6 +70,7 @@
 {% set live_operator_stdout_capture = live_operator_last_run.stdout_capture|default({}, true) %}
 {% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
 {% set live_operator_last_runner = live_operator_last_run.runner|default({}, true) %}
+{% set live_operator_last_preflight = live_operator_last_run.operator_preflight|default({}, true) %}
 {% set live_run_confirmation = live_operator.run_confirmation|default({}, true) %}
 {% set artifacts_by_stage = stage_artifacts|default({}, true) %}
 {% set task_gate_ready = task_stage_approved|default(false) %}
@@ -261,12 +262,30 @@
                 </button>
               </form>
               {% endif %}
+              {% if live_operator.live_run_possible %}
+              <form class="live-pilot-form" method="post" action="/projects/{{ project.id }}/stages/current/generate" aria-label="Live Hermes pilot execution">
+                <input type="hidden" name="generation_mode" value="live_hermes">
+                <label>
+                  Live pilot confirmation
+                  <input
+                    name="live_pilot_confirmation"
+                    autocomplete="off"
+                    placeholder="{{ live_operator.pilot_confirmation_phrase|default('RUN LIVE HERMES', true) }}"
+                  >
+                </label>
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="terminal"></i> Run live Hermes pilot
+                </button>
+                <small>Type {{ live_operator.pilot_confirmation_phrase|default("RUN LIVE HERMES", true) }} to consume the one-run token.</small>
+              </form>
+              {% else %}
               <div class="live-mode-gate" aria-label="Live Hermes generation locked">
                 <button class="secondary-button full-width-button" type="button" disabled>
                   <i data-lucide="lock"></i> Live Hermes locked
                 </button>
-                <small>Founder approval and Hermes readiness required.</small>
+                <small>{{ live_operator.pilot_detail|default("Founder approval and Hermes readiness required.", true) }}</small>
               </div>
+              {% endif %}
               {% if has_latest_artifact and artifact_status == "draft" %}
               <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/approve">
                 <button class="success-button full-width-button" type="submit">
@@ -383,6 +402,14 @@
                 <span>Timeout</span>
                 <strong>{{ live_operator.timeout_seconds|default(live_operator_preview.timeout_seconds|default("not configured", true), true) }} seconds</strong>
               </div>
+              <div>
+                <span>Pilot phrase</span>
+                <strong>{{ live_operator.pilot_confirmation_phrase|default("RUN LIVE HERMES", true) }}</strong>
+              </div>
+              <div>
+                <span>Pilot status</span>
+                <strong>{{ live_operator.pilot_status|default("blocked", true) }}</strong>
+              </div>
             </div>
             <div class="quality-check-list" aria-label="Live execution operator checklist">
               <h3>Operator checklist</h3>
@@ -451,6 +478,14 @@
                 <div>
                   <span>Stderr capture</span>
                   <strong>{{ live_operator_stderr_capture.bytes|default(0, true) }} bytes {{ live_operator_stderr_capture.sha256|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Pilot confirmation</span>
+                  <strong>{{ live_operator_last_preflight.manual_pilot_confirmation|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Run token</span>
+                  <strong>{{ live_operator_last_preflight.run_confirmation_decision_id|default("not recorded", true) }}</strong>
                 </div>
               </div>
             </div>

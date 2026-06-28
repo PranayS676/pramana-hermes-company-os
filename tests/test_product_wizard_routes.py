@@ -20,7 +20,11 @@ from hermes_company_os.live_hermes_readiness import (
     LIVE_HERMES_RUN_CONFIRMATION_TYPE,
     evaluate_live_hermes_run_confirmation,
 )
-from hermes_company_os.main import create_app
+from hermes_company_os.main import (
+    LIVE_HERMES_PILOT_CONFIRMATION_ERROR,
+    LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+    create_app,
+)
 from hermes_company_os.product_wizard import generate_wizard_artifact
 from hermes_company_os.secret_guard import secret_violations
 from hermes_company_os.settings import Settings
@@ -338,10 +342,12 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "Profile installation" in detail.text
     assert "Founder live-mode approval" in detail.text
     assert "Request founder approval" in detail.text
+    assert "Pilot phrase" in detail.text
+    assert LIVE_HERMES_PILOT_CONFIRMATION_PHRASE in detail.text
     assert "Generation mode" in detail.text
     assert "Generation run" in detail.text
     assert "Live Hermes locked" in detail.text
-    assert "Founder approval and Hermes readiness required." in detail.text
+    assert "Complete execution flag, readiness, and one-run confirmation first." in detail.text
     assert generation_run["id"] in detail.text
     assert "succeeded" in detail.text
     assert "local_fake_public_demo" in detail.text
@@ -375,6 +381,9 @@ def test_live_operator_console_shows_enabled_config_without_running_command(tmp_
     assert "Real Hermes command execution is enabled for this process." in detail.text
     assert "One-run confirmation" in detail.text
     assert "Request and approve a one-run token before real execution." in detail.text
+    assert "Pilot status" in detail.text
+    assert "blocked" in detail.text
+    assert LIVE_HERMES_PILOT_CONFIRMATION_PHRASE in detail.text
     assert (
         "hermes profiles run research-agent --stage research --output "
         "product-wizard-artifact-json"
@@ -403,7 +412,10 @@ def test_live_execution_enabled_blocks_without_one_run_confirmation(tmp_path):
     project_page = client.get(f"/projects/{project_id}")
     response = client.post(
         f"/projects/{project_id}/stages/current/generate",
-        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        data={
+            "generation_mode": LIVE_HERMES_GENERATION_MODE,
+            "live_pilot_confirmation": LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+        },
         follow_redirects=False,
     )
     generation_run = app.state.repository.list_generation_runs(
@@ -506,7 +518,10 @@ def test_live_hermes_mode_is_locked_and_records_failed_run(tmp_path):
 
     response = client.post(
         f"/projects/{project_id}/stages/current/generate",
-        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        data={
+            "generation_mode": LIVE_HERMES_GENERATION_MODE,
+            "live_pilot_confirmation": LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+        },
         follow_redirects=False,
     )
 
@@ -646,6 +661,54 @@ def test_live_hermes_all_gates_ready_creates_dry_run_artifact(tmp_path):
     assert secret_violations({"project_detail": project_page.text}) == []
 
 
+def test_live_execution_enabled_requires_manual_pilot_confirmation(tmp_path):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            hermes_live_execution_enabled=True,
+        )
+    )
+    fake_runner = FakeLiveHermesCommandRunner(
+        LiveHermesAdapterRawResult(stdout='{"artifact": "should not run"}')
+    )
+    app.state.live_hermes_command_runner = fake_runner
+    client = TestClient(app)
+    project_id, _ = create_structured_project(client)
+    mark_agent_runtime_ready(app, "research-agent")
+    approve_live_hermes_stage(app, project_id, "research")
+    run_confirmation_id = confirm_one_live_hermes_run(app, project_id, "research")
+
+    project_page = client.get(f"/projects/{project_id}")
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        follow_redirects=False,
+    )
+    generation_run = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )[0]
+    run_confirmation = evaluate_live_hermes_run_confirmation(
+        app.state.repository,
+        project_id,
+        "research",
+    )
+
+    assert project_page.status_code == 200
+    assert "Run live Hermes pilot" in project_page.text
+    assert LIVE_HERMES_PILOT_CONFIRMATION_PHRASE in project_page.text
+    assert response.status_code == 409
+    assert response.json()["detail"] == LIVE_HERMES_PILOT_CONFIRMATION_ERROR
+    assert fake_runner.calls == []
+    assert generation_run["status"] == "failed"
+    assert generation_run["artifact_id"] is None
+    assert generation_run["error"] == LIVE_HERMES_PILOT_CONFIRMATION_ERROR
+    assert run_confirmation.decision_id == run_confirmation_id
+    assert run_confirmation.fresh is False
+    assert app.state.repository.latest_project_stage_artifact(project_id, "research") is None
+    assert secret_violations({"project_detail": project_page.text}) == []
+
+
 def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp_path):
     app = create_app(
         Settings(
@@ -671,7 +734,10 @@ def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp
 
     response = client.post(
         f"/projects/{project_id}/stages/current/generate",
-        data={"generation_mode": LIVE_HERMES_GENERATION_MODE},
+        data={
+            "generation_mode": LIVE_HERMES_GENERATION_MODE,
+            "live_pilot_confirmation": LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+        },
         follow_redirects=False,
     )
     generation_run = app.state.repository.list_generation_runs(
@@ -715,6 +781,11 @@ def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp
     assert metadata["status"] == LIVE_HERMES_LIVE_STATUS
     assert metadata["external_execution"] == "enabled"
     assert metadata["runner"]["label"] == "fake_test_runner"
+    assert metadata["operator_preflight"]["manual_pilot_confirmation"] == "verified"
+    assert metadata["operator_preflight"]["run_confirmation_decision_id"] == (
+        run_confirmation_id
+    )
+    assert metadata["operator_preflight"]["external_execution_enabled"] is True
     assert metadata["duration_ms"] == 17
     assert metadata["stdout_capture"]["bytes"] > 0
     assert metadata["stderr_capture"]["bytes"] > 0
@@ -729,6 +800,8 @@ def test_live_execution_enabled_uses_injected_runner_and_records_ui_evidence(tmp
     assert LIVE_HERMES_LIVE_STATUS in project_page.text
     assert "Last adapter capture" in project_page.text
     assert "fake_test_runner" in project_page.text
+    assert "Pilot confirmation" in project_page.text
+    assert "verified" in project_page.text
     assert "one-run confirmation ready" not in project_page.text
     assert "Request one-run confirmation" in project_page.text
     assert live_decision_id in project_page.text
