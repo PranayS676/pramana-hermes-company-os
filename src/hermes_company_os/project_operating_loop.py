@@ -4,6 +4,10 @@ import json
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 
+from hermes_company_os.external_dispatch import (
+    command_boundary_summary,
+    external_dispatch_command_contract,
+)
 from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
 from hermes_company_os.secret_guard import assert_no_secret_values
 
@@ -116,6 +120,10 @@ def project_external_dispatch_preview_package(
             "blocked_item_count": len(blocked_items),
         },
         "items": items,
+        "command_boundary": command_boundary_summary(
+            enabled=external_dispatch_enabled,
+            runner_label="external_dispatch_runner",
+        ),
         "approval": _dispatch_approval_state(
             approval=approval,
             ready=operating_loop_ready,
@@ -316,11 +324,16 @@ def run_external_dispatch_runner(
     results = []
     for item in package["items"]:
         results.append(_dispatch_item(runner, item))
+    status = (
+        "succeeded"
+        if all(result.get("status") == "succeeded" for result in results)
+        else "failed"
+    )
     event = _record_external_dispatch_runner_event(
         repository,
         package=package,
         event_type=EXTERNAL_DISPATCH_RUNNER_COMPLETED_EVENT_TYPE,
-        status="succeeded",
+        status=status,
         runner_label=runner_label,
         dispatch_attempted=True,
         results=results,
@@ -357,6 +370,8 @@ def latest_external_dispatch_runner_audit(repository, project_id: str) -> dict:
         "dispatch_attempted": bool(audit.get("dispatch_attempted")),
         "result_count": int(audit.get("result_count") or 0),
         "blocker": audit.get("blocker", ""),
+        "command_boundary": dict(audit.get("command_boundary") or {}),
+        "command_fingerprints": list(audit.get("command_fingerprints") or []),
         "created_at": event.get("created_at", ""),
     }
 
@@ -523,7 +538,7 @@ def _next_actions(lanes: Sequence[Mapping]) -> list[dict[str, str]]:
 def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
     project = operating_loop["project"]
     lane = _lane_by_id(operating_loop, "slack")
-    return {
+    item = {
         "id": "slack-standup-preview",
         "platform": "slack",
         "lane_id": "slack",
@@ -547,12 +562,13 @@ def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
         "manual_review_required": True,
         "blockers": lane["blockers"],
     }
+    return _with_adapter_contract(item)
 
 
 def _telegram_dispatch_preview(operating_loop: Mapping) -> dict:
     project = operating_loop["project"]
     lane = _lane_by_id(operating_loop, "telegram")
-    return {
+    item = {
         "id": "telegram-urgent-alert-preview",
         "platform": "telegram",
         "lane_id": "telegram",
@@ -578,6 +594,7 @@ def _telegram_dispatch_preview(operating_loop: Mapping) -> dict:
         "manual_review_required": True,
         "blockers": lane["blockers"],
     }
+    return _with_adapter_contract(item)
 
 
 def _kanban_dispatch_previews(
@@ -592,35 +609,40 @@ def _kanban_dispatch_previews(
         title = str(item["title"])
         task_id = str(item["task_id"])
         owner_agent_id = str(item["owner_agent_id"])
-        previews.append(
-            {
-                "id": f"kanban-task-create-preview-{task_id}",
-                "platform": "hermes-kanban",
-                "lane_id": "kanban",
-                "label": "Kanban task create preview",
-                "status": _preview_status(lane),
-                "action": "create_task_preview",
-                "owner_agent_id": owner_agent_id,
-                "owner_name": item.get("owner_name", owner_agent_id),
-                "workflow_item_id": item["id"],
-                "task_id": task_id,
-                "idempotency_key": task_id,
-                "title": title,
-                "message_preview": (
-                    f"Create Hermes Kanban task for {item.get('owner_name', owner_agent_id)}: "
-                    f"{title}"
-                ),
-                "command_preview": (
-                    f"hermes kanban create {json.dumps(title)} "
-                    f"--assignee {owner_agent_id} --idempotency-key {task_id} --json"
-                ),
-                "dispatch_enabled": False,
-                "runs_automatically": False,
-                "manual_review_required": True,
-                "blockers": lane["blockers"],
-            }
-        )
+        preview = {
+            "id": f"kanban-task-create-preview-{task_id}",
+            "platform": "hermes-kanban",
+            "lane_id": "kanban",
+            "label": "Kanban task create preview",
+            "status": _preview_status(lane),
+            "action": "create_task_preview",
+            "owner_agent_id": owner_agent_id,
+            "owner_name": item.get("owner_name", owner_agent_id),
+            "workflow_item_id": item["id"],
+            "task_id": task_id,
+            "idempotency_key": task_id,
+            "title": title,
+            "message_preview": (
+                f"Create Hermes Kanban task for {item.get('owner_name', owner_agent_id)}: "
+                f"{title}"
+            ),
+            "command_preview": (
+                f"hermes kanban create {json.dumps(title)} "
+                f"--assignee {owner_agent_id} --idempotency-key {task_id} --json"
+            ),
+            "dispatch_enabled": False,
+            "runs_automatically": False,
+            "manual_review_required": True,
+            "blockers": lane["blockers"],
+        }
+        previews.append(_with_adapter_contract(preview))
     return previews
+
+
+def _with_adapter_contract(item: Mapping) -> dict:
+    payload = dict(item)
+    payload["adapter_contract"] = external_dispatch_command_contract(payload)
+    return payload
 
 
 def _dispatch_preview_next_actions(
@@ -769,6 +791,9 @@ def _external_dispatch_audit(
             "action": item["action"],
             "sha256": _fingerprint_json(item),
             "command_sha256": _fingerprint_text(item["command_preview"]),
+            "contract_sha256": item["adapter_contract"]["contract_sha256"],
+            "argv_sha256": item["adapter_contract"]["argv_sha256"],
+            "command_boundary": item["adapter_contract"]["command_boundary"],
             "dispatch_enabled": bool(item["dispatch_enabled"]),
             "runs_automatically": bool(item["runs_automatically"]),
         }
@@ -856,9 +881,13 @@ def _external_dispatch_runner_audit(
             "action": item["action"],
             "sha256": _fingerprint_json(item),
             "command_sha256": _fingerprint_text(item["command_preview"]),
+            "contract_sha256": item["adapter_contract"]["contract_sha256"],
+            "argv_sha256": item["adapter_contract"]["argv_sha256"],
+            "command_boundary": item["adapter_contract"]["command_boundary"],
         }
         for item in package["items"]
     ]
+    command_fingerprints = _command_fingerprints(package["items"])
     return {
         "schema": PROJECT_EXTERNAL_DISPATCH_RUNNER_AUDIT_SCHEMA,
         "immutable": True,
@@ -867,22 +896,44 @@ def _external_dispatch_runner_audit(
         "external_dispatch_enabled": package["runner"]["external_dispatch_enabled"],
         "dispatch_attempted": dispatch_attempted,
         "blocker": blocker,
+        "command_boundary": command_boundary_summary(
+            enabled=package["runner"]["external_dispatch_enabled"],
+            runner_label=runner_label,
+        ),
         "approval_audit_event_id": package["audit"]["latest"]["event_id"],
         "preview_fingerprint": package["audit"]["latest"]["preview_fingerprint"],
         "item_fingerprints": item_fingerprints,
+        "command_fingerprints": command_fingerprints,
         "result_count": len(results),
         "results": [dict(result) for result in results],
         "post_run_review": {
-            "status": "external_dispatch_completed" if dispatch_attempted else "blocked",
+            "status": _runner_review_status(
+                dispatch_attempted=dispatch_attempted,
+                results=results,
+            ),
             "next_gate": "review runner evidence before expanding automation",
             "no_live_send_attempted": not dispatch_attempted,
         },
     }
 
 
+def _runner_review_status(
+    *,
+    dispatch_attempted: bool,
+    results: Sequence[Mapping],
+) -> str:
+    if not dispatch_attempted:
+        return "blocked"
+    if all(result.get("status") == "succeeded" for result in results):
+        return "external_dispatch_completed"
+    return "external_dispatch_failed"
+
+
 def _runner_event_summary(status: str, dispatch_attempted: bool, blocker: str) -> str:
     if status == "succeeded":
         return "External dispatch runner completed through configured adapter."
+    if status == "failed":
+        return "External dispatch runner completed with failed item results."
     if dispatch_attempted:
         return "External dispatch runner attempted dispatch and was blocked."
     return f"External dispatch runner blocked: {blocker}"
@@ -899,11 +950,31 @@ def _dispatch_item(runner, item: Mapping) -> dict:
     normalized.setdefault("status", "succeeded")
     normalized.setdefault("external_id", "")
     normalized.setdefault("detail", "")
+    normalized.setdefault("command_boundary", item["adapter_contract"]["command_boundary"])
+    normalized.setdefault("command_sha256", item["adapter_contract"]["argv_sha256"])
+    normalized.setdefault("contract_sha256", item["adapter_contract"]["contract_sha256"])
+    normalized.setdefault("dry_run", item["adapter_contract"]["dry_run"])
     normalized["item_id"] = item["id"]
     normalized["platform"] = item["platform"]
     normalized["action"] = item["action"]
     assert_no_secret_values({"external_dispatch_result": json.dumps(normalized)})
     return normalized
+
+
+def _command_fingerprints(items: Sequence[Mapping]) -> list[dict]:
+    return [
+        {
+            "item_id": item["id"],
+            "platform": item["platform"],
+            "adapter": item["adapter_contract"]["adapter"],
+            "command_kind": item["adapter_contract"]["command_kind"],
+            "command_boundary": item["adapter_contract"]["command_boundary"],
+            "contract_sha256": item["adapter_contract"]["contract_sha256"],
+            "argv_sha256": item["adapter_contract"]["argv_sha256"],
+            "dry_run": bool(item["adapter_contract"]["dry_run"]),
+        }
+        for item in items
+    ]
 
 
 def _preview_snapshot(package: Mapping) -> dict:

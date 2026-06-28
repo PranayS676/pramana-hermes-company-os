@@ -70,6 +70,7 @@ from hermes_company_os.delegation_playbook import (
     delegation_playbook_markdown,
 )
 from hermes_company_os.env_templates import profile_env_template
+from hermes_company_os.external_dispatch import HermesExternalDispatchCommandAdapter
 from hermes_company_os.first_run import (
     first_run_json,
     first_run_markdown,
@@ -4856,17 +4857,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         settings: Settings = request.app.state.settings
+        runner = getattr(request.app.state, "external_dispatch_runner", None)
+        runner_label = getattr(
+            request.app.state,
+            "external_dispatch_runner_label",
+            "external_dispatch_runner",
+        )
+        if runner is None and settings.external_dispatch_enabled:
+            runner = HermesExternalDispatchCommandAdapter(
+                enabled=True,
+                runner_label="subprocess",
+            )
+            runner_label = runner.runner_label
         try:
             run_external_dispatch_runner(
                 repository,
                 project_id,
                 enabled=settings.external_dispatch_enabled,
-                runner=getattr(request.app.state, "external_dispatch_runner", None),
-                runner_label=getattr(
-                    request.app.state,
-                    "external_dispatch_runner_label",
-                    "external_dispatch_runner",
-                ),
+                runner=runner,
+                runner_label=runner_label,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

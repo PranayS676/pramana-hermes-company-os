@@ -114,6 +114,8 @@
 {% set dispatch_preview_latest_audit = dispatch_preview_audit.latest|default({}, true) %}
 {% set dispatch_preview_runner = dispatch_preview_package.runner|default({}, true) %}
 {% set dispatch_preview_latest_runner = dispatch_preview_runner.latest|default({}, true) %}
+{% set dispatch_preview_command_boundary = dispatch_preview_latest_runner.command_boundary|default(dispatch_preview_package.command_boundary|default({}, true), true) %}
+{% set dispatch_preview_command_fingerprints = dispatch_preview_latest_runner.command_fingerprints|default([], true) %}
 {% set dispatch_preview_next_actions = dispatch_preview_package.next_actions|default([], true) %}
 {% set memory_categories = memory_category_options|default([], true) %}
 {% set memory_confidences = memory_confidence_options|default([], true) %}
@@ -1260,6 +1262,10 @@
                   {% endif %}
                 </strong>
               </div>
+              <div class="readiness-line">
+                <span>Command boundary</span>
+                <strong>{{ dispatch_preview_command_boundary.name|default("Hermes command boundary", true) }}</strong>
+              </div>
             </div>
             {% if dispatch_preview_items %}
             <div class="quality-check-list" aria-label="External dispatch preview queue">
@@ -1322,6 +1328,16 @@
               <div class="quality-check-row">
                 <span>Runner label</span>
                 <span>{{ dispatch_preview_latest_runner.runner_label }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>{{ dispatch_preview_command_boundary.name|default("Hermes command boundary", true) }}</span>
+                <span class="status-pill {{ dispatch_preview_command_boundary.status|default('disabled', true) }}">
+                  {{ dispatch_preview_command_boundary.status|default("disabled", true) }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Command fingerprints</span>
+                <span>{{ dispatch_preview_command_fingerprints|length }} contracts</span>
               </div>
               <div class="quality-check-row">
                 <span>

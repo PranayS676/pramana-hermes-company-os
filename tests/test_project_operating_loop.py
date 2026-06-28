@@ -4,6 +4,7 @@ import json
 
 from fastapi.testclient import TestClient
 
+from hermes_company_os.external_dispatch import HermesExternalDispatchCommandAdapter
 from hermes_company_os.main import create_app
 from hermes_company_os.secret_guard import secret_violations
 from hermes_company_os.settings import Settings
@@ -33,10 +34,14 @@ class FakeExternalDispatchRunner:
 
     def dispatch(self, item: dict) -> dict:
         self.calls.append(item)
+        contract = item["adapter_contract"]
         return {
             "status": "succeeded",
             "external_id": f"fake-{item['id']}",
             "detail": "Fake external dispatch runner accepted preview item.",
+            "command_boundary": contract["command_boundary"],
+            "command_sha256": contract["argv_sha256"],
+            "dry_run": contract["dry_run"],
         }
 
 
@@ -120,6 +125,22 @@ def mark_external_loop_ready(app) -> None:
 
 def lane(payload: dict, lane_id: str) -> dict:
     return next(item for item in payload["lanes"] if item["id"] == lane_id)
+
+
+def assert_adapter_contract(item: dict) -> dict:
+    contract = item["adapter_contract"]
+    assert contract["schema"] == "external_dispatch_command_contract_v1"
+    assert contract["item_id"] == item["id"]
+    assert contract["platform"] == item["platform"]
+    assert contract["action"] == item["action"]
+    assert contract["command_boundary"] == "hermes_command_boundary"
+    assert contract["dry_run"] is True
+    assert contract["enabled"] is False
+    assert contract["argv"]
+    assert len(contract["argv_sha256"]) == 64
+    assert len(contract["command_preview_sha256"]) == 64
+    assert secret_violations({"adapter_contract": json.dumps(contract)}) == []
+    return contract
 
 
 def external_dispatch_decision(app, project_id: str) -> dict:
@@ -248,9 +269,11 @@ def test_external_dispatch_preview_defaults_to_no_send_locked_state(tmp_path):
     }
     assert all(item["dispatch_enabled"] is False for item in payload["items"])
     assert all(item["runs_automatically"] is False for item in payload["items"])
+    assert all(assert_adapter_contract(item) for item in payload["items"])
     assert project_page.status_code == 200
     assert "External Dispatch Preview" in project_page.text
     assert "Dispatch remains disabled" in project_page.text
+    assert "Hermes command boundary" in project_page.text
     assert "Review previews" in project_page.text
     assert f'href="/projects/{project_id}/external-dispatch-preview.json"' in (
         project_page.text
@@ -381,6 +404,11 @@ def test_external_dispatch_audit_consumes_approval_into_immutable_no_send_eviden
     assert audit["item_fingerprints"]
     assert all(item["dispatch_enabled"] is False for item in audit["item_fingerprints"])
     assert all(item["runs_automatically"] is False for item in audit["item_fingerprints"])
+    assert all(item["contract_sha256"] for item in audit["item_fingerprints"])
+    assert all(
+        item["command_boundary"] == "hermes_command_boundary"
+        for item in audit["item_fingerprints"]
+    )
     assert audit["post_run_review"]["external_dispatch_enabled"] is False
     assert audit["post_run_review"]["real_send_allowed"] is False
     assert package["audit"]["latest"]["event_id"] == event["id"]
@@ -434,12 +462,18 @@ def test_external_dispatch_runner_is_disabled_by_default_and_records_blocked_aud
     assert runner_audit["dispatch_attempted"] is False
     assert runner_audit["result_count"] == 0
     assert runner_audit["blocker"] == "External dispatch runner is disabled."
+    assert runner_audit["command_boundary"]["name"] == "Hermes command boundary"
+    assert runner_audit["command_boundary"]["status"] == "disabled"
+    assert runner_audit["command_fingerprints"]
+    assert all(item["contract_sha256"] for item in runner_audit["command_fingerprints"])
     assert package["runner"]["external_dispatch_enabled"] is False
     assert package["runner"]["latest"]["event_id"] == event["id"]
     assert package["runner"]["latest"]["status"] == "blocked"
     assert project_page.status_code == 200
     assert "External dispatch runner disabled" in project_page.text
     assert "Runner evidence" in project_page.text
+    assert "Hermes command boundary" in project_page.text
+    assert "Command fingerprints" in project_page.text
     assert "No live send attempted" in project_page.text
     assert secret_violations(
         {
@@ -492,18 +526,34 @@ def test_external_dispatch_runner_uses_enabled_injected_adapter_and_records_resu
     assert len(events) == 1
     assert event["status"] == "succeeded"
     assert len(fake_runner.calls) == preview["queue"]["item_count"]
+    assert all("adapter_contract" in item for item in fake_runner.calls)
+    assert all(
+        item["adapter_contract"]["argv_sha256"]
+        for item in fake_runner.calls
+    )
     assert runner_audit["schema"] == "project_external_dispatch_runner_audit_v1"
     assert runner_audit["external_dispatch_enabled"] is True
     assert runner_audit["dispatch_attempted"] is True
     assert runner_audit["runner_label"] == "fake_external_dispatch_runner"
+    assert runner_audit["command_boundary"]["name"] == "Hermes command boundary"
+    assert runner_audit["command_boundary"]["status"] == "enabled"
+    assert runner_audit["command_fingerprints"]
+    assert all(item["contract_sha256"] for item in runner_audit["command_fingerprints"])
     assert runner_audit["result_count"] == preview["queue"]["item_count"]
     assert all(result["status"] == "succeeded" for result in runner_audit["results"])
+    assert all(
+        result["command_boundary"] == "hermes_command_boundary"
+        for result in runner_audit["results"]
+    )
+    assert all(result["command_sha256"] for result in runner_audit["results"])
     assert package["runner"]["latest"]["event_id"] == event["id"]
     assert package["runner"]["latest"]["status"] == "succeeded"
     assert package["runner"]["run_allowed"] is False
     assert project_page.status_code == 200
     assert "External dispatch runner completed" in project_page.text
     assert "fake_external_dispatch_runner" in project_page.text
+    assert "Hermes command boundary" in project_page.text
+    assert "Command fingerprints" in project_page.text
     assert secret_violations(
         {
             "dispatch_preview": json.dumps(package, sort_keys=True),
@@ -546,6 +596,32 @@ def test_external_dispatch_preview_builds_ready_no_send_handoff_queue(tmp_path):
     assert all(item["label"] == "Kanban task create preview" for item in kanban_items)
     assert all(item["idempotency_key"].startswith("task-") for item in kanban_items)
     assert all("hermes kanban create" in item["command_preview"] for item in kanban_items)
+    contracts = [assert_adapter_contract(item) for item in payload["items"]]
+    slack_contract = next(
+        contract for contract in contracts if contract["platform"] == "slack"
+    )
+    telegram_contract = next(
+        contract for contract in contracts if contract["platform"] == "telegram"
+    )
+    kanban_contracts = [
+        contract for contract in contracts if contract["platform"] == "hermes-kanban"
+    ]
+    assert slack_contract["adapter"] == "slack"
+    assert slack_contract["command_kind"] == "slack.chat.postMessage"
+    assert slack_contract["target_input_key"] == "slack_channel_agent_standup"
+    assert "--channel-ref" in slack_contract["argv"]
+    assert telegram_contract["adapter"] == "telegram"
+    assert telegram_contract["command_kind"] == "telegram.sendMessage"
+    assert telegram_contract["target_input_key"] == "founder_telegram_user_id"
+    assert telegram_contract["urgent_only"] is True
+    assert "--urgent-only" in telegram_contract["argv"]
+    assert len(kanban_contracts) == workflow_count
+    assert all(contract["adapter"] == "hermes-kanban" for contract in kanban_contracts)
+    assert all(
+        contract["command_kind"] == "hermes kanban create"
+        for contract in kanban_contracts
+    )
+    assert all("--idempotency-key" in contract["argv"] for contract in kanban_contracts)
     assert project_page.status_code == 200
     assert "Ready for founder review" in project_page.text
     assert "Slack standup preview" in project_page.text
@@ -557,3 +633,72 @@ def test_external_dispatch_preview_builds_ready_no_send_handoff_queue(tmp_path):
             "project_page": project_page.text,
         }
     ) == []
+
+
+def test_hermes_external_dispatch_command_adapter_disabled_refuses_without_calling_runner(
+    tmp_path,
+):
+    calls = []
+
+    def fake_command_runner(argv: list[str]):
+        calls.append(argv)
+        raise AssertionError("disabled adapter must not call the command runner")
+
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    payload = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    item = payload["items"][0]
+    adapter = HermesExternalDispatchCommandAdapter(
+        enabled=False,
+        runner=fake_command_runner,
+        runner_label="fake_command_runner",
+    )
+
+    result = adapter.dispatch(item)
+
+    assert calls == []
+    assert result["status"] == "blocked"
+    assert result["dispatch_attempted"] is False
+    assert result["command_boundary"] == "hermes_command_boundary"
+    assert result["runner_label"] == "fake_command_runner"
+    assert result["command_sha256"] == item["adapter_contract"]["argv_sha256"]
+    assert result["blocker"] == "Hermes external dispatch command adapter is disabled."
+    assert secret_violations({"adapter_result": json.dumps(result, sort_keys=True)}) == []
+
+
+def test_hermes_external_dispatch_command_adapter_enabled_runs_contract_argv(
+    tmp_path,
+):
+    calls = []
+
+    def fake_command_runner(argv: list[str]):
+        calls.append(argv)
+        return {
+            "returncode": 0,
+            "stdout": "dry run accepted",
+            "stderr": "",
+            "duration_ms": 3,
+        }
+
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    payload = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    item = payload["items"][0]
+    adapter = HermesExternalDispatchCommandAdapter(
+        enabled=True,
+        runner=fake_command_runner,
+        runner_label="fake_command_runner",
+    )
+
+    result = adapter.dispatch(item)
+
+    assert calls == [item["adapter_contract"]["argv"]]
+    assert result["status"] == "succeeded"
+    assert result["dispatch_attempted"] is True
+    assert result["returncode"] == 0
+    assert result["command_boundary"] == "hermes_command_boundary"
+    assert result["command_sha256"] == item["adapter_contract"]["argv_sha256"]
+    assert result["stdout_capture"]["bytes"] == len("dry run accepted")
+    assert result["stdout_capture"]["sha256"]
+    assert result["stderr_capture"]["bytes"] == 0
+    assert secret_violations({"adapter_result": json.dumps(result, sort_keys=True)}) == []
