@@ -81,6 +81,10 @@
 {% set kanban_gate_open = kanban_ready and task_gate_ready %}
 {% set founder_decision_items = founder_decisions|default([], true) %}
 {% set queue_items = agent_work_items|default([], true) %}
+{% set codex_package = codex_execution|default({}, true) %}
+{% set codex_state = codex_package.execution|default({}, true) %}
+{% set codex_gates = codex_package.approval_gates|default({}, true) %}
+{% set codex_branch_plan = codex_package.branch_plan|default({}, true) %}
 {% set intake = project.intake|default({}, true) %}
 
 <!doctype html>
@@ -796,7 +800,7 @@
             {% endif %}
           </section>
 
-          <section class="panel codex-gate-panel">
+          <section class="panel codex-gate-panel" id="codex-execution">
             <div class="panel-header">
               <div>
                 <h2>Codex Execution</h2>
@@ -805,9 +809,67 @@
               <i data-lucide="square-terminal"></i>
             </div>
             <p class="empty-state gate-copy" id="codex-gate-reason">
+              {% if codex_state.founder_approved_for_execution %}
+              Codex execution is founder-approved. Real workstream launch is still disabled
+              until a separate runner implementation exists.
+              {% elif codex_state.approval_request_open %}
+              Open Codex execution approval: {{ codex_state.decision_id }}.
+              {% elif codex_state.ready_for_founder_approval %}
+              Codex package is ready for founder approval. Export the package, then request
+              approval before any branch, worktree, or parallel workstream starts.
+              {% else %}
+              Codex package locked until code plan and acceptance artifacts are approved.
               Future Codex execution requires approved code plan, approved acceptance package,
               and a separate founder execution approval before real branches or parallel workstreams start.
+              {% endif %}
             </p>
+            {% if codex_gates %}
+            <div class="quality-check-list" aria-label="Codex execution gates">
+              {% for gate in codex_gates.values() %}
+              <div class="quality-check-row">
+                <span>{{ gate.label }}</span>
+                <span class="status-pill {{ gate.status }}">{{ gate.status }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if codex_branch_plan.branch_name %}
+            <p class="panel-kicker">
+              Branch preview: <code>{{ codex_branch_plan.branch_name }}</code>
+            </p>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/codex-execution.json"
+            >
+              <i data-lucide="braces"></i>
+              Codex package JSON
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/codex-execution.md"
+            >
+              <i data-lucide="file-text"></i>
+              Codex package MD
+            </a>
+            {% if codex_state.approval_request_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-approval">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="shield-check"></i>
+                Request Codex execution approval
+              </button>
+            </form>
+            {% elif codex_state.approval_request_open %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/decisions/{{ codex_state.decision_id }}"
+            >
+              <i data-lucide="external-link"></i>
+              Open Codex execution approval
+            </a>
+            {% elif codex_state.founder_approved_for_execution %}
+            <span class="status-pill ready">founder-approved</span>
+            {% endif %}
             <button
               class="secondary-button full-width-button"
               type="button"

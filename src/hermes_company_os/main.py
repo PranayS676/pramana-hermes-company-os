@@ -32,6 +32,13 @@ from hermes_company_os.agent_work_queue import (
     QUEUE_STATES,
 )
 from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
+from hermes_company_os.codex_execution import (
+    CODEX_EXECUTION_DECISION_SOURCE,
+    CODEX_EXECUTION_DECISION_TYPE,
+    CODEX_EXECUTION_STAGE_ID,
+    codex_execution_markdown,
+    codex_execution_package,
+)
 from hermes_company_os.company_launch_drill import (
     company_launch_drill_json,
     company_launch_drill_markdown,
@@ -4641,6 +4648,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             latest_artifact["generation_run"] = latest_generation_run
         task_stage_approved = project_task_stage_approved(repository, project_id)
         kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
+        codex_execution = codex_execution_package(repository, project_id)
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -4650,6 +4658,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_linked_count": sum(1 for item in workflow_items if item["kanban_task_id"]),
                 "kanban_ready": not kanban_blocker,
                 "kanban_blocker": kanban_blocker,
+                "codex_execution": codex_execution,
                 "wizard_stages": [stage_view(stage) for stage in wizard_stages],
                 "current_stage": stage_view(review_stage) if review_stage else None,
                 "actionable_stage": stage_view(current_stage) if current_stage else None,
@@ -4675,6 +4684,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     limit=8,
                 ),
             },
+        )
+
+    @app.get("/projects/{project_id}/codex-execution.json")
+    def project_codex_execution_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return codex_execution_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/codex-execution.md")
+    def project_codex_execution_markdown(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = codex_execution_package(repository, project_id)
+        return PlainTextResponse(codex_execution_markdown(package))
+
+    @app.post("/projects/{project_id}/codex-execution-approval")
+    def request_project_codex_execution_approval(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = codex_execution_package(repository, project_id)
+        if package["execution"]["approval_request_allowed"]:
+            source_artifacts = ", ".join(
+                f"{artifact['stage_id']}={artifact['id']}@v{artifact['version']}"
+                for artifact in package["source_artifacts"]
+            )
+            command_preview = "; ".join(
+                command["command"] for command in package["command_preview"]
+            )
+            acceptance_artifact = next(
+                (
+                    artifact
+                    for artifact in package["source_artifacts"]
+                    if artifact["stage_id"] == CODEX_EXECUTION_STAGE_ID
+                ),
+                {},
+            )
+            repository.create_founder_decision(
+                title=f"Approve Codex execution for {project['name']}",
+                urgency="urgent",
+                decision_type=CODEX_EXECUTION_DECISION_TYPE,
+                source=CODEX_EXECUTION_DECISION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=CODEX_EXECUTION_STAGE_ID,
+                artifact_id=acceptance_artifact.get("id") or None,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if Codex execution blocks launch.",
+                context=(
+                    f"Approve Codex implementation start for {project['name']}. "
+                    "This dashboard action does not create branches, create "
+                    "worktrees, spawn chats, or run commands."
+                ),
+                evidence=(
+                    f"Source artifacts: {source_artifacts}. Branch preview: "
+                    f"{package['branch_plan']['branch_name']}. Commands previewed: "
+                    f"{command_preview}."
+                ),
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#codex-execution",
+            status_code=303,
         )
 
     @app.post("/projects/{project_id}/stages/{stage_id}/generate")
