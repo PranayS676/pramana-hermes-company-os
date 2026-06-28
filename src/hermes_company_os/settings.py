@@ -23,6 +23,9 @@ class Settings:
     codex_execution_enabled: bool = field(
         default_factory=lambda: env_flag("HERMES_CODEX_EXECUTION_ENABLED", False)
     )
+    external_dispatch_enabled: bool = field(
+        default_factory=lambda: env_flag("HERMES_EXTERNAL_DISPATCH_ENABLED", False)
+    )
     codex_workspace_root: Path = Path(os.getenv("HERMES_CODEX_WORKSPACE_ROOT", "."))
     codex_worktree_root: Path = Path(
         os.getenv("HERMES_CODEX_WORKTREE_ROOT", "../codex-worktrees")

@@ -33,3 +33,20 @@ def test_codex_execution_flag_accepts_explicit_truthy_values(monkeypatch):
 
     assert settings.codex_execution_enabled is True
     assert env_flag("HERMES_CODEX_EXECUTION_ENABLED") is True
+
+
+def test_external_dispatch_flag_defaults_disabled(monkeypatch):
+    monkeypatch.delenv("HERMES_EXTERNAL_DISPATCH_ENABLED", raising=False)
+
+    settings = Settings()
+
+    assert settings.external_dispatch_enabled is False
+
+
+def test_external_dispatch_flag_accepts_explicit_truthy_values(monkeypatch):
+    monkeypatch.setenv("HERMES_EXTERNAL_DISPATCH_ENABLED", "true")
+
+    settings = Settings()
+
+    assert settings.external_dispatch_enabled is True
+    assert env_flag("HERMES_EXTERNAL_DISPATCH_ENABLED") is True

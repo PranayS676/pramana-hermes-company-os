@@ -263,6 +263,7 @@ from hermes_company_os.project_operating_loop import (
     project_external_dispatch_preview_package,
     project_operating_loop_package,
     request_external_dispatch_approval,
+    run_external_dispatch_runner,
 )
 from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
@@ -1208,6 +1209,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.live_hermes_command_runner = None
     app.state.live_hermes_runner_label = "subprocess"
+    app.state.external_dispatch_runner = None
+    app.state.external_dispatch_runner_label = "not_configured"
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -4724,6 +4727,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         external_dispatch_preview = project_external_dispatch_preview_package(
             repository,
             project_id,
+            external_dispatch_enabled=request.app.state.settings.external_dispatch_enabled,
         )
         project_activity_events = repository.list_audit_events(
             project_id=project_id,
@@ -4812,7 +4816,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         repository: CompanyRepository = request.app.state.repository
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        return project_external_dispatch_preview_package(repository, project_id)
+        return project_external_dispatch_preview_package(
+            repository,
+            project_id,
+            external_dispatch_enabled=request.app.state.settings.external_dispatch_enabled,
+        )
 
     @app.post("/projects/{project_id}/external-dispatch-approval")
     def request_project_external_dispatch_approval(request: Request, project_id: str):
@@ -4835,6 +4843,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Project not found")
         try:
             consume_external_dispatch_preview_approval(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#external-dispatch-preview",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/external-dispatch-run")
+    def run_project_external_dispatch(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        settings: Settings = request.app.state.settings
+        try:
+            run_external_dispatch_runner(
+                repository,
+                project_id,
+                enabled=settings.external_dispatch_enabled,
+                runner=getattr(request.app.state, "external_dispatch_runner", None),
+                runner_label=getattr(
+                    request.app.state,
+                    "external_dispatch_runner_label",
+                    "external_dispatch_runner",
+                ),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(

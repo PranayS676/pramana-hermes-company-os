@@ -27,6 +27,19 @@ STRUCTURED_INTAKE = {
 WIZARD_STAGE_IDS = ["research", "prd", "architecture", "tasks", "code_plan", "acceptance"]
 
 
+class FakeExternalDispatchRunner:
+    def __init__(self):
+        self.calls = []
+
+    def dispatch(self, item: dict) -> dict:
+        self.calls.append(item)
+        return {
+            "status": "succeeded",
+            "external_id": f"fake-{item['id']}",
+            "detail": "Fake external dispatch runner accepted preview item.",
+        }
+
+
 def app_and_client(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     return app, TestClient(app)
@@ -115,6 +128,26 @@ def external_dispatch_decision(app, project_id: str) -> dict:
         decision_type="external_action_approval",
     )
     return next(item for item in decisions if item["source"] == "external_dispatch_preview")
+
+
+def approve_and_audit_external_dispatch(app, client: TestClient, project_id: str) -> dict:
+    client.post(
+        f"/projects/{project_id}/external-dispatch-approval",
+        follow_redirects=False,
+    )
+    decision = external_dispatch_decision(app, project_id)
+    app.state.repository.update_founder_decision(
+        decision["id"],
+        status="approved",
+        decision="Founder approves recording no-send dispatch preview evidence.",
+        founder_confirmed=True,
+    )
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-audit",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    return decision
 
 
 def test_project_operating_loop_json_defaults_to_safe_locked_state(tmp_path):
@@ -362,6 +395,119 @@ def test_external_dispatch_audit_consumes_approval_into_immutable_no_send_eviden
         {
             "dispatch_preview": json.dumps(package, sort_keys=True),
             "audit_event": json.dumps(event, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_external_dispatch_runner_is_disabled_by_default_and_records_blocked_audit(
+    tmp_path,
+):
+    app, client = app_and_client(tmp_path)
+    fake_runner = FakeExternalDispatchRunner()
+    app.state.external_dispatch_runner = fake_runner
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+    approve_and_audit_external_dispatch(app, client, project_id)
+
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-run",
+        follow_redirects=False,
+    )
+    package = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    project_page = client.get(f"/projects/{project_id}")
+    events = app.state.repository.list_audit_events(
+        project_id=project_id,
+        event_type="external_dispatch_runner_blocked",
+    )
+    event = events[0]
+    runner_audit = event["payload"]["runner_audit"]
+
+    assert response.status_code == 409
+    assert "External dispatch runner is disabled" in response.json()["detail"]
+    assert fake_runner.calls == []
+    assert len(events) == 1
+    assert event["status"] == "blocked"
+    assert runner_audit["schema"] == "project_external_dispatch_runner_audit_v1"
+    assert runner_audit["external_dispatch_enabled"] is False
+    assert runner_audit["dispatch_attempted"] is False
+    assert runner_audit["result_count"] == 0
+    assert runner_audit["blocker"] == "External dispatch runner is disabled."
+    assert package["runner"]["external_dispatch_enabled"] is False
+    assert package["runner"]["latest"]["event_id"] == event["id"]
+    assert package["runner"]["latest"]["status"] == "blocked"
+    assert project_page.status_code == 200
+    assert "External dispatch runner disabled" in project_page.text
+    assert "Runner evidence" in project_page.text
+    assert "No live send attempted" in project_page.text
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(package, sort_keys=True),
+            "runner_event": json.dumps(event, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_external_dispatch_runner_uses_enabled_injected_adapter_and_records_results(
+    tmp_path,
+):
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            external_dispatch_enabled=True,
+        )
+    )
+    fake_runner = FakeExternalDispatchRunner()
+    app.state.external_dispatch_runner = fake_runner
+    app.state.external_dispatch_runner_label = "fake_external_dispatch_runner"
+    client = TestClient(app)
+    project_id = create_structured_project(client)
+    mark_external_loop_ready(app)
+    approve_until_stage(app, client, project_id, "tasks")
+    approve_and_audit_external_dispatch(app, client, project_id)
+    preview = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+
+    response = client.post(
+        f"/projects/{project_id}/external-dispatch-run",
+        follow_redirects=False,
+    )
+    second_response = client.post(
+        f"/projects/{project_id}/external-dispatch-run",
+        follow_redirects=False,
+    )
+    package = client.get(f"/projects/{project_id}/external-dispatch-preview.json").json()
+    project_page = client.get(f"/projects/{project_id}")
+    events = app.state.repository.list_audit_events(
+        project_id=project_id,
+        event_type="external_dispatch_runner_completed",
+    )
+    event = events[0]
+    runner_audit = event["payload"]["runner_audit"]
+
+    assert response.status_code == 303
+    assert second_response.status_code == 409
+    assert "already completed" in second_response.json()["detail"]
+    assert len(events) == 1
+    assert event["status"] == "succeeded"
+    assert len(fake_runner.calls) == preview["queue"]["item_count"]
+    assert runner_audit["schema"] == "project_external_dispatch_runner_audit_v1"
+    assert runner_audit["external_dispatch_enabled"] is True
+    assert runner_audit["dispatch_attempted"] is True
+    assert runner_audit["runner_label"] == "fake_external_dispatch_runner"
+    assert runner_audit["result_count"] == preview["queue"]["item_count"]
+    assert all(result["status"] == "succeeded" for result in runner_audit["results"])
+    assert package["runner"]["latest"]["event_id"] == event["id"]
+    assert package["runner"]["latest"]["status"] == "succeeded"
+    assert package["runner"]["run_allowed"] is False
+    assert project_page.status_code == 200
+    assert "External dispatch runner completed" in project_page.text
+    assert "fake_external_dispatch_runner" in project_page.text
+    assert secret_violations(
+        {
+            "dispatch_preview": json.dumps(package, sort_keys=True),
+            "runner_event": json.dumps(event, sort_keys=True),
             "project_page": project_page.text,
         }
     ) == []

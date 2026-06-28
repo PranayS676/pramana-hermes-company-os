@@ -112,6 +112,8 @@
 {% set dispatch_preview_approval = dispatch_preview_package.approval|default({}, true) %}
 {% set dispatch_preview_audit = dispatch_preview_package.audit|default({}, true) %}
 {% set dispatch_preview_latest_audit = dispatch_preview_audit.latest|default({}, true) %}
+{% set dispatch_preview_runner = dispatch_preview_package.runner|default({}, true) %}
+{% set dispatch_preview_latest_runner = dispatch_preview_runner.latest|default({}, true) %}
 {% set dispatch_preview_next_actions = dispatch_preview_package.next_actions|default([], true) %}
 {% set memory_categories = memory_category_options|default([], true) %}
 {% set memory_confidences = memory_confidence_options|default([], true) %}
@@ -1248,6 +1250,16 @@
                 <span>Approval</span>
                 <strong>{{ dispatch_preview_approval.status|default("not requested", true)|replace("_", " ") }}</strong>
               </div>
+              <div class="readiness-line">
+                <span>Runner</span>
+                <strong>
+                  {% if dispatch_preview_runner.external_dispatch_enabled %}
+                  External dispatch runner enabled
+                  {% else %}
+                  External dispatch runner disabled
+                  {% endif %}
+                </strong>
+              </div>
             </div>
             {% if dispatch_preview_items %}
             <div class="quality-check-list" aria-label="External dispatch preview queue">
@@ -1292,6 +1304,37 @@
               </div>
             </div>
             {% endif %}
+            {% if dispatch_preview_latest_runner %}
+            <div class="quality-check-list" aria-label="External dispatch runner evidence">
+              <h3>Runner evidence</h3>
+              <div class="quality-check-row">
+                <span>
+                  {% if dispatch_preview_latest_runner.status == "succeeded" %}
+                  External dispatch runner completed
+                  {% else %}
+                  External dispatch runner disabled
+                  {% endif %}
+                </span>
+                <span class="status-pill {{ dispatch_preview_latest_runner.status }}">
+                  {{ dispatch_preview_latest_runner.status }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Runner label</span>
+                <span>{{ dispatch_preview_latest_runner.runner_label }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>
+                  {% if dispatch_preview_latest_runner.dispatch_attempted %}
+                  Dispatch attempted
+                  {% else %}
+                  No live send attempted
+                  {% endif %}
+                </span>
+                <span>{{ dispatch_preview_latest_runner.result_count }} results</span>
+              </div>
+            </div>
+            {% endif %}
             {% if dispatch_preview_approval.request_allowed %}
             <form method="post" action="/projects/{{ project.id }}/external-dispatch-approval">
               <button class="warning-button full-width-button" type="submit">
@@ -1314,8 +1357,22 @@
                 Record approval consumption audit
               </button>
             </form>
+            {% elif dispatch_preview_runner.run_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="send"></i>
+                Run external dispatch
+              </button>
+            </form>
             {% elif dispatch_preview_audit.blocker and not dispatch_preview_latest_audit %}
             <p class="empty-state gate-copy">{{ dispatch_preview_audit.blocker }}</p>
+            {% elif dispatch_preview_runner.blocker and dispatch_preview_latest_audit and not dispatch_preview_latest_runner %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-run">
+              <button class="secondary-button full-width-button" type="submit">
+                <i data-lucide="lock"></i>
+                Record disabled runner evidence
+              </button>
+            </form>
             {% endif %}
             <a
               class="secondary-button link-button-muted full-width-button"

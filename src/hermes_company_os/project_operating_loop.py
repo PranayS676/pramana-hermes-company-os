@@ -10,10 +10,15 @@ from hermes_company_os.secret_guard import assert_no_secret_values
 PROJECT_OPERATING_LOOP_SCHEMA = "project_operating_loop_v1"
 PROJECT_EXTERNAL_DISPATCH_PREVIEW_SCHEMA = "project_external_dispatch_preview_v1"
 PROJECT_EXTERNAL_DISPATCH_AUDIT_SCHEMA = "project_external_dispatch_audit_v1"
+PROJECT_EXTERNAL_DISPATCH_RUNNER_AUDIT_SCHEMA = (
+    "project_external_dispatch_runner_audit_v1"
+)
 EXTERNAL_DISPATCH_DECISION_SOURCE = "external_dispatch_preview"
 EXTERNAL_DISPATCH_DECISION_TYPE = "external_action_approval"
 EXTERNAL_DISPATCH_STAGE_ID = "external_operating_loop"
 EXTERNAL_DISPATCH_AUDIT_EVENT_TYPE = "external_dispatch_preview_audit_consumed"
+EXTERNAL_DISPATCH_RUNNER_BLOCKED_EVENT_TYPE = "external_dispatch_runner_blocked"
+EXTERNAL_DISPATCH_RUNNER_COMPLETED_EVENT_TYPE = "external_dispatch_runner_completed"
 
 
 def project_operating_loop_package(repository, project_id: str) -> dict:
@@ -68,12 +73,18 @@ def project_operating_loop_package(repository, project_id: str) -> dict:
     return payload
 
 
-def project_external_dispatch_preview_package(repository, project_id: str) -> dict:
+def project_external_dispatch_preview_package(
+    repository,
+    project_id: str,
+    *,
+    external_dispatch_enabled: bool = False,
+) -> dict:
     operating_loop = project_operating_loop_package(repository, project_id)
     workflow_items = repository.list_project_workflow_items(project_id)
     operating_loop_ready = bool(operating_loop["aggregate"]["ready"])
     approval = external_dispatch_approval(repository, project_id)
     latest_audit = latest_external_dispatch_audit(repository, project_id)
+    latest_runner = latest_external_dispatch_runner_audit(repository, project_id)
     items = [
         _slack_dispatch_preview(operating_loop),
         _telegram_dispatch_preview(operating_loop),
@@ -114,6 +125,11 @@ def project_external_dispatch_preview_package(repository, project_id: str) -> di
             approval=approval,
             ready=operating_loop_ready,
             latest_audit=latest_audit,
+        ),
+        "runner": _dispatch_runner_state(
+            external_dispatch_enabled=external_dispatch_enabled,
+            latest_audit=latest_audit,
+            latest_runner=latest_runner,
         ),
         "next_actions": _dispatch_preview_next_actions(
             operating_loop=operating_loop,
@@ -247,6 +263,100 @@ def latest_external_dispatch_audit(repository, project_id: str) -> dict:
         "preview_fingerprint": audit.get("preview_fingerprint", {}),
         "approval_consumption": audit.get("approval_consumption", {}),
         "post_run_review": audit.get("post_run_review", {}),
+        "created_at": event.get("created_at", ""),
+    }
+
+
+def run_external_dispatch_runner(
+    repository,
+    project_id: str,
+    *,
+    enabled: bool,
+    runner,
+    runner_label: str = "external_dispatch_runner",
+) -> dict:
+    package = project_external_dispatch_preview_package(
+        repository,
+        project_id,
+        external_dispatch_enabled=enabled,
+    )
+    runner_state = package["runner"]
+    latest_runner = runner_state["latest"]
+    if latest_runner and latest_runner["status"] == "succeeded":
+        raise ValueError("External dispatch runner already completed.")
+    if not package["audit"]["latest"]:
+        raise ValueError("Dispatch approval audit is required before running dispatch.")
+    if not enabled:
+        event = _record_external_dispatch_runner_event(
+            repository,
+            package=package,
+            event_type=EXTERNAL_DISPATCH_RUNNER_BLOCKED_EVENT_TYPE,
+            status="blocked",
+            runner_label=runner_label,
+            dispatch_attempted=False,
+            results=[],
+            blocker="External dispatch runner is disabled.",
+        )
+        assert_no_secret_values({"external_dispatch_runner_blocked": json.dumps(event)})
+        raise ValueError("External dispatch runner is disabled.")
+    if runner is None:
+        event = _record_external_dispatch_runner_event(
+            repository,
+            package=package,
+            event_type=EXTERNAL_DISPATCH_RUNNER_BLOCKED_EVENT_TYPE,
+            status="blocked",
+            runner_label=runner_label,
+            dispatch_attempted=False,
+            results=[],
+            blocker="External dispatch runner is enabled but no adapter is configured.",
+        )
+        assert_no_secret_values({"external_dispatch_runner_blocked": json.dumps(event)})
+        raise ValueError("External dispatch runner is enabled but no adapter is configured.")
+
+    results = []
+    for item in package["items"]:
+        results.append(_dispatch_item(runner, item))
+    event = _record_external_dispatch_runner_event(
+        repository,
+        package=package,
+        event_type=EXTERNAL_DISPATCH_RUNNER_COMPLETED_EVENT_TYPE,
+        status="succeeded",
+        runner_label=runner_label,
+        dispatch_attempted=True,
+        results=results,
+        blocker="",
+    )
+    assert_no_secret_values({"external_dispatch_runner_completed": json.dumps(event)})
+    return event
+
+
+def latest_external_dispatch_runner_audit(repository, project_id: str) -> dict:
+    events = repository.list_audit_events(project_id=project_id, limit=50)
+    event = next(
+        (
+            item
+            for item in events
+            if item["event_type"]
+            in {
+                EXTERNAL_DISPATCH_RUNNER_BLOCKED_EVENT_TYPE,
+                EXTERNAL_DISPATCH_RUNNER_COMPLETED_EVENT_TYPE,
+            }
+        ),
+        None,
+    )
+    if not event:
+        return {}
+    audit = (event.get("payload") or {}).get("runner_audit") or {}
+    return {
+        "event_id": event["id"],
+        "event_type": event["event_type"],
+        "status": event["status"],
+        "schema": audit.get("schema", ""),
+        "runner_label": audit.get("runner_label", ""),
+        "external_dispatch_enabled": bool(audit.get("external_dispatch_enabled")),
+        "dispatch_attempted": bool(audit.get("dispatch_attempted")),
+        "result_count": int(audit.get("result_count") or 0),
+        "blocker": audit.get("blocker", ""),
         "created_at": event.get("created_at", ""),
     }
 
@@ -605,6 +715,35 @@ def _dispatch_audit_state(
     }
 
 
+def _dispatch_runner_state(
+    *,
+    external_dispatch_enabled: bool,
+    latest_audit: Mapping,
+    latest_runner: Mapping,
+) -> dict:
+    completed = latest_runner.get("status") == "succeeded"
+    run_allowed = bool(external_dispatch_enabled and latest_audit and not completed)
+    if completed:
+        blocker = "External dispatch runner already completed."
+    elif not latest_audit:
+        blocker = "Dispatch approval audit is required before running dispatch."
+    elif not external_dispatch_enabled:
+        blocker = "External dispatch runner is disabled."
+    else:
+        blocker = ""
+    return {
+        "mode": "external_dispatch_runner",
+        "external_dispatch_enabled": bool(external_dispatch_enabled),
+        "run_allowed": run_allowed,
+        "latest": dict(latest_runner),
+        "blocker": blocker,
+        "policy": (
+            "The runner can execute only after founder approval is consumed into "
+            "preview audit evidence and HERMES_EXTERNAL_DISPATCH_ENABLED is true."
+        ),
+    }
+
+
 def _approval_reference(decision: Mapping) -> dict:
     status = decision["status"]
     return {
@@ -659,6 +798,112 @@ def _external_dispatch_audit(
             "next_gate": "separate live connector runner approval",
         },
     }
+
+
+def _record_external_dispatch_runner_event(
+    repository,
+    *,
+    package: Mapping,
+    event_type: str,
+    status: str,
+    runner_label: str,
+    dispatch_attempted: bool,
+    results: Sequence[Mapping],
+    blocker: str,
+) -> dict:
+    audit = _external_dispatch_runner_audit(
+        package=package,
+        runner_label=runner_label,
+        dispatch_attempted=dispatch_attempted,
+        results=results,
+        blocker=blocker,
+    )
+    repository.create_audit_event(
+        project_id=package["project"]["id"],
+        event_type=event_type,
+        status=status,
+        actor_agent_id="chief-of-staff",
+        source_table="audit_events",
+        source_id=package["audit"]["latest"]["event_id"],
+        summary=_runner_event_summary(status, dispatch_attempted, blocker),
+        payload={
+            "runner_audit": audit,
+            "external_dispatch_enabled": audit["external_dispatch_enabled"],
+            "dispatch_attempted": dispatch_attempted,
+            "result_count": len(results),
+        },
+    )
+    events = repository.list_audit_events(
+        project_id=package["project"]["id"],
+        event_type=event_type,
+        limit=1,
+    )
+    return events[0]
+
+
+def _external_dispatch_runner_audit(
+    *,
+    package: Mapping,
+    runner_label: str,
+    dispatch_attempted: bool,
+    results: Sequence[Mapping],
+    blocker: str,
+) -> dict:
+    item_fingerprints = [
+        {
+            "id": item["id"],
+            "platform": item["platform"],
+            "action": item["action"],
+            "sha256": _fingerprint_json(item),
+            "command_sha256": _fingerprint_text(item["command_preview"]),
+        }
+        for item in package["items"]
+    ]
+    return {
+        "schema": PROJECT_EXTERNAL_DISPATCH_RUNNER_AUDIT_SCHEMA,
+        "immutable": True,
+        "project_id": package["project"]["id"],
+        "runner_label": runner_label,
+        "external_dispatch_enabled": package["runner"]["external_dispatch_enabled"],
+        "dispatch_attempted": dispatch_attempted,
+        "blocker": blocker,
+        "approval_audit_event_id": package["audit"]["latest"]["event_id"],
+        "preview_fingerprint": package["audit"]["latest"]["preview_fingerprint"],
+        "item_fingerprints": item_fingerprints,
+        "result_count": len(results),
+        "results": [dict(result) for result in results],
+        "post_run_review": {
+            "status": "external_dispatch_completed" if dispatch_attempted else "blocked",
+            "next_gate": "review runner evidence before expanding automation",
+            "no_live_send_attempted": not dispatch_attempted,
+        },
+    }
+
+
+def _runner_event_summary(status: str, dispatch_attempted: bool, blocker: str) -> str:
+    if status == "succeeded":
+        return "External dispatch runner completed through configured adapter."
+    if dispatch_attempted:
+        return "External dispatch runner attempted dispatch and was blocked."
+    return f"External dispatch runner blocked: {blocker}"
+
+
+def _dispatch_item(runner, item: Mapping) -> dict:
+    raw_result = (
+        runner.dispatch(dict(item)) if hasattr(runner, "dispatch") else runner(dict(item))
+    )
+    if isinstance(raw_result, Mapping):
+        normalized = dict(raw_result)
+    else:
+        normalized = {"status": "succeeded", "detail": str(raw_result)}
+    normalized.setdefault("status", "succeeded")
+    normalized.setdefault("external_id", "")
+    normalized.setdefault("detail", "")
+    normalized["item_id"] = item["id"]
+    normalized["platform"] = item["platform"]
+    normalized["action"] = item["action"]
+    assert_no_secret_values({"external_dispatch_result": json.dumps(normalized)})
+    return normalized
 
 
 def _preview_snapshot(package: Mapping) -> dict:
