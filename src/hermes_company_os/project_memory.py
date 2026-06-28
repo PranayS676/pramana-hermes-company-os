@@ -5,6 +5,10 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from hermes_company_os.product_wizard import (
+    FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+    ProductWizardMemoryPolicy,
+)
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 PROJECT_MEMORY_SCHEMA = "project_memory_package_v1"
@@ -142,6 +146,28 @@ def project_memory_markdown(package: Mapping[str, Any]) -> str:
     return markdown
 
 
+def product_wizard_memory_context(
+    repository,
+    project_id: str,
+    *,
+    policy: ProductWizardMemoryPolicy = FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+) -> list[dict[str, Any]]:
+    max_entries = max(0, min(policy.max_entries, 20))
+    if not policy.enabled or not policy.allowed_categories or max_entries <= 0:
+        return []
+    allowed_categories = set(policy.allowed_categories)
+    entries = repository.list_reusable_project_memory_entries(project_id, limit=200)
+    context = [
+        _memory_prompt_payload(entry)
+        for entry in entries
+        if entry["category"] in allowed_categories
+    ][:max_entries]
+    assert_no_secret_values(
+        {"product_wizard_memory_context": json.dumps(context, sort_keys=True)}
+    )
+    return context
+
+
 def enrich_memory_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
     enriched = dict(entry)
     enriched["project_id"] = enriched.get("project_id") or ""
@@ -200,6 +226,26 @@ def _memory_payload(entry: Mapping[str, Any]) -> dict[str, Any]:
         "reusable": bool(entry["reusable"]),
         "created_at": entry["created_at"],
         "updated_at": entry["updated_at"],
+    }
+
+
+def _memory_prompt_payload(entry: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": entry["id"],
+        "category": entry["category"],
+        "title": entry["title"],
+        "summary": entry["summary"],
+        "body": entry["body"],
+        "owner_agent_id": entry["owner_agent_id"],
+        "source": entry["source"],
+        "source_artifact_id": entry.get("source_artifact_id", ""),
+        "source_decision_id": entry.get("source_decision_id", ""),
+        "scope_label": entry["scope_label"],
+        "confidence": entry["confidence"],
+        "status": entry["status"],
+        "reusable": bool(entry["reusable"]),
+        "expired": bool(entry["expired"]),
+        "review_due": bool(entry["review_due"]),
     }
 
 

@@ -59,7 +59,9 @@ def decode_wizard_artifact(row: sqlite3.Row) -> dict:
 def decode_generation_run(row: sqlite3.Row) -> dict:
     run = dict(row)
     raw_sources = run.get("source_artifact_ids_json", "").strip()
+    raw_memory_ids = run.get("memory_ids_json", "").strip()
     run["source_artifact_ids"] = json.loads(raw_sources) if raw_sources else []
+    run["memory_ids"] = json.loads(raw_memory_ids) if raw_memory_ids else []
     return run
 
 
@@ -2133,6 +2135,7 @@ class CompanyRepository:
         stage_id: str,
         generation_mode: str,
         source_artifact_ids: list[str] | tuple[str, ...] = (),
+        memory_ids: list[str] | tuple[str, ...] = (),
     ) -> str:
         if self.get_project(project_id) is None:
             raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
@@ -2142,7 +2145,10 @@ class CompanyRepository:
             )
         cleaned_sources = [str(source_id).strip() for source_id in source_artifact_ids]
         cleaned_sources = [source_id for source_id in cleaned_sources if source_id]
+        cleaned_memory_ids = [str(memory_id).strip() for memory_id in memory_ids]
+        cleaned_memory_ids = [memory_id for memory_id in cleaned_memory_ids if memory_id]
         source_json = json.dumps(cleaned_sources, sort_keys=True)
+        memory_json = json.dumps(cleaned_memory_ids, sort_keys=True)
         cleaned_mode = generation_mode.strip()
         if not cleaned_mode:
             raise ValueError("Generation mode is required.")
@@ -2150,6 +2156,7 @@ class CompanyRepository:
             {
                 "generation_mode": cleaned_mode,
                 "source_artifact_ids": source_json,
+                "memory_ids": memory_json,
             }
         )
 
@@ -2160,9 +2167,10 @@ class CompanyRepository:
                 """
                 INSERT INTO generation_runs (
                     id, project_id, stage_id, artifact_id, generation_mode, status,
-                    source_artifact_ids_json, error, created_at, completed_at
+                    source_artifact_ids_json, memory_ids_json, error, created_at,
+                    completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -2172,6 +2180,7 @@ class CompanyRepository:
                     cleaned_mode,
                     "running",
                     source_json,
+                    memory_json,
                     "",
                     now,
                     None,
@@ -2184,18 +2193,25 @@ class CompanyRepository:
         run_id: str,
         artifact_id: str,
         source_artifact_ids: list[str] | tuple[str, ...] | None = None,
+        memory_ids: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         values_to_check = {"generation_run_id": run_id, "artifact_id": artifact_id}
         source_json = None
+        memory_json = None
         if source_artifact_ids is not None:
             cleaned_sources = [str(source_id).strip() for source_id in source_artifact_ids]
             cleaned_sources = [source_id for source_id in cleaned_sources if source_id]
             source_json = json.dumps(cleaned_sources, sort_keys=True)
             values_to_check["source_artifact_ids"] = source_json
+        if memory_ids is not None:
+            cleaned_memory_ids = [str(memory_id).strip() for memory_id in memory_ids]
+            cleaned_memory_ids = [memory_id for memory_id in cleaned_memory_ids if memory_id]
+            memory_json = json.dumps(cleaned_memory_ids, sort_keys=True)
+            values_to_check["memory_ids"] = memory_json
         assert_no_secret_values(values_to_check)
         now = utc_now()
         with connect(self.database_path) as connection:
-            if source_json is None:
+            if source_json is None and memory_json is None:
                 cursor = connection.execute(
                     """
                     UPDATE generation_runs
@@ -2207,7 +2223,20 @@ class CompanyRepository:
                     """,
                     ("succeeded", artifact_id, now, run_id),
                 )
-            else:
+            elif source_json is None:
+                cursor = connection.execute(
+                    """
+                    UPDATE generation_runs
+                    SET status = ?,
+                        artifact_id = ?,
+                        memory_ids_json = ?,
+                        error = '',
+                        completed_at = ?
+                    WHERE id = ?
+                    """,
+                    ("succeeded", artifact_id, memory_json, now, run_id),
+                )
+            elif memory_json is None:
                 cursor = connection.execute(
                     """
                     UPDATE generation_runs
@@ -2219,6 +2248,20 @@ class CompanyRepository:
                     WHERE id = ?
                     """,
                     ("succeeded", artifact_id, source_json, now, run_id),
+                )
+            else:
+                cursor = connection.execute(
+                    """
+                    UPDATE generation_runs
+                    SET status = ?,
+                        artifact_id = ?,
+                        source_artifact_ids_json = ?,
+                        memory_ids_json = ?,
+                        error = '',
+                        completed_at = ?
+                    WHERE id = ?
+                    """,
+                    ("succeeded", artifact_id, source_json, memory_json, now, run_id),
                 )
         if cursor.rowcount == 0:
             raise sqlite3.IntegrityError(f"Unknown generation run: {run_id}")

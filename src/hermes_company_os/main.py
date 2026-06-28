@@ -198,7 +198,10 @@ from hermes_company_os.multi_agent_review import (
     multi_agent_review_markdown,
     multi_agent_review_package,
 )
-from hermes_company_os.product_wizard import ProductWizardIntake
+from hermes_company_os.product_wizard import (
+    FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+    ProductWizardIntake,
+)
 from hermes_company_os.profile_acceptance import (
     profile_acceptance_json,
     profile_acceptance_markdown,
@@ -249,6 +252,7 @@ from hermes_company_os.progress_board import (
 from hermes_company_os.project_memory import (
     memory_category_options,
     memory_confidence_options,
+    product_wizard_memory_context,
     project_memory_markdown,
     project_memory_package,
 )
@@ -622,10 +626,13 @@ def live_hermes_operator_console(
     run_confirmation: dict | None,
     latest_artifact: dict | None,
 ) -> dict:
+    memory_context = product_wizard_memory_context(repository, project["id"])
     preview = live_hermes_operator_preview(
         stage_id,
         product_wizard_intake_from_project(project),
         approved_source_artifacts(repository, project["id"]),
+        memory_context=memory_context,
+        memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
         timeout_seconds=settings.hermes_timeout_seconds,
         live_execution_enabled=settings.hermes_live_execution_enabled,
     )
@@ -866,6 +873,12 @@ def live_hermes_execution_audit(
     command_preview = [
         str(part) for part in generation_metadata.get("command_preview", [])
     ]
+    source_artifact_ids = [
+        str(source_id) for source_id in generation_metadata.get("source_artifact_ids", [])
+    ]
+    memory_ids = [
+        str(memory_id) for memory_id in generation_metadata.get("memory_ids", [])
+    ]
     prompt_handoff = generation_metadata.get("prompt_handoff")
     if not isinstance(prompt_handoff, dict):
         prompt_handoff = {}
@@ -891,6 +904,8 @@ def live_hermes_execution_audit(
             "contract": str(
                 prompt_handoff.get("contract", "product_wizard_prompt_contract_v1")
             ),
+            "source_artifact_ids": source_artifact_ids,
+            "memory_ids": memory_ids,
         },
         "approval_consumption": {
             "decision_id": decision_id,
@@ -4956,10 +4971,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         source_artifacts = approved_source_artifacts(repository, project_id)
+        memory_context = product_wizard_memory_context(repository, project_id)
         generation_request = StageGenerationRequest(
             stage_id=resolved_stage_id,
             intake=product_wizard_intake_from_project(project),
             approved_sources=source_artifacts,
+            memory_context=memory_context,
+            memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
             mode=resolved_generation_mode,
         )
         live_hermes_readiness = (
@@ -4985,6 +5003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stage_id=resolved_stage_id,
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
+            memory_ids=[memory["id"] for memory in memory_context],
         )
         generation_service = product_wizard_generation_service(
             request,
@@ -5039,6 +5058,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 generation_run_id,
                 artifact_id,
                 source_artifact_ids=list(artifact.source_artifact_ids),
+                memory_ids=list(artifact.memory_ids),
             )
             create_project_stage_review_decision(
                 repository=repository,
@@ -5075,10 +5095,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             resolved_stage_id,
         )
         source_artifacts = approved_source_artifacts(repository, project_id)
+        memory_context = product_wizard_memory_context(repository, project_id)
         generation_request = StageGenerationRequest(
             stage_id=resolved_stage_id,
             intake=product_wizard_intake_from_project(project),
             approved_sources=source_artifacts,
+            memory_context=memory_context,
+            memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
             mode=resolved_generation_mode,
         )
         live_hermes_readiness = (
@@ -5104,6 +5127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stage_id=resolved_stage_id,
             generation_mode=generation_request.mode,
             source_artifact_ids=[source["id"] for source in source_artifacts],
+            memory_ids=[memory["id"] for memory in memory_context],
         )
         generation_service = product_wizard_generation_service(
             request,
@@ -5164,6 +5188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 generation_run_id,
                 artifact_id,
                 source_artifact_ids=list(artifact.source_artifact_ids),
+                memory_ids=list(artifact.memory_ids),
             )
             create_project_stage_review_decision(
                 repository=repository,
@@ -5265,6 +5290,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 resolved_stage_id,
                 product_wizard_intake_from_project(project),
                 approved_source_artifacts(repository, project_id),
+                memory_context=product_wizard_memory_context(repository, project_id),
+                memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
                 timeout_seconds=settings.hermes_timeout_seconds,
                 live_execution_enabled=True,
             )

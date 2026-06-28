@@ -9,8 +9,11 @@ from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
 from hermes_company_os.product_wizard import (
+    DISABLED_PRODUCT_WIZARD_MEMORY_POLICY,
     ProductWizardArtifact,
     ProductWizardIntake,
+    ProductWizardMemoryEntry,
+    ProductWizardMemoryPolicy,
     ProductWizardSourceArtifact,
     WizardStage,
     build_wizard_prompt_contract,
@@ -43,6 +46,7 @@ LIVE_HERMES_LIVE_MESSAGE = (
 ApprovedSourceInput = Iterable[
     ProductWizardArtifact | ProductWizardSourceArtifact | Mapping[str, Any]
 ]
+MemoryContextInput = Iterable[ProductWizardMemoryEntry | Mapping[str, Any]]
 
 
 def normalize_generation_mode(mode: str) -> GenerationMode:
@@ -59,6 +63,8 @@ class StageGenerationRequest:
     stage_id: WizardStage | str
     intake: ProductWizardIntake | Mapping[str, Any]
     approved_sources: ApprovedSourceInput = ()
+    memory_context: MemoryContextInput = ()
+    memory_policy: ProductWizardMemoryPolicy = DISABLED_PRODUCT_WIZARD_MEMORY_POLICY
     mode: GenerationMode = LOCAL_DEMO_GENERATION_MODE
 
 
@@ -73,6 +79,7 @@ class LiveHermesAdapterRequest:
     owner_agent_id: str
     supporting_agent_ids: tuple[str, ...]
     source_artifact_ids: tuple[str, ...]
+    memory_ids: tuple[str, ...]
     prompt_contract: Mapping[str, Any]
     command_preview: tuple[str, ...]
     timeout_seconds: int = 120
@@ -165,6 +172,7 @@ class DryRunLiveHermesAdapter:
             "owner_agent_id": request.owner_agent_id,
             "supporting_agent_ids": list(request.supporting_agent_ids),
             "source_artifact_ids": list(request.source_artifact_ids),
+            "memory_ids": list(request.memory_ids),
             "command_preview": list(request.command_preview),
             "timeout_seconds": request.timeout_seconds,
             "prompt_handoff": {
@@ -215,6 +223,7 @@ class LiveHermesCommandAdapter:
             "owner_agent_id": request.owner_agent_id,
             "supporting_agent_ids": list(request.supporting_agent_ids),
             "source_artifact_ids": list(request.source_artifact_ids),
+            "memory_ids": list(request.memory_ids),
             "command_preview": list(request.command_preview),
             "timeout_seconds": request.timeout_seconds,
             "prompt_handoff": {
@@ -251,6 +260,8 @@ class LocalDemoGenerationService:
             request.stage_id,
             request.intake,
             request.approved_sources,
+            memory_context=request.memory_context,
+            memory_policy=request.memory_policy,
         )
 
 
@@ -313,6 +324,8 @@ class LiveHermesGenerationService:
             request.stage_id,
             request.intake,
             request.approved_sources,
+            memory_context=request.memory_context,
+            memory_policy=request.memory_policy,
         )
         adapter_request = _live_hermes_adapter_request(
             prompt_contract,
@@ -328,6 +341,8 @@ class LiveHermesGenerationService:
             request.stage_id,
             request.intake,
             request.approved_sources,
+            memory_context=request.memory_context,
+            memory_policy=request.memory_policy,
         )
         return replace(
             artifact,
@@ -342,6 +357,8 @@ def live_hermes_operator_preview(
     intake: ProductWizardIntake | Mapping[str, Any],
     approved_sources: ApprovedSourceInput = (),
     *,
+    memory_context: MemoryContextInput = (),
+    memory_policy: ProductWizardMemoryPolicy = DISABLED_PRODUCT_WIZARD_MEMORY_POLICY,
     timeout_seconds: int = 120,
     live_execution_enabled: bool = False,
 ) -> dict[str, Any]:
@@ -349,6 +366,8 @@ def live_hermes_operator_preview(
         stage_id,
         intake,
         approved_sources,
+        memory_context=memory_context,
+        memory_policy=memory_policy,
     )
     adapter_request = _live_hermes_adapter_request(
         prompt_contract,
@@ -360,6 +379,7 @@ def live_hermes_operator_preview(
         "owner_agent_id": adapter_request.owner_agent_id,
         "supporting_agent_ids": list(adapter_request.supporting_agent_ids),
         "source_artifact_ids": list(adapter_request.source_artifact_ids),
+        "memory_ids": list(adapter_request.memory_ids),
         "command_preview": list(adapter_request.command_preview),
         "command_preview_text": " ".join(adapter_request.command_preview),
         "timeout_seconds": adapter_request.timeout_seconds,
@@ -389,6 +409,9 @@ def _live_hermes_adapter_request(
     source_artifact_ids = tuple(
         str(source_id) for source_id in prompt_contract.get("source_artifact_ids", [])
     )
+    memory_ids = tuple(
+        str(memory_id) for memory_id in prompt_contract.get("memory_ids", [])
+    )
     command_preview = (
         "hermes",
         "profiles",
@@ -410,6 +433,7 @@ def _live_hermes_adapter_request(
         owner_agent_id=owner_agent_id,
         supporting_agent_ids=supporting_agent_ids,
         source_artifact_ids=source_artifact_ids,
+        memory_ids=memory_ids,
         prompt_contract=prompt_contract,
         command_preview=command_preview,
         timeout_seconds=timeout_seconds,
@@ -454,6 +478,7 @@ def _parse_live_hermes_adapter_result(
         "owner_agent_id": request.owner_agent_id,
         "supporting_agent_ids": list(request.supporting_agent_ids),
         "source_artifact_ids": list(request.source_artifact_ids),
+        "memory_ids": list(request.memory_ids),
         "command_preview": list(request.command_preview),
         "timeout_seconds": request.timeout_seconds,
         "duration_ms": raw_result.duration_ms,

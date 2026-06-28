@@ -20,6 +20,15 @@ WIZARD_STAGES: tuple[WizardStage, ...] = (
 
 APPROVED_SOURCE_STATUSES = frozenset({"approved", "accepted", "complete", "verified"})
 
+FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_CATEGORIES: tuple[str, ...] = (
+    "founder_preference",
+    "product_strategy",
+    "technical_standard",
+    "accepted_risk",
+    "rejected_idea",
+    "launch_learning",
+)
+
 COMMON_QUALITY_CHECKS: tuple[tuple[str, str], ...] = (
     ("target_user", "Names the target user or buyer."),
     ("problem", "States the problem and why it matters."),
@@ -28,6 +37,10 @@ COMMON_QUALITY_CHECKS: tuple[tuple[str, str], ...] = (
     ("test_plan", "Includes a validation or testing plan."),
     ("acceptance_mapping", "Maps work back to acceptance criteria."),
     ("prior_artifacts", "Uses approved prior artifacts when the stage depends on them."),
+    (
+        "approved_memory",
+        "Uses only founder-approved reusable project memory when supplied.",
+    ),
     ("secret_safety", "Avoids fake or real secret-looking literals."),
 )
 
@@ -119,6 +132,47 @@ class ProductWizardSourceArtifact:
 
 
 @dataclass(frozen=True)
+class ProductWizardMemoryPolicy:
+    enabled: bool = False
+    allowed_categories: tuple[str, ...] = ()
+    source: str = "product_wizard_memory_policy_disabled"
+    max_entries: int = 8
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "allowed_categories": list(self.allowed_categories),
+            "source": self.source,
+            "max_entries": self.max_entries,
+        }
+
+
+DISABLED_PRODUCT_WIZARD_MEMORY_POLICY = ProductWizardMemoryPolicy()
+
+FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY = ProductWizardMemoryPolicy(
+    enabled=True,
+    allowed_categories=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_CATEGORIES,
+    source="founder_approved_product_wizard_memory_policy_v1",
+)
+
+
+@dataclass(frozen=True)
+class ProductWizardMemoryEntry:
+    id: str
+    category: str
+    title: str
+    summary: str
+    body: str
+    owner_agent_id: str
+    source: str
+    scope_label: str = ""
+    confidence: str = ""
+    source_artifact_id: str = ""
+    source_decision_id: str = ""
+    reusable: bool = True
+
+
+@dataclass(frozen=True)
 class ProductWizardArtifact:
     id: str
     stage: WizardStage
@@ -128,6 +182,7 @@ class ProductWizardArtifact:
     source_artifact_ids: tuple[str, ...]
     checks: tuple[dict[str, str], ...]
     next_decision: str
+    memory_ids: tuple[str, ...] = ()
     supporting_agent_ids: tuple[str, ...] = ()
     generation_mode: str = "local_fake_public_demo"
     generation_metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -140,6 +195,7 @@ class ProductWizardArtifact:
             "owner_agent_id": self.owner_agent_id,
             "supporting_agent_ids": list(self.supporting_agent_ids),
             "source_artifact_ids": list(self.source_artifact_ids),
+            "memory_ids": list(self.memory_ids),
             "checks": [dict(check) for check in self.checks],
             "next_decision": self.next_decision,
             "generation_mode": self.generation_mode,
@@ -266,6 +322,7 @@ def product_wizard_contracts() -> dict[str, Any]:
             "title",
             "owner_agent_id",
             "source_artifact_ids",
+            "memory_ids",
             "checks",
             "next_decision",
         ],
@@ -278,24 +335,35 @@ def build_wizard_prompt_contract(
     prior_artifacts: Iterable[
         ProductWizardArtifact | ProductWizardSourceArtifact | Mapping[str, Any]
     ] = (),
+    *,
+    memory_context: Iterable[ProductWizardMemoryEntry | Mapping[str, Any]] = (),
+    memory_policy: ProductWizardMemoryPolicy | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     wizard_stage = _validate_stage(stage)
     safe_intake = _coerce_intake(intake or {})
     contract = STAGE_CONTRACTS[wizard_stage]
     sources = _approved_sources_for_stage(contract, prior_artifacts)
+    policy = _coerce_memory_policy(memory_policy)
+    memories = _approved_memory_for_policy(memory_context, policy)
     source_ids = tuple(source.id for source in sources)
+    memory_ids = tuple(memory.id for memory in memories)
     return {
         **contract.to_dict(),
         "source_artifact_ids": list(source_ids),
+        "memory_ids": list(memory_ids),
+        "memory_policy": policy.to_dict(),
         "output_metadata": {
             "stage": wizard_stage,
             "title": contract.title,
             "owner_agent_id": contract.owner_agent_id,
             "source_artifact_ids": list(source_ids),
+            "memory_ids": list(memory_ids),
             "checks": [check_id for check_id, _ in COMMON_QUALITY_CHECKS],
             "next_decision": contract.next_decision,
         },
-        "prompt": _safe_text(_prompt_for_contract(contract, safe_intake, sources)),
+        "prompt": _safe_text(
+            _prompt_for_contract(contract, safe_intake, sources, memories)
+        ),
     }
 
 
@@ -305,14 +373,19 @@ def generate_wizard_artifact(
     prior_artifacts: Iterable[
         ProductWizardArtifact | ProductWizardSourceArtifact | Mapping[str, Any]
     ] = (),
+    *,
+    memory_context: Iterable[ProductWizardMemoryEntry | Mapping[str, Any]] = (),
+    memory_policy: ProductWizardMemoryPolicy | Mapping[str, Any] | None = None,
 ) -> ProductWizardArtifact:
     wizard_stage = _validate_stage(stage)
     safe_intake = _coerce_intake(intake)
     contract = STAGE_CONTRACTS[wizard_stage]
     sources = _approved_sources_for_stage(contract, prior_artifacts)
+    policy = _coerce_memory_policy(memory_policy)
+    memories = _approved_memory_for_policy(memory_context, policy)
     artifact_id = f"product-wizard-{_slug(safe_intake.project_name)}-{wizard_stage}"
     title = f"{contract.title} for {safe_intake.project_name}"
-    markdown = _safe_text(_render_artifact(contract, safe_intake, sources))
+    markdown = _safe_text(_render_artifact(contract, safe_intake, sources, memories))
     return ProductWizardArtifact(
         id=artifact_id,
         stage=wizard_stage,
@@ -321,7 +394,8 @@ def generate_wizard_artifact(
         supporting_agent_ids=contract.supporting_agent_ids,
         markdown=markdown,
         source_artifact_ids=tuple(source.id for source in sources),
-        checks=_quality_checks(contract, sources),
+        memory_ids=tuple(memory.id for memory in memories),
+        checks=_quality_checks(contract, sources, memories),
         next_decision=contract.next_decision,
     )
 
@@ -342,6 +416,7 @@ def _render_artifact(
     contract: ProductWizardStageContract,
     intake: ProductWizardIntake,
     sources: tuple[ProductWizardSourceArtifact, ...],
+    memories: tuple[ProductWizardMemoryEntry, ...],
 ) -> str:
     context = intake.to_context_dict()
     stage_lines = _stage_specific_lines(contract.stage, context)
@@ -357,6 +432,10 @@ def _render_artifact(
     lines.extend(
         [
             "- Generation mode: `local_fake_public_demo`",
+            "",
+            "## Approved Memory Used",
+            "",
+            *_memory_lines(memories),
             "",
             "## Approved Inputs Used",
             "",
@@ -593,6 +672,33 @@ def _acceptance_lines(context: Mapping[str, str]) -> dict[str, list[str]]:
     }
 
 
+def _memory_lines(memories: tuple[ProductWizardMemoryEntry, ...]) -> list[str]:
+    if not memories:
+        return [
+            "- No founder-approved reusable memory supplied; this stage uses "
+            "safe intake context and approved artifacts only."
+        ]
+    return [
+        f"- `{memory.id}` ({memory.category}, {memory.scope_label or 'project'}): "
+        f"{memory.title} - {_summary(memory.summary or memory.body)}"
+        for memory in memories
+    ]
+
+
+def _memory_prompt_lines(memories: tuple[ProductWizardMemoryEntry, ...]) -> list[str]:
+    if not memories:
+        return [
+            "Approved memory context: none. Do not invent founder preferences, "
+            "standards, or prior decisions."
+        ]
+    return [
+        "Approved memory context: "
+        f"{memory.id} [{memory.category}; {memory.confidence or 'unknown'}] "
+        f"{memory.title} - {_summary(memory.summary or memory.body)}"
+        for memory in memories
+    ]
+
+
 def _source_lines(sources: tuple[ProductWizardSourceArtifact, ...]) -> list[str]:
     if not sources:
         return ["- No approved prior artifact supplied; this stage uses safe intake context only."]
@@ -605,6 +711,7 @@ def _source_lines(sources: tuple[ProductWizardSourceArtifact, ...]) -> list[str]
 def _quality_checks(
     contract: ProductWizardStageContract,
     sources: tuple[ProductWizardSourceArtifact, ...],
+    memories: tuple[ProductWizardMemoryEntry, ...],
 ) -> tuple[dict[str, str], ...]:
     checks = []
     source_status = "included"
@@ -616,6 +723,12 @@ def _quality_checks(
             if sources
             else "Required prior artifacts were not supplied."
         )
+    memory_status = "included" if memories else "not_required"
+    memory_evidence = (
+        "Founder-approved reusable memory is referenced."
+        if memories
+        else "No founder-approved reusable memory was supplied."
+    )
     evidence_by_id = {
         "target_user": "Target User section is rendered from sanitized intake.",
         "problem": "Problem section is rendered from sanitized intake.",
@@ -624,6 +737,7 @@ def _quality_checks(
         "test_plan": "Test Plan section is present in markdown.",
         "acceptance_mapping": "Acceptance Mapping section is present in markdown.",
         "prior_artifacts": source_evidence,
+        "approved_memory": memory_evidence,
         "secret_safety": "Output is sanitized before the artifact is returned.",
     }
     for check_id, label in COMMON_QUALITY_CHECKS:
@@ -631,7 +745,13 @@ def _quality_checks(
             {
                 "id": check_id,
                 "label": label,
-                "status": source_status if check_id == "prior_artifacts" else "included",
+                "status": (
+                    source_status
+                    if check_id == "prior_artifacts"
+                    else memory_status
+                    if check_id == "approved_memory"
+                    else "included"
+                ),
                 "evidence": evidence_by_id[check_id],
             }
         )
@@ -642,6 +762,7 @@ def _prompt_for_contract(
     contract: ProductWizardStageContract,
     intake: ProductWizardIntake,
     sources: tuple[ProductWizardSourceArtifact, ...],
+    memories: tuple[ProductWizardMemoryEntry, ...],
 ) -> str:
     context = intake.to_context_dict()
     return "\n".join(
@@ -653,6 +774,8 @@ def _prompt_for_contract(
             f"Target user: {context['target_customer']}",
             f"Problem: {context['problem']}",
             f"Approved source artifact IDs: {', '.join(source.id for source in sources) or 'none'}",
+            f"Approved memory IDs: {', '.join(memory.id for memory in memories) or 'none'}",
+            *_memory_prompt_lines(memories),
             f"Required output sections: {', '.join(contract.output_sections)}",
             "Required metadata fields: "
             f"{', '.join(product_wizard_contracts()['artifact_metadata_contract'])}",
@@ -677,6 +800,98 @@ def _approved_sources_for_stage(
         if source.approved and source.stage in required:
             sources.append(source)
     return tuple(sources)
+
+
+def _approved_memory_for_policy(
+    memory_context: Iterable[ProductWizardMemoryEntry | Mapping[str, Any]],
+    policy: ProductWizardMemoryPolicy,
+) -> tuple[ProductWizardMemoryEntry, ...]:
+    if not policy.enabled or not policy.allowed_categories or policy.max_entries <= 0:
+        return ()
+    allowed_categories = set(policy.allowed_categories)
+    memories: list[ProductWizardMemoryEntry] = []
+    seen_ids: set[str] = set()
+    for item in memory_context:
+        memory = _coerce_memory_entry(item)
+        if not memory.reusable or memory.category not in allowed_categories:
+            continue
+        if not memory.id or memory.id in seen_ids:
+            continue
+        seen_ids.add(memory.id)
+        memories.append(memory)
+        if len(memories) >= policy.max_entries:
+            break
+    return tuple(memories)
+
+
+def _coerce_memory_policy(
+    policy: ProductWizardMemoryPolicy | Mapping[str, Any] | None,
+) -> ProductWizardMemoryPolicy:
+    if policy is None:
+        return DISABLED_PRODUCT_WIZARD_MEMORY_POLICY
+    if isinstance(policy, ProductWizardMemoryPolicy):
+        return ProductWizardMemoryPolicy(
+            enabled=policy.enabled,
+            allowed_categories=tuple(
+                _safe_text(category) for category in policy.allowed_categories
+            ),
+            source=_safe_text(policy.source) or DISABLED_PRODUCT_WIZARD_MEMORY_POLICY.source,
+            max_entries=max(0, min(int(policy.max_entries), 20)),
+        )
+    raw_allowed = policy.get("allowed_categories", ())
+    if isinstance(raw_allowed, str):
+        allowed_categories = tuple(
+            _safe_text(category) for category in raw_allowed.split(",") if category.strip()
+        )
+    else:
+        allowed_categories = tuple(_safe_text(category) for category in raw_allowed)
+    return ProductWizardMemoryPolicy(
+        enabled=bool(policy.get("enabled", False)),
+        allowed_categories=allowed_categories,
+        source=_safe_text(policy.get("source", "")) or DISABLED_PRODUCT_WIZARD_MEMORY_POLICY.source,
+        max_entries=max(0, min(int(policy.get("max_entries", 8)), 20)),
+    )
+
+
+def _coerce_memory_entry(
+    item: ProductWizardMemoryEntry | Mapping[str, Any],
+) -> ProductWizardMemoryEntry:
+    if isinstance(item, ProductWizardMemoryEntry):
+        return ProductWizardMemoryEntry(
+            id=_safe_text(item.id),
+            category=_safe_text(item.category),
+            title=_safe_text(item.title),
+            summary=_safe_text(item.summary),
+            body=_safe_text(item.body),
+            owner_agent_id=_safe_text(item.owner_agent_id),
+            source=_safe_text(item.source),
+            scope_label=_safe_text(item.scope_label),
+            confidence=_safe_text(item.confidence),
+            source_artifact_id=_safe_text(item.source_artifact_id),
+            source_decision_id=_safe_text(item.source_decision_id),
+            reusable=bool(item.reusable),
+        )
+    status = _safe_text(item.get("status", "active")).lower()
+    reusable = (
+        bool(item.get("reusable", True))
+        and status in {"", "active"}
+        and not bool(item.get("expired", False))
+        and not bool(item.get("review_due", False))
+    )
+    return ProductWizardMemoryEntry(
+        id=_safe_text(item.get("id", "")),
+        category=_safe_text(item.get("category", "")),
+        title=_safe_text(item.get("title", "")) or "Untitled memory",
+        summary=_safe_text(item.get("summary", "")),
+        body=_safe_text(item.get("body", "")),
+        owner_agent_id=_safe_text(item.get("owner_agent_id", "")),
+        source=_safe_text(item.get("source", "")),
+        scope_label=_safe_text(item.get("scope_label", "")),
+        confidence=_safe_text(item.get("confidence", "")),
+        source_artifact_id=_safe_text(item.get("source_artifact_id", "")),
+        source_decision_id=_safe_text(item.get("source_decision_id", "")),
+        reusable=reusable,
+    )
 
 
 def _coerce_source_artifact(

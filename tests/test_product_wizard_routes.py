@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -90,6 +91,8 @@ class CapturingGenerationService:
             request.stage_id,
             request.intake,
             request.approved_sources,
+            memory_context=request.memory_context,
+            memory_policy=request.memory_policy,
         )
 
 
@@ -133,6 +136,14 @@ def create_structured_project(client: TestClient, **overrides: str) -> tuple[str
     location = response.headers["location"]
     assert location.startswith("/projects/")
     return location.rsplit("/", 1)[-1], location
+
+
+def future_iso(days: int = 30) -> str:
+    return (datetime.now(UTC) + timedelta(days=days)).isoformat()
+
+
+def past_iso(days: int = 1) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
 
 def mark_agent_runtime_ready(app, agent_id: str) -> None:
@@ -321,6 +332,7 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert generation_run["generation_mode"] == "local_fake_public_demo"
     assert generation_run["artifact_id"] == artifact["id"]
     assert generation_run["source_artifact_ids"] == []
+    assert generation_run["memory_ids"] == []
     raw_artifact = json.dumps(artifact, sort_keys=True)
     assert "local_fake_public_demo" in raw_artifact
     assert "Opportunity Research" in raw_artifact
@@ -360,6 +372,89 @@ def test_generate_current_stage_uses_public_demo_local_generation(tmp_path, monk
     assert "approved code plan, approved acceptance package" in detail.text
     assert artifact["id"] in detail.text
     assert secret_violations({"project_detail": detail.text}) == []
+
+
+def test_generate_current_stage_injects_founder_approved_memory(tmp_path):
+    app, client = app_and_client(tmp_path)
+    generation_service = CapturingGenerationService()
+    app.state.generation_service = generation_service
+    project_id, _ = create_structured_project(client)
+    approved_memory_id = app.state.repository.create_project_memory_entry(
+        source_key="project:atlas:founder-preference",
+        project_id=project_id,
+        category="founder_preference",
+        memory_type="preference",
+        owner_agent_id="chief-of-staff",
+        source="founder-memory-form",
+        title="Keep public demo data synthetic",
+        summary="Founder prefers public demos that avoid customer files.",
+        body="Use synthetic companies, fixture risks, and generated diligence notes.",
+        confidence="high",
+        status="active",
+        pinned=True,
+        review_after=future_iso(),
+        expires_at=future_iso(60),
+    )
+    app.state.repository.create_project_memory_entry(
+        source_key="project:atlas:customer-evidence",
+        project_id=project_id,
+        category="customer_evidence",
+        memory_type="evidence",
+        owner_agent_id="research-agent",
+        source="research-notes",
+        title="Customer quote requires explicit artifact approval",
+        summary="Customer evidence should not be auto-injected from memory.",
+        body="Keep customer-specific claims in approved research artifacts.",
+        confidence="medium",
+        status="active",
+        pinned=True,
+        review_after=future_iso(),
+        expires_at=future_iso(60),
+    )
+    app.state.repository.create_project_memory_entry(
+        source_key="project:atlas:stale-standard",
+        project_id=project_id,
+        category="technical_standard",
+        memory_type="standard",
+        owner_agent_id="engineering-manager",
+        source="old-architecture",
+        title="Stale architecture standard",
+        summary="This entry needs founder review before reuse.",
+        body="Do not use this stale standard in prompt context.",
+        confidence="low",
+        status="active",
+        pinned=True,
+        review_after=past_iso(),
+        expires_at=future_iso(60),
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/stages/current/generate",
+        follow_redirects=False,
+    )
+    generation_request = generation_service.requests[0]
+    artifact = app.state.repository.latest_project_stage_artifact(project_id, "research")
+    generation_run = app.state.repository.list_generation_runs(
+        project_id=project_id,
+        stage_id="research",
+    )[0]
+    raw_artifact = json.dumps(artifact, sort_keys=True)
+
+    assert response.status_code == 303
+    assert [memory["id"] for memory in generation_request.memory_context] == [
+        approved_memory_id
+    ]
+    assert generation_request.memory_policy.enabled is True
+    assert generation_request.memory_policy.source == (
+        "founder_approved_product_wizard_memory_policy_v1"
+    )
+    assert artifact["json"]["memory_ids"] == [approved_memory_id]
+    assert generation_run["memory_ids"] == [approved_memory_id]
+    assert generation_run["source_artifact_ids"] == []
+    assert "Keep public demo data synthetic" in artifact["markdown_content"]
+    assert "Customer quote requires explicit artifact approval" not in raw_artifact
+    assert "Stale architecture standard" not in raw_artifact
+    assert secret_violations({"memory_artifact": raw_artifact}) == []
 
 
 def test_live_operator_console_shows_enabled_config_without_running_command(tmp_path):

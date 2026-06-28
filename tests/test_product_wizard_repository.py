@@ -185,11 +185,13 @@ def test_generation_runs_track_success_and_redact_secret_shaped_errors(tmp_path)
         stage_id="research",
         generation_mode="local_fake_public_demo",
         source_artifact_ids=["research-input"],
+        memory_ids=["memory-founder-preference"],
     )
     running_run = repository.get_generation_run(run_id)
 
     assert running_run["status"] == "running"
     assert running_run["source_artifact_ids"] == ["research-input"]
+    assert running_run["memory_ids"] == ["memory-founder-preference"]
     assert running_run["artifact_id"] is None
 
     artifact_id = repository.save_stage_artifact_draft(
@@ -202,12 +204,17 @@ def test_generation_runs_track_success_and_redact_secret_shaped_errors(tmp_path)
         run_id,
         artifact_id,
         source_artifact_ids=[],
+        memory_ids=["memory-founder-preference", "memory-technical-standard"],
     )
     succeeded_run = repository.get_generation_run(run_id)
 
     assert succeeded_run["status"] == "succeeded"
     assert succeeded_run["artifact_id"] == artifact_id
     assert succeeded_run["source_artifact_ids"] == []
+    assert succeeded_run["memory_ids"] == [
+        "memory-founder-preference",
+        "memory-technical-standard",
+    ]
     assert succeeded_run["completed_at"]
 
     failed_run_id = repository.create_generation_run(

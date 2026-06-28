@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS generation_runs (
     generation_mode TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
     source_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    memory_ids_json TEXT NOT NULL DEFAULT '[]',
     error TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     completed_at TEXT
@@ -502,6 +503,15 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
             connection.execute(
                 f"ALTER TABLE founder_decisions ADD COLUMN {column} {definition}"
             )
+    generation_run_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(generation_runs)").fetchall()
+    }
+    if "memory_ids_json" not in generation_run_columns:
+        connection.execute(
+            "ALTER TABLE generation_runs ADD COLUMN memory_ids_json "
+            "TEXT NOT NULL DEFAULT '[]'"
+        )
 
 
 def seed_defaults(connection: sqlite3.Connection) -> None:

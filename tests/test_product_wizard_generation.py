@@ -5,6 +5,7 @@ import pytest
 from hermes_company_os.product_wizard import (
     WIZARD_STAGES,
     ProductWizardIntake,
+    ProductWizardMemoryPolicy,
     build_wizard_prompt_contract,
     generate_wizard_artifact,
     generate_wizard_sequence,
@@ -32,6 +33,50 @@ def _intake() -> ProductWizardIntake:
         success_metric="First useful project reaches accepted code plan in one sitting.",
         open_questions="Which artifact should gate build approval?",
     )
+
+
+def _memory_context() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "memory-founder-demo-standard",
+            "category": "founder_preference",
+            "title": "Keep public demo data synthetic",
+            "summary": "Founder prefers generated examples over customer files.",
+            "body": "Use synthetic companies, fixture risks, and demo-safe evidence.",
+            "status": "active",
+            "reusable": True,
+            "owner_agent_id": "chief-of-staff",
+            "source": "founder-memory-form",
+            "scope_label": "project",
+            "confidence": "high",
+        },
+        {
+            "id": "memory-customer-evidence",
+            "category": "customer_evidence",
+            "title": "Customer interview detail",
+            "summary": "This category requires explicit artifact approval.",
+            "body": "Do not auto-inject customer evidence through project memory.",
+            "status": "active",
+            "reusable": True,
+            "owner_agent_id": "research-agent",
+            "source": "research-notes",
+            "scope_label": "project",
+            "confidence": "medium",
+        },
+        {
+            "id": "memory-retired-standard",
+            "category": "technical_standard",
+            "title": "Retired stack choice",
+            "summary": "This retired memory must not be reused.",
+            "body": "Use the retired stack.",
+            "status": "retired",
+            "reusable": False,
+            "owner_agent_id": "engineering-manager",
+            "source": "old-decision",
+            "scope_label": "company-wide",
+            "confidence": "low",
+        },
+    ]
 
 
 def test_product_wizard_sequence_exports_canonical_contract_and_metadata():
@@ -149,6 +194,7 @@ def test_product_wizard_prompt_contract_is_json_ready_and_route_friendly():
         "title",
         "owner_agent_id",
         "source_artifact_ids",
+        "memory_ids",
         "checks",
         "next_decision",
     ]
@@ -160,7 +206,42 @@ def test_product_wizard_prompt_contract_is_json_ready_and_route_friendly():
     assert json.loads(json.dumps(contract)) == contract
 
 
+def test_product_wizard_uses_only_policy_approved_memory_context():
+    policy = ProductWizardMemoryPolicy(
+        enabled=True,
+        allowed_categories=("founder_preference", "technical_standard"),
+        source="test-founder-approved-policy",
+    )
+
+    contract = build_wizard_prompt_contract(
+        "research",
+        _intake(),
+        memory_context=_memory_context(),
+        memory_policy=policy,
+    )
+    artifact = generate_wizard_artifact(
+        "research",
+        _intake(),
+        memory_context=_memory_context(),
+        memory_policy=policy,
+    )
+    raw = json.dumps({"contract": contract, "artifact": artifact.to_dict()})
+
+    assert contract["memory_ids"] == ["memory-founder-demo-standard"]
+    assert contract["output_metadata"]["memory_ids"] == [
+        "memory-founder-demo-standard"
+    ]
+    assert contract["memory_policy"]["enabled"] is True
+    assert "Approved memory IDs: memory-founder-demo-standard" in contract["prompt"]
+    assert "Keep public demo data synthetic" in contract["prompt"]
+    assert "memory-customer-evidence" not in raw
+    assert "memory-retired-standard" not in raw
+    assert "## Approved Memory Used" in artifact.markdown
+    assert artifact.memory_ids == ("memory-founder-demo-standard",)
+    assert artifact.metadata["memory_ids"] == ["memory-founder-demo-standard"]
+    assert secret_violations({"memory_artifact": raw}) == []
+
+
 def test_product_wizard_rejects_unknown_stage():
     with pytest.raises(ValueError, match="Unknown product wizard stage"):
         generate_wizard_artifact("fundraising", _intake())
-

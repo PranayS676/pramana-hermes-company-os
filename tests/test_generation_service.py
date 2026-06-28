@@ -22,6 +22,7 @@ from hermes_company_os.generation_service import (
 )
 from hermes_company_os.product_wizard import (
     ProductWizardIntake,
+    ProductWizardMemoryPolicy,
     generate_wizard_artifact,
 )
 from hermes_company_os.secret_guard import secret_violations
@@ -38,6 +39,24 @@ def _intake() -> ProductWizardIntake:
         constraints="Public-demo generation must stay local and deterministic.",
         success_metric="Accepted code plan in one founder review session.",
     )
+
+
+def _memory_context() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "memory-founder-preference",
+            "category": "founder_preference",
+            "title": "Keep public demos synthetic",
+            "summary": "Founder-approved demo work uses generated examples.",
+            "body": "Do not introduce customer files or live credentials in public demos.",
+            "status": "active",
+            "reusable": True,
+            "owner_agent_id": "chief-of-staff",
+            "source": "founder-memory-form",
+            "scope_label": "project",
+            "confidence": "high",
+        }
+    ]
 
 
 class CapturingLiveHermesAdapter:
@@ -165,6 +184,48 @@ def test_live_hermes_operator_preview_reflects_execution_flag():
     assert disabled_preview["prompt_handoff"]["sha256"] == (
         enabled_preview["prompt_handoff"]["sha256"]
     )
+
+
+def test_live_hermes_operator_preview_hash_tracks_approved_memory_context():
+    policy = ProductWizardMemoryPolicy(
+        enabled=True,
+        allowed_categories=("founder_preference",),
+        source="test-founder-approved-policy",
+    )
+    disabled_policy = ProductWizardMemoryPolicy(
+        enabled=True,
+        allowed_categories=("technical_standard",),
+        source="test-founder-approved-policy",
+    )
+
+    baseline = live_hermes_operator_preview(
+        "research",
+        _intake(),
+        memory_context=[],
+        memory_policy=policy,
+    )
+    with_memory = live_hermes_operator_preview(
+        "research",
+        _intake(),
+        memory_context=_memory_context(),
+        memory_policy=policy,
+    )
+    disallowed = live_hermes_operator_preview(
+        "research",
+        _intake(),
+        memory_context=_memory_context(),
+        memory_policy=disabled_policy,
+    )
+
+    assert with_memory["memory_ids"] == ["memory-founder-preference"]
+    assert baseline["memory_ids"] == []
+    assert disallowed["memory_ids"] == []
+    assert with_memory["prompt_handoff"]["sha256"] != baseline["prompt_handoff"][
+        "sha256"
+    ]
+    assert disallowed["prompt_handoff"]["sha256"] == baseline["prompt_handoff"][
+        "sha256"
+    ]
 
 
 def test_live_hermes_generation_service_fails_closed_until_gates_are_ready():
