@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,6 +37,41 @@ WIZARD_STAGE_IDS = ["research", "prd", "architecture", "tasks", "code_plan", "ac
 def app_and_client(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     return app, TestClient(app)
+
+
+def initialized_git_repo(path: Path) -> Path:
+    path.mkdir()
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Hermes Test"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (path / "README.md").write_text("# Temp Repo\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "README.md"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return path
 
 
 def create_structured_project(client: TestClient) -> str:
@@ -293,6 +330,124 @@ def test_codex_execution_runner_consumes_approval_into_source_only_audit(tmp_pat
     assert secret_violations(
         {
             "codex_execution_package": json.dumps(package, sort_keys=True),
+            "codex_execution_run": json.dumps(run, sort_keys=True),
+            "project_page": project_page.text,
+        }
+    ) == []
+
+
+def test_real_codex_runner_disabled_by_default_does_not_create_worktree(tmp_path):
+    app, client = app_and_client(tmp_path)
+    project_id = create_structured_project(client)
+    approve_until_stage(app, client, project_id, "acceptance")
+    client.post(
+        f"/projects/{project_id}/codex-execution-approval",
+        follow_redirects=False,
+    )
+    decision = next(
+        item
+        for item in app.state.repository.list_founder_decisions(
+            project_id=project_id,
+            stage_id="acceptance",
+            decision_type=CODEX_EXECUTION_DECISION_TYPE,
+        )
+        if item["source"] == CODEX_EXECUTION_DECISION_SOURCE
+    )
+    app.state.repository.update_founder_decision(
+        decision["id"],
+        status="approved",
+        decision="Founder approves queuing the source-only Codex runner.",
+        founder_confirmed=True,
+    )
+    client.post(
+        f"/projects/{project_id}/codex-execution-run",
+        follow_redirects=False,
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/codex-execution-real-run",
+        follow_redirects=False,
+    )
+    run = app.state.repository.list_codex_execution_runs(project_id)[0]
+
+    assert response.status_code == 409
+    assert "Real Codex execution is disabled" in response.json()["detail"]
+    assert run["status"] == "queued"
+    assert run["runner_mode"] == "source_only_disabled"
+    assert run["external_execution_enabled"] is False
+
+
+def test_real_codex_runner_creates_branch_worktree_when_explicitly_enabled(tmp_path):
+    repo_root = initialized_git_repo(tmp_path / "repo")
+    worktree_root = tmp_path / "codex-worktrees"
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "company.db",
+            codex_execution_enabled=True,
+            codex_workspace_root=repo_root,
+            codex_worktree_root=worktree_root,
+        )
+    )
+    client = TestClient(app)
+    project_id = create_structured_project(client)
+    approve_until_stage(app, client, project_id, "acceptance")
+    client.post(
+        f"/projects/{project_id}/codex-execution-approval",
+        follow_redirects=False,
+    )
+    decision = next(
+        item
+        for item in app.state.repository.list_founder_decisions(
+            project_id=project_id,
+            stage_id="acceptance",
+            decision_type=CODEX_EXECUTION_DECISION_TYPE,
+        )
+        if item["source"] == CODEX_EXECUTION_DECISION_SOURCE
+    )
+    app.state.repository.update_founder_decision(
+        decision["id"],
+        status="approved",
+        decision="Founder approves a real Git worktree runner attempt.",
+        founder_confirmed=True,
+    )
+    client.post(
+        f"/projects/{project_id}/codex-execution-run",
+        follow_redirects=False,
+    )
+
+    response = client.post(
+        f"/projects/{project_id}/codex-execution-real-run",
+        follow_redirects=False,
+    )
+    run = app.state.repository.list_codex_execution_runs(project_id)[0]
+    audit = run["audit"]
+    worktree_path = worktree_root / "atlas-brief-implementation-v1"
+    branch_check = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--list", "codex/atlas-brief/implementation-v1"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    project_page = client.get(f"/projects/{project_id}")
+
+    assert response.status_code == 303
+    assert run["status"] == "completed"
+    assert run["runner_mode"] == "git_worktree"
+    assert run["external_execution_enabled"] is True
+    assert run["branch_name"] == "codex/atlas-brief/implementation-v1"
+    assert worktree_path.exists()
+    assert (worktree_path / ".git").exists()
+    assert "codex/atlas-brief/implementation-v1" in branch_check.stdout
+    assert audit["git_worktree"]["status"] == "branch_ready"
+    assert audit["git_worktree"]["repo_root"] == str(repo_root.resolve())
+    assert audit["git_worktree"]["worktree_path"] == str(worktree_path.resolve())
+    assert audit["git_worktree"]["command_fingerprint"]["sha256"]
+    assert audit["post_queue_review"]["status"] == "git_worktree_ready"
+    assert project_page.status_code == 200
+    assert "Git worktree ready" in project_page.text
+    assert "External execution enabled" in project_page.text
+    assert secret_violations(
+        {
             "codex_execution_run": json.dumps(run, sort_keys=True),
             "project_page": project_page.text,
         }

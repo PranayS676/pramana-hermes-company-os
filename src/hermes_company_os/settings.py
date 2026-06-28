@@ -20,6 +20,13 @@ class Settings:
     hermes_live_execution_enabled: bool = field(
         default_factory=lambda: env_flag("HERMES_LIVE_EXECUTION_ENABLED", False)
     )
+    codex_execution_enabled: bool = field(
+        default_factory=lambda: env_flag("HERMES_CODEX_EXECUTION_ENABLED", False)
+    )
+    codex_workspace_root: Path = Path(os.getenv("HERMES_CODEX_WORKSPACE_ROOT", "."))
+    codex_worktree_root: Path = Path(
+        os.getenv("HERMES_CODEX_WORKTREE_ROOT", "../codex-worktrees")
+    )
 
     slack_founder_command: str = os.getenv("SLACK_FOUNDER_COMMAND", "#founder-command")
     slack_standup: str = os.getenv("SLACK_STANDUP", "#agent-standup")

@@ -811,7 +811,10 @@
               <i data-lucide="square-terminal"></i>
             </div>
             <p class="empty-state gate-copy" id="codex-gate-reason">
-              {% if codex_runner.queue_open %}
+              {% if codex_latest_run.status == "completed" %}
+              Git worktree ready. Founder-approved Codex execution created the planned
+              branch/worktree; Codex process spawning still requires the next review gate.
+              {% elif codex_runner.queue_open %}
               Codex runner queued. Approval consumed into a source-only audit record;
               actual branch, worktree, and Codex process execution remain disabled.
               {% elif codex_state.founder_approved_for_execution %}
@@ -862,7 +865,11 @@
               </div>
               <div class="quality-check-row">
                 <span>External execution</span>
+                {% if codex_latest_run.external_execution_enabled %}
+                <span class="status-pill urgent">External execution enabled</span>
+                {% else %}
                 <span class="status-pill manual">External execution disabled</span>
+                {% endif %}
               </div>
             </div>
             {% endif %}
@@ -907,6 +914,16 @@
             </form>
             {% elif codex_runner.queue_open %}
             <span class="status-pill queued">Codex runner queued</span>
+            {% elif codex_latest_run.status == "completed" %}
+            <span class="status-pill ready">Git worktree ready</span>
+            {% endif %}
+            {% if codex_runner.queue_open %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-real-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="git-branch-plus"></i>
+                Start Git worktree runner
+              </button>
+            </form>
             {% endif %}
             <button
               class="secondary-button full-width-button"

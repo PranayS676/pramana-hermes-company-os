@@ -2392,6 +2392,56 @@ class CompanyRepository:
         runs = self.list_codex_execution_runs(project_id=project_id, limit=1)
         return runs[0] if runs else None
 
+    def update_codex_execution_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        runner_mode: str,
+        external_execution_enabled: bool,
+        audit: dict,
+        error: str = "",
+    ) -> None:
+        current = self.get_codex_execution_run(run_id)
+        if current is None:
+            raise sqlite3.IntegrityError(f"Unknown Codex execution run: {run_id}")
+        if status not in {"queued", "blocked", "completed", "failed", "cancelled"}:
+            raise ValueError(f"Unsupported Codex execution status: {status}")
+        audit_json = json.dumps(audit, sort_keys=True)
+        assert_no_secret_values(
+            {
+                "codex_execution_status": status,
+                "codex_execution_runner_mode": runner_mode,
+                "codex_execution_audit": audit_json,
+                "codex_execution_error": error,
+            }
+        )
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE codex_execution_runs
+                SET status = ?,
+                    runner_mode = ?,
+                    external_execution_enabled = ?,
+                    audit_json = ?,
+                    error = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status.strip(),
+                    runner_mode.strip(),
+                    1 if external_execution_enabled else 0,
+                    audit_json,
+                    error.strip(),
+                    now if status in {"completed", "failed", "cancelled"} else None,
+                    run_id,
+                ),
+            )
+        if cursor.rowcount == 0:
+            raise sqlite3.IntegrityError(f"Unknown Codex execution run: {run_id}")
+
     def save_stage_artifact_draft(
         self,
         project_id: str,

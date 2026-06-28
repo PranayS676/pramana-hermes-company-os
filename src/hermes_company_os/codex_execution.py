@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from collections.abc import Mapping
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +18,7 @@ CODEX_EXECUTION_DECISION_SOURCE = "codex_project_execution"
 CODEX_EXECUTION_DECISION_TYPE = "external_action_approval"
 CODEX_EXECUTION_STAGE_ID = "acceptance"
 CODEX_EXECUTION_RUNNER_MODE = "source_only_disabled"
+CODEX_GIT_WORKTREE_RUNNER_MODE = "git_worktree"
 ACTIVE_CODEX_RUN_STATUSES = frozenset({"queued", "blocked"})
 
 
@@ -157,6 +160,77 @@ def queue_codex_execution_run(repository, project_id: str) -> dict[str, Any]:
     return run
 
 
+def start_codex_execution_git_worktree(
+    repository,
+    project_id: str,
+    *,
+    enabled: bool,
+    workspace_root: Path,
+    worktree_root: Path,
+) -> dict[str, Any]:
+    if not enabled:
+        raise ValueError(
+            "Real Codex execution is disabled. Set "
+            "HERMES_CODEX_EXECUTION_ENABLED=true only after founder approval."
+        )
+    run = repository.latest_codex_execution_run(project_id)
+    if run is None:
+        raise ValueError("Queue Codex execution before starting the real runner.")
+    if run["status"] != "queued":
+        raise ValueError(f"Codex execution run {run['id']} is {run['status']}.")
+
+    repo_root = Path(workspace_root).expanduser().resolve()
+    _assert_git_repository(repo_root)
+    resolved_worktree_root = _resolve_worktree_root(repo_root, worktree_root)
+    planned_leaf = Path(run["worktree_path"]).name
+    worktree_path = (resolved_worktree_root / planned_leaf).resolve()
+    _assert_child_path(worktree_path, resolved_worktree_root)
+    if worktree_path.exists():
+        raise ValueError(f"Codex worktree path already exists: {worktree_path}")
+    resolved_worktree_root.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        "git",
+        "-C",
+        str(repo_root),
+        "worktree",
+        "add",
+        "-b",
+        run["branch_name"],
+        str(worktree_path),
+        "HEAD",
+    ]
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    audit = _git_worktree_audit(
+        run=run,
+        repo_root=repo_root,
+        worktree_path=worktree_path,
+        command=command,
+        result=result,
+    )
+    if result.returncode != 0:
+        repository.update_codex_execution_run(
+            run["id"],
+            status="failed",
+            runner_mode=CODEX_GIT_WORKTREE_RUNNER_MODE,
+            external_execution_enabled=True,
+            audit=audit,
+            error=_safe_runner_output(result.stderr or result.stdout),
+        )
+        raise ValueError("Git worktree runner failed. Inspect the run audit.")
+    repository.update_codex_execution_run(
+        run["id"],
+        status="completed",
+        runner_mode=CODEX_GIT_WORKTREE_RUNNER_MODE,
+        external_execution_enabled=True,
+        audit=audit,
+    )
+    updated = repository.get_codex_execution_run(run["id"])
+    assert updated is not None
+    assert_no_secret_values({"codex_execution_run": json.dumps(updated, sort_keys=True)})
+    return updated
+
+
 def codex_execution_markdown(package: Mapping[str, Any]) -> str:
     gates = package["approval_gates"]
     source_artifacts = package["source_artifacts"]
@@ -290,14 +364,17 @@ def _runner_state(
     artifact_missing_gates: list[str],
 ) -> dict[str, Any]:
     run_summary = _run_summary(latest_run)
+    has_run = bool(latest_run)
     queue_open = bool(
         latest_run and latest_run["status"] in ACTIVE_CODEX_RUN_STATUSES
     )
     queue_request_allowed = (
-        founder_approved and not artifact_missing_gates and not queue_open
+        founder_approved and not artifact_missing_gates and not has_run
     )
     if queue_open:
         blocker = f"Codex execution is already queued in {latest_run['id']}."
+    elif has_run:
+        blocker = f"Codex execution already has run evidence in {latest_run['id']}."
     elif artifact_missing_gates:
         blocker = (
             "Approve required artifacts before queuing Codex execution: "
@@ -409,6 +486,75 @@ def _run_audit(
             "next_gate": "explicit real Codex runner implementation approval",
         },
     }
+
+
+def _git_worktree_audit(
+    *,
+    run: Mapping[str, Any],
+    repo_root: Path,
+    worktree_path: Path,
+    command: list[str],
+    result: subprocess.CompletedProcess[str],
+) -> dict[str, Any]:
+    audit = dict(run["audit"])
+    stdout = _safe_runner_output(result.stdout)
+    stderr = _safe_runner_output(result.stderr)
+    audit["git_worktree"] = {
+        "status": "branch_ready" if result.returncode == 0 else "failed",
+        "repo_root": str(repo_root),
+        "worktree_path": str(worktree_path),
+        "branch_name": run["branch_name"],
+        "returncode": result.returncode,
+        "command_fingerprint": {
+            "sha256": _fingerprint_text(" ".join(command)),
+            "argv": command,
+        },
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+    audit["post_queue_review"] = {
+        "status": "git_worktree_ready" if result.returncode == 0 else "git_worktree_failed",
+        "external_execution_enabled": True,
+        "next_gate": "manual Codex implementation worktree review",
+    }
+    assert_no_secret_values({"codex_git_worktree_audit": json.dumps(audit, sort_keys=True)})
+    return audit
+
+
+def _assert_git_repository(repo_root: Path) -> None:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Codex workspace root is not a Git repository: {repo_root}")
+    discovered = Path(result.stdout.strip()).resolve()
+    if discovered != repo_root:
+        raise ValueError(f"Codex workspace root must be the Git root: {repo_root}")
+
+
+def _resolve_worktree_root(repo_root: Path, worktree_root: Path) -> Path:
+    root = Path(worktree_root).expanduser()
+    if not root.is_absolute():
+        root = repo_root / root
+    return root.resolve()
+
+
+def _assert_child_path(path: Path, parent: Path) -> None:
+    try:
+        path.relative_to(parent)
+    except ValueError as exc:
+        raise ValueError(f"Codex worktree path escapes configured root: {path}") from exc
+
+
+def _safe_runner_output(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    assert_no_secret_values({"codex_runner_output": cleaned})
+    return cleaned[:1200]
 
 
 def _artifact_gate(

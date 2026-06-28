@@ -39,6 +39,7 @@ from hermes_company_os.codex_execution import (
     codex_execution_markdown,
     codex_execution_package,
     queue_codex_execution_run,
+    start_codex_execution_git_worktree,
 )
 from hermes_company_os.company_launch_drill import (
     company_launch_drill_json,
@@ -4760,6 +4761,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Project not found")
         try:
             queue_codex_execution_run(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#codex-execution",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/codex-execution-real-run")
+    def start_project_codex_execution_real_run(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        settings: Settings = request.app.state.settings
+        try:
+            start_codex_execution_git_worktree(
+                repository,
+                project_id,
+                enabled=settings.codex_execution_enabled,
+                workspace_root=settings.codex_workspace_root,
+                worktree_root=settings.codex_worktree_root,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return RedirectResponse(
