@@ -1,12 +1,39 @@
 # Session Handoff — 2026-06-29
 
-A running pointer for the next Claude Code session (especially after the repo moves
-off OneDrive, since that starts a fresh session with no chat memory). Pair this with
+A running pointer for the next Claude Code session. Pair this with
 [CLAUDE.md](../CLAUDE.md), which holds the durable operating rules.
 
-## Where things stand
+The repo has been **moved off OneDrive** to the non-synced clone `C:\dev\hermes-company-os`
+(git worktrees and the SQLite DB are reliable there). Work from that path.
 
-`main` is the demo-safe trunk. As of this handoff it contains, on top of the original
+## In flight — batch `hermes/batch-m3-m6-m8` (not yet on `main`)
+
+Three milestones were built in parallel (isolated worktree lanes, disjoint file
+ownership) and integrated on branch **`hermes/batch-m3-m6-m8`**. Full suite
+**541 passing**, `ruff` clean, no-secret scan clean, all live flags default-off.
+Awaiting founder-approved PR into `main`.
+
+- **M6 — Cross-agent review enforcement** (`review_policy.py`, `repository_stage_lifecycle.py`):
+  gated stages can't be approved until required reviews exist and pass. Policy is
+  data-driven (`STAGE_REVIEW_POLICIES`: `acceptance` → `qa-critic` + `test-automation-agent`).
+  Gated behind `HERMES_REVIEW_ENFORCEMENT_ENABLED` (**default off**); wired in `create_app`
+  via `configure_review_enforcement(...)`. Requirements API:
+  `/projects/{id}/stages/{stage}/review-requirements.json`.
+  - **Follow-up shipped:** `generate_stage_reviews(...)` + `POST /projects/{id}/stages/{stage}/reviews`
+    record the required reviews against a stage's *draft* artifact, resolving the
+    chicken-and-egg (the post-acceptance review batch still requires acceptance approved).
+- **M3 — Live Hermes generation** (`generation_service.py`, `routers/generation.py`):
+  three founder-facing modes (`local_demo` / `live_hermes_draft` / `live_hermes_with_review`),
+  stage→profile routing, mode-switch route. Live modes fail closed behind
+  `HERMES_LIVE_EXECUTION_ENABLED` (**default off**) + readiness; fake runner in tests,
+  real `hermes` never required by the suite.
+- **M8 UI — Observability dashboard** (`templates/observability.html`,
+  `routers/observability.py`): renders the existing run/audit metrics company-wide and
+  per-project; links from dashboard + project pages. Read-only.
+
+## Where things stand on `main`
+
+`main` is the demo-safe trunk. It contains, on top of the original
 Product Wizard baseline:
 
 - **Phase 0 (structural)** — `CLAUDE.md` shared agent context; repository split into
@@ -43,24 +70,15 @@ Full suite: **491 tests passing**. All live paths default-off and founder-gated.
 
 ## Recommended next milestones (founder's choice)
 
-- **M6** — cross-agent review enforcement (block stage approval until required reviews exist).
-- **M3** — live Hermes profile generation (now grounded: `hermes` is on PATH).
-- **M8 UI** — surface the observability metrics in the dashboard (currently JSON/MD only).
+With M3/M6/M8 in flight (above), the remaining roadmap milestones are:
 
-## Pending operational task — move off OneDrive
+- **M4** — Company Memory Layer (reusable founder preferences, standards, accepted risks).
+- **M5** — Codex Project Execution Mode (approved code plan → real workstreams).
+- **M9** — Launch & Release Management (launch-tier gates, release memo, QA signoff).
 
-The repo currently lives under a OneDrive-synced path, which intermittently locks files
-(broke git worktrees this session). Move to a non-synced path:
+Smaller follow-ups worth noting:
 
-```powershell
-git status                                  # clean? everything pushed?
-# pause OneDrive sync (tray icon)
-git clone https://github.com/PranayS676/pramana-hermes-company-os C:\dev\hermes-company-os
-cd C:\dev\hermes-company-os
-py -3.11 -m poetry install
-py -3.11 -m poetry run pytest -q            # expect ~491 passed
-```
-
-Optional: copy `data/company_os.db` over if you want to keep local dashboard state
-(it is git-ignored). `~/.hermes/` (profiles/secrets) is in your home dir and is
-unaffected by the move.
+- **M6 live review mode** — replace the fake `generate_stage_reviews` records with live
+  Hermes-backed reviews once M3 live generation is trusted.
+- **M3 live enablement** — founder turns on `HERMES_LIVE_EXECUTION_ENABLED` per stage after
+  confirming readiness; currently exercised only via the fake runner.
