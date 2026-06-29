@@ -4,11 +4,12 @@ import json
 import re
 import subprocess
 from collections.abc import Mapping
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from hermes_company_os.fingerprints import fingerprint_json as _fingerprint_json
+from hermes_company_os.fingerprints import fingerprint_text as _fingerprint_text
 from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
 from hermes_company_os.product_wizard import STAGE_CONTRACTS
 from hermes_company_os.secret_guard import assert_no_secret_values
@@ -717,14 +718,6 @@ def _acceptance_checklist() -> list[dict[str, str]]:
             "label": "Founder-visible summary and verification evidence are reviewed before push.",
         },
     ]
-
-
-def _fingerprint_json(value: Mapping[str, Any]) -> str:
-    return _fingerprint_text(json.dumps(value, sort_keys=True, separators=(",", ":")))
-
-
-def _fingerprint_text(value: str) -> str:
-    return sha256(value.encode("utf-8")).hexdigest()
 
 
 def _safe_slug(value: str) -> str:

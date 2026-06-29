@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from hermes_company_os.fingerprints import fingerprint_json as _fingerprint_json
+from hermes_company_os.fingerprints import fingerprint_text as _fingerprint_text
 from hermes_company_os.secret_guard import assert_no_secret_values, secret_violations
 
 EXTERNAL_DISPATCH_COMMAND_CONTRACT_SCHEMA = "external_dispatch_command_contract_v1"
@@ -289,11 +290,3 @@ def _process_output_to_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace").strip()
     return value.strip()
-
-
-def _fingerprint_json(value: Mapping | Sequence) -> str:
-    return _fingerprint_text(json.dumps(value, sort_keys=True, separators=(",", ":")))
-
-
-def _fingerprint_text(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
