@@ -10,6 +10,7 @@ from typing import Any, Literal, Protocol
 
 from hermes_company_os.product_wizard import (
     DISABLED_PRODUCT_WIZARD_MEMORY_POLICY,
+    STAGE_CONTRACTS,
     ProductWizardArtifact,
     ProductWizardIntake,
     ProductWizardMemoryEntry,
@@ -577,3 +578,235 @@ def _process_output_to_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace").strip()
     return value.strip()
+
+
+# ---------------------------------------------------------------------------
+# Milestone 3 — selectable generation modes (roadmap-facing catalog)
+#
+# The roadmap names three founder-facing modes (``local_demo``,
+# ``live_hermes_draft``, ``live_hermes_with_review``). They map onto the two
+# underlying engine modes above: ``local_demo`` -> local fake generator;
+# both live modes -> the gated Live Hermes engine. ``live_hermes_with_review``
+# additionally requires a cross-agent review before the artifact may be
+# approved. This catalog keeps that mapping data-driven so the route switch and
+# UI share one source of truth.
+# ---------------------------------------------------------------------------
+
+SelectableGenerationMode = Literal[
+    "local_demo",
+    "live_hermes_draft",
+    "live_hermes_with_review",
+]
+LOCAL_DEMO_SELECTABLE_MODE: SelectableGenerationMode = "local_demo"
+LIVE_HERMES_DRAFT_SELECTABLE_MODE: SelectableGenerationMode = "live_hermes_draft"
+LIVE_HERMES_WITH_REVIEW_SELECTABLE_MODE: SelectableGenerationMode = (
+    "live_hermes_with_review"
+)
+
+
+@dataclass(frozen=True)
+class GenerationModeOption:
+    """A founder-selectable generation mode and how it maps to the engine."""
+
+    mode: SelectableGenerationMode
+    label: str
+    description: str
+    engine_mode: GenerationMode
+    requires_live_hermes: bool
+    requires_review: bool
+
+    def to_dict(self, *, available: bool, blocker: str) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "label": self.label,
+            "description": self.description,
+            "engine_mode": self.engine_mode,
+            "requires_live_hermes": self.requires_live_hermes,
+            "requires_review": self.requires_review,
+            "available": available,
+            "blocker": blocker,
+        }
+
+
+GENERATION_MODE_CATALOG: tuple[GenerationModeOption, ...] = (
+    GenerationModeOption(
+        mode=LOCAL_DEMO_SELECTABLE_MODE,
+        label="Local demo (public-demo safe)",
+        description=(
+            "Deterministic local generation. No Hermes runtime, no credentials, "
+            "always available. This is the default."
+        ),
+        engine_mode=LOCAL_DEMO_GENERATION_MODE,
+        requires_live_hermes=False,
+        requires_review=False,
+    ),
+    GenerationModeOption(
+        mode=LIVE_HERMES_DRAFT_SELECTABLE_MODE,
+        label="Live Hermes draft",
+        description=(
+            "Generate the stage artifact through the gated Live Hermes engine. "
+            "Requires the live-execution flag and stage readiness gates."
+        ),
+        engine_mode=LIVE_HERMES_GENERATION_MODE,
+        requires_live_hermes=True,
+        requires_review=False,
+    ),
+    GenerationModeOption(
+        mode=LIVE_HERMES_WITH_REVIEW_SELECTABLE_MODE,
+        label="Live Hermes with review",
+        description=(
+            "Live Hermes draft that additionally requires a cross-agent review "
+            "before the artifact may be approved."
+        ),
+        engine_mode=LIVE_HERMES_GENERATION_MODE,
+        requires_live_hermes=True,
+        requires_review=True,
+    ),
+)
+GENERATION_MODE_BY_NAME: dict[str, GenerationModeOption] = {
+    option.mode: option for option in GENERATION_MODE_CATALOG
+}
+SUPPORTED_SELECTABLE_GENERATION_MODES: tuple[SelectableGenerationMode, ...] = tuple(
+    option.mode for option in GENERATION_MODE_CATALOG
+)
+
+
+def normalize_selectable_generation_mode(mode: str) -> SelectableGenerationMode:
+    cleaned = mode.strip()
+    option = GENERATION_MODE_BY_NAME.get(cleaned)
+    if option is None:
+        raise ValueError(
+            f"Unsupported Product Wizard generation mode selection: {mode}"
+        )
+    return option.mode
+
+
+def generation_mode_option(mode: str) -> GenerationModeOption:
+    option = GENERATION_MODE_BY_NAME.get(mode.strip())
+    if option is None:
+        raise ValueError(
+            f"Unsupported Product Wizard generation mode selection: {mode}"
+        )
+    return option
+
+
+@dataclass(frozen=True)
+class StageProfileRouting:
+    """Data-driven stage -> Hermes profile routing for a wizard stage."""
+
+    stage_id: str
+    owner_agent_id: str
+    supporting_agent_ids: tuple[str, ...]
+    required_prior_stages: tuple[str, ...]
+
+    @property
+    def participating_agent_ids(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys([self.owner_agent_id, *self.supporting_agent_ids])
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage_id": self.stage_id,
+            "owner_agent_id": self.owner_agent_id,
+            "supporting_agent_ids": list(self.supporting_agent_ids),
+            "participating_agent_ids": list(self.participating_agent_ids),
+            "required_prior_stages": list(self.required_prior_stages),
+        }
+
+
+def stage_profile_routing(stage_id: WizardStage | str) -> StageProfileRouting:
+    contract = STAGE_CONTRACTS.get(stage_id)
+    if contract is None:
+        raise ValueError(f"Unknown product wizard stage: {stage_id}")
+    return StageProfileRouting(
+        stage_id=contract.stage,
+        owner_agent_id=contract.owner_agent_id,
+        supporting_agent_ids=contract.supporting_agent_ids,
+        required_prior_stages=contract.required_prior_stages,
+    )
+
+
+@dataclass(frozen=True)
+class ResolvedGenerationMode:
+    """Outcome of resolving a selected mode against the live-mode gates."""
+
+    option: GenerationModeOption
+    engine_mode: GenerationMode
+    available: bool
+    blocker: str
+
+    @property
+    def selectable_mode(self) -> SelectableGenerationMode:
+        return self.option.mode
+
+
+def resolve_generation_mode_selection(
+    mode: str,
+    *,
+    live_execution_flag_enabled: bool,
+    readiness_ready: bool,
+    readiness_blocker: str = "",
+) -> ResolvedGenerationMode:
+    """Resolve a founder-selected mode against the live-mode gates.
+
+    ``local_demo`` is always available. Live modes are only available when the
+    ``HERMES_LIVE_EXECUTION_ENABLED`` flag is on *and* readiness gates pass; when
+    they are not, the live option is reported unavailable with a blocker so the
+    caller can fail closed into a blocked state (it never silently falls back to
+    local generation).
+    """
+
+    option = generation_mode_option(mode)
+    if not option.requires_live_hermes:
+        return ResolvedGenerationMode(
+            option=option,
+            engine_mode=option.engine_mode,
+            available=True,
+            blocker="",
+        )
+    if not live_execution_flag_enabled:
+        return ResolvedGenerationMode(
+            option=option,
+            engine_mode=option.engine_mode,
+            available=False,
+            blocker=LIVE_HERMES_LOCKED_MESSAGE,
+        )
+    if not readiness_ready:
+        return ResolvedGenerationMode(
+            option=option,
+            engine_mode=option.engine_mode,
+            available=False,
+            blocker=(
+                readiness_blocker
+                or "Live Hermes generation is locked until readiness checks pass."
+            ),
+        )
+    return ResolvedGenerationMode(
+        option=option,
+        engine_mode=option.engine_mode,
+        available=True,
+        blocker="",
+    )
+
+
+def available_generation_modes(
+    *,
+    live_execution_flag_enabled: bool,
+    readiness_ready: bool,
+    readiness_blocker: str = "",
+) -> list[dict[str, Any]]:
+    """Return the founder-facing mode catalog with availability + blockers."""
+
+    options: list[dict[str, Any]] = []
+    for option in GENERATION_MODE_CATALOG:
+        resolved = resolve_generation_mode_selection(
+            option.mode,
+            live_execution_flag_enabled=live_execution_flag_enabled,
+            readiness_ready=readiness_ready,
+            readiness_blocker=readiness_blocker,
+        )
+        options.append(
+            option.to_dict(available=resolved.available, blocker=resolved.blocker)
+        )
+    return options
