@@ -50,3 +50,20 @@ def test_external_dispatch_flag_accepts_explicit_truthy_values(monkeypatch):
 
     assert settings.external_dispatch_enabled is True
     assert env_flag("HERMES_EXTERNAL_DISPATCH_ENABLED") is True
+
+
+def test_auto_pickup_flag_defaults_disabled(monkeypatch):
+    monkeypatch.delenv("HERMES_AUTO_PICKUP_ENABLED", raising=False)
+
+    settings = Settings()
+
+    assert settings.auto_pickup_enabled is False
+
+
+def test_auto_pickup_flag_accepts_explicit_truthy_values(monkeypatch):
+    monkeypatch.setenv("HERMES_AUTO_PICKUP_ENABLED", "true")
+
+    settings = Settings()
+
+    assert settings.auto_pickup_enabled is True
+    assert env_flag("HERMES_AUTO_PICKUP_ENABLED") is True

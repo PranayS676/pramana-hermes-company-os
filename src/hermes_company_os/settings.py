@@ -26,6 +26,9 @@ class Settings:
     external_dispatch_enabled: bool = field(
         default_factory=lambda: env_flag("HERMES_EXTERNAL_DISPATCH_ENABLED", False)
     )
+    auto_pickup_enabled: bool = field(
+        default_factory=lambda: env_flag("HERMES_AUTO_PICKUP_ENABLED", False)
+    )
     codex_workspace_root: Path = Path(os.getenv("HERMES_CODEX_WORKSPACE_ROOT", "."))
     codex_worktree_root: Path = Path(
         os.getenv("HERMES_CODEX_WORKTREE_ROOT", "../codex-worktrees")
