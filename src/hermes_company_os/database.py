@@ -18,6 +18,10 @@ from hermes_company_os.seeds import (
     DEFAULT_WORKFLOW_TEMPLATES,
 )
 
+# Current schema version, stamped into the SQLite ``PRAGMA user_version``.
+# Bump this whenever a new idempotent migration step is added to ``ensure_schema``.
+SCHEMA_VERSION = 1
+
 AGENT_WORK_ITEMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent_work_items (
     id TEXT PRIMARY KEY,
@@ -486,7 +490,24 @@ def initialize_database(database_path: Path) -> None:
         seed_defaults(connection)
 
 
+def get_schema_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def set_schema_version(connection: sqlite3.Connection, version: int) -> None:
+    # PRAGMA statements cannot be parameterized; coerce to int to stay injection-safe.
+    connection.execute(f"PRAGMA user_version = {int(version)}")
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
+    """Apply idempotent schema migrations and stamp the current schema version.
+
+    Each step below is safe to re-run: ``CREATE TABLE IF NOT EXISTS`` and
+    ``PRAGMA table_info`` guards make this a no-op on an up-to-date database.
+    When adding a new migration step, bump ``SCHEMA_VERSION`` so the stamp at the
+    end records it.
+    """
     connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
     connection.executescript(GENERATION_RUNS_SCHEMA)
     connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
@@ -535,6 +556,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
             "ALTER TABLE generation_runs ADD COLUMN memory_ids_json "
             "TEXT NOT NULL DEFAULT '[]'"
         )
+    set_schema_version(connection, SCHEMA_VERSION)
 
 
 def seed_defaults(connection: sqlite3.Connection) -> None:
