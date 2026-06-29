@@ -11,11 +11,171 @@ from hermes_company_os.seeds import (
     DEFAULT_AGENTS,
     DEFAULT_FOUNDER_DECISIONS,
     DEFAULT_INTEGRATIONS,
+    DEFAULT_PRODUCT_WIZARD_STAGES,
     DEFAULT_SETUP_INPUTS,
     DEFAULT_SETUP_STEPS,
     DEFAULT_STANDUPS,
     DEFAULT_WORKFLOW_TEMPLATES,
 )
+
+# Current schema version, stamped into the SQLite ``PRAGMA user_version``.
+# Bump this whenever a new idempotent migration step is added to ``ensure_schema``.
+SCHEMA_VERSION = 1
+
+AGENT_WORK_ITEMS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS agent_work_items (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+    created_by_agent_id TEXT REFERENCES agents(id),
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    stage_id TEXT,
+    artifact_id TEXT,
+    decision_id TEXT REFERENCES founder_decisions(id),
+    task_id TEXT REFERENCES tasks(id),
+    document_id TEXT REFERENCES documents(id),
+    source TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    blocked_reason TEXT NOT NULL DEFAULT '',
+    blocked_owner TEXT NOT NULL DEFAULT '',
+    founder_action_required INTEGER NOT NULL DEFAULT 0,
+    external_handoff_status TEXT NOT NULL DEFAULT 'dashboard_source_of_truth',
+    slack_channel TEXT NOT NULL DEFAULT '',
+    telegram_policy TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+GENERATION_RUNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS generation_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+    artifact_id TEXT REFERENCES product_wizard_artifacts(id) ON DELETE SET NULL,
+    generation_mode TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
+    source_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    memory_ids_json TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_runs_project_stage_created
+ON generation_runs(project_id, stage_id, created_at DESC);
+"""
+
+CODEX_EXECUTION_RUNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS codex_execution_runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    decision_id TEXT NOT NULL REFERENCES founder_decisions(id),
+    package_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (
+        status IN ('queued', 'blocked', 'completed', 'failed', 'cancelled')
+    ),
+    runner_mode TEXT NOT NULL,
+    external_execution_enabled INTEGER NOT NULL DEFAULT 0,
+    branch_name TEXT NOT NULL,
+    worktree_path TEXT NOT NULL,
+    source_artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    command_preview_json TEXT NOT NULL DEFAULT '[]',
+    approval_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    audit_json TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_codex_execution_runs_project_created
+ON codex_execution_runs(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_codex_execution_runs_decision
+ON codex_execution_runs(decision_id);
+"""
+
+PROJECT_REVIEW_RECORDS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_review_records (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    review_batch_id TEXT NOT NULL,
+    reviewer_agent_id TEXT NOT NULL,
+    reviewer_name TEXT NOT NULL,
+    reviewer_role TEXT NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN ('approved', 'needs_revision', 'blocked')),
+    summary TEXT NOT NULL,
+    artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    checks_json TEXT NOT NULL DEFAULT '[]',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_review_records_project_batch
+ON project_review_records(project_id, review_batch_id);
+
+CREATE INDEX IF NOT EXISTS idx_project_review_records_project_created
+ON project_review_records(project_id, created_at DESC);
+"""
+
+PROJECT_MEMORY_ENTRIES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS project_memory_entries (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    memory_type TEXT NOT NULL,
+    owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+    source TEXT NOT NULL,
+    source_artifact_id TEXT DEFAULT '',
+    source_decision_id TEXT REFERENCES founder_decisions(id),
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    body TEXT NOT NULL,
+    confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')),
+    status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'retired')),
+    pinned INTEGER NOT NULL DEFAULT 0,
+    review_after TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project_status
+ON project_memory_entries(project_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_category
+ON project_memory_entries(category);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_updated
+ON project_memory_entries(updated_at DESC);
+"""
+
+AUDIT_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS audit_events (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    actor_agent_id TEXT REFERENCES agents(id),
+    source_table TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_project_created
+ON audit_events(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_source
+ON audit_events(source_table, source_id);
+"""
 
 
 def connect(database_path: Path) -> sqlite3.Connection:
@@ -222,12 +382,20 @@ def initialize_database(database_path: Path) -> None:
                 title TEXT NOT NULL,
                 status TEXT NOT NULL,
                 urgency TEXT NOT NULL,
+                decision_type TEXT NOT NULL DEFAULT 'operating_decision',
                 source TEXT NOT NULL,
                 owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                project_id TEXT,
+                stage_id TEXT,
+                artifact_id TEXT,
                 slack_channel TEXT NOT NULL,
                 telegram_policy TEXT NOT NULL,
                 context TEXT NOT NULL,
+                evidence TEXT NOT NULL DEFAULT '',
                 decision TEXT NOT NULL,
+                requires_founder_approval INTEGER NOT NULL DEFAULT 0,
+                resolved_at TEXT,
+                resolution_note TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -248,6 +416,7 @@ def initialize_database(database_path: Path) -> None:
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 founder_idea TEXT NOT NULL,
+                intake_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -266,19 +435,128 @@ def initialize_database(database_path: Path) -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_stage_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                sort_order INTEGER NOT NULL,
+                artifact_type TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_project_stages (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+                stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                status TEXT NOT NULL,
+                revision_notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                approved_at TEXT,
+                revision_requested_at TEXT,
+                blocked_at TEXT,
+                UNIQUE(project_id, stage_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS product_wizard_artifacts (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+                project_stage_id TEXT NOT NULL
+                    REFERENCES product_wizard_project_stages(id) ON DELETE CASCADE,
+                stage_id TEXT NOT NULL REFERENCES product_wizard_stage_definitions(id),
+                version INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                markdown_content TEXT NOT NULL,
+                json_content TEXT NOT NULL,
+                owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+                created_at TEXT NOT NULL,
+                approved_at TEXT,
+                UNIQUE(project_stage_id, version)
+            );
             """
         )
+        connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
+        connection.executescript(GENERATION_RUNS_SCHEMA)
+        connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
+        connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
+        connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+        connection.executescript(AUDIT_EVENTS_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
 
+def get_schema_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def set_schema_version(connection: sqlite3.Connection, version: int) -> None:
+    # PRAGMA statements cannot be parameterized; coerce to int to stay injection-safe.
+    connection.execute(f"PRAGMA user_version = {int(version)}")
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
+    """Apply idempotent schema migrations and stamp the current schema version.
+
+    Each step below is safe to re-run: ``CREATE TABLE IF NOT EXISTS`` and
+    ``PRAGMA table_info`` guards make this a no-op on an up-to-date database.
+    When adding a new migration step, bump ``SCHEMA_VERSION`` so the stamp at the
+    end records it.
+    """
+    connection.executescript(AGENT_WORK_ITEMS_SCHEMA)
+    connection.executescript(GENERATION_RUNS_SCHEMA)
+    connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
+    connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
+    connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+    connection.executescript(AUDIT_EVENTS_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
     }
     if "kanban_task_id" not in task_columns:
         connection.execute("ALTER TABLE tasks ADD COLUMN kanban_task_id TEXT")
+    project_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(company_projects)").fetchall()
+    }
+    if "intake_json" not in project_columns:
+        connection.execute(
+            "ALTER TABLE company_projects ADD COLUMN intake_json TEXT NOT NULL DEFAULT '{}'"
+        )
+    decision_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(founder_decisions)").fetchall()
+    }
+    decision_column_defaults = {
+        "decision_type": "TEXT NOT NULL DEFAULT 'operating_decision'",
+        "project_id": "TEXT",
+        "stage_id": "TEXT",
+        "artifact_id": "TEXT",
+        "evidence": "TEXT NOT NULL DEFAULT ''",
+        "requires_founder_approval": "INTEGER NOT NULL DEFAULT 0",
+        "resolved_at": "TEXT",
+        "resolution_note": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, definition in decision_column_defaults.items():
+        if column not in decision_columns:
+            connection.execute(
+                f"ALTER TABLE founder_decisions ADD COLUMN {column} {definition}"
+            )
+    generation_run_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(generation_runs)").fetchall()
+    }
+    if "memory_ids_json" not in generation_run_columns:
+        connection.execute(
+            "ALTER TABLE generation_runs ADD COLUMN memory_ids_json "
+            "TEXT NOT NULL DEFAULT '[]'"
+        )
+    set_schema_version(connection, SCHEMA_VERSION)
 
 
 def seed_defaults(connection: sqlite3.Connection) -> None:
@@ -464,6 +742,17 @@ def seed_defaults(connection: sqlite3.Connection) -> None:
         )
         """,
         DEFAULT_WORKFLOW_TEMPLATES,
+    )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO product_wizard_stage_definitions (
+            id, name, description, owner_agent_id, sort_order, artifact_type
+        )
+        VALUES (
+            :id, :name, :description, :owner_agent_id, :sort_order, :artifact_type
+        )
+        """,
+        DEFAULT_PRODUCT_WIZARD_STAGES,
     )
 
 

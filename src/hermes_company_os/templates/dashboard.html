@@ -21,7 +21,8 @@
           <a class="active" href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
           <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
           <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
-          <a href="#founder-decisions"><i data-lucide="gavel"></i> Decisions</a>
+          <a href="/decisions"><i data-lucide="gavel"></i> Decisions</a>
+          <a href="/queue"><i data-lucide="list-checks"></i> Queue</a>
           <a href="#agents"><i data-lucide="users-round"></i> Agents</a>
           <a href="#standups"><i data-lucide="calendar-clock"></i> Standups</a>
           <a href="#runs"><i data-lucide="activity"></i> Runs</a>
@@ -64,6 +65,10 @@
           <div class="metric">
             <span>{{ founder_actions.founder_decisions.open }}</span>
             <small>open decisions</small>
+          </div>
+          <div class="metric">
+            <span>{{ agent_work_summary.open }}</span>
+            <small>open queue items</small>
           </div>
         </section>
 
@@ -116,7 +121,10 @@
           <div class="panel full" id="founder-decisions">
             <div class="panel-header">
               <h2>Founder Decision Queue</h2>
-              <a href="/setup/founder-decisions.md">Export</a>
+              <span class="panel-header-actions">
+                <a href="/decisions">Inbox</a>
+                <a href="/setup/founder-decisions.md">Export</a>
+              </span>
             </div>
             <section class="notice-band compact">
               <strong>{{ founder_actions.founder_decisions.open }} open</strong>
@@ -127,6 +135,8 @@
             </section>
             <div class="decision-grid">
               <form class="stacked-form" method="post" action="/decisions">
+                <input type="hidden" name="return_to" value="/#founder-decisions">
+                <input type="hidden" name="decision_type" value="operating_decision">
                 <label>
                   Title
                   <input name="title" required placeholder="Approve first idea go/no-go">
@@ -171,8 +181,8 @@
                 {% for decision in founder_decisions %}
                 <div class="decision-row list-row {{ decision.status }}">
                   <div class="decision-title-line">
-                    <span class="status-pill {{ decision.status }}">{{ decision.status }}</span>
-                    <span class="status-pill {{ decision.urgency }}">{{ decision.urgency }}</span>
+                    <span class="status-pill {{ decision.status }}" aria-label="Decision status: {{ decision.status }}">{{ decision.status }}</span>
+                    <span class="status-pill {{ decision.urgency }}" aria-label="Decision urgency: {{ decision.urgency }}">{{ decision.urgency }}</span>
                     <strong>{{ decision.title }}</strong>
                   </div>
                   <small>
@@ -183,8 +193,16 @@
                   {% if decision.decision %}
                   <p><strong>Decision:</strong> {{ decision.decision }}</p>
                   {% endif %}
+                  {% if decision.project_id %}
+                  <p>
+                    <strong>Project:</strong>
+                    <a href="/projects/{{ decision.project_id }}">{{ decision.project_name }}</a>
+                    {% if decision.stage_id %} - {{ decision.stage_id }}{% endif %}
+                  </p>
+                  {% endif %}
                   <form class="decision-update-form" method="post" action="/decisions/{{ decision.id }}">
-                    <select name="status" aria-label="Decision status">
+                    <input type="hidden" name="return_to" value="/#founder-decisions">
+                    <select name="status" aria-label="Status for {{ decision.title }}">
                       {% for status in ["needed", "approved", "rejected", "blocked", "deferred"] %}
                       <option value="{{ status }}" {% if decision.status == status %}selected{% endif %}>{{ status }}</option>
                       {% endfor %}
@@ -192,17 +210,63 @@
                     <input
                       name="decision"
                       value="{{ decision.decision }}"
+                      aria-label="Decision note for {{ decision.title }}"
                       placeholder="Record approval, rejection, deferral, or blocker note"
                     >
-                    <button class="icon-button" type="submit" title="Save decision">
+                    <button class="icon-button" type="submit" aria-label="Save {{ decision.title }}">
                       <i data-lucide="save"></i>
                     </button>
+                    {% if decision.requires_founder_approval %}
+                    <label class="checkbox-label decision-confirmation">
+                      <input type="checkbox" name="founder_confirmed" value="confirmed">
+                      Founder confirmed
+                    </label>
+                    {% endif %}
                   </form>
                 </div>
                 {% else %}
                 <p class="empty-state">No founder decisions yet.</p>
                 {% endfor %}
               </div>
+            </div>
+          </div>
+
+          <div class="panel full" id="agent-work-queue">
+            <div class="panel-header">
+              <div>
+                <h2>Agent Work Queue</h2>
+                <p class="panel-kicker">Chief of Staff triage. Dashboard state is the source of truth.</p>
+              </div>
+              <span class="panel-header-actions">
+                <a href="/queue">Open queue</a>
+              </span>
+            </div>
+            <section class="notice-band compact">
+              <strong>{{ agent_work_summary.blocked }} blocked</strong>
+              <span>
+                {{ agent_work_summary.needs_review }} needs review.
+                {{ agent_work_summary.founder_required }} waiting on founder action.
+              </span>
+            </section>
+            <div class="queue-strip">
+              {% for item in agent_work_items %}
+              <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
+                <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ item.status }}">{{ item.status }}</span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>
+                    {{ item.owner_name }}
+                    {% if item.project_id %} - {{ item.project_name }}{% endif %}
+                    {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
+                  </small>
+                </div>
+                {% if item.founder_action_required %}
+                <span class="status-pill urgent">founder</span>
+                {% endif %}
+              </a>
+              {% else %}
+              <p class="empty-state">No agent work items yet. Product Wizard projects will sync read-first queue items after creation.</p>
+              {% endfor %}
             </div>
           </div>
 
@@ -231,7 +295,7 @@
               <h2>Standups</h2>
             </div>
             {% if standup_run_blocker %}
-            <p class="empty-state">
+            <p class="empty-state" id="standup-run-blocker">
               {{ standup_run_blocker }} Manual standup runs stay locked until the
               Chief of Staff profile passes final LLM verification.
             </p>
@@ -247,6 +311,7 @@
                   title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
                   type="submit"
                   class="icon-button"
+                  {% if standup_run_blocker %}aria-describedby="standup-run-blocker"{% endif %}
                   {% if standup_run_blocker %}disabled{% endif %}
                 >
                   <i data-lucide="play"></i>

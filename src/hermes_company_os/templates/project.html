@@ -1,3 +1,130 @@
+{% set default_wizard_stages = [
+  {
+    "id": "research",
+    "label": "Research",
+    "status": "current",
+    "icon": "search",
+    "summary": "Market, user, competitor, and evidence quality review."
+  },
+  {
+    "id": "prd",
+    "label": "PRD",
+    "status": "planned",
+    "icon": "file-text",
+    "summary": "Target user, product bet, scope, non-goals, and acceptance criteria."
+  },
+  {
+    "id": "architecture",
+    "label": "Architecture",
+    "status": "planned",
+    "icon": "network",
+    "summary": "System boundaries, data model, reliability, cost, and operating plan."
+  },
+  {
+    "id": "tasks",
+    "label": "Tasks",
+    "status": "planned",
+    "icon": "list-checks",
+    "summary": "Implementation backlog and owner handoff."
+  },
+  {
+    "id": "code_plan",
+    "label": "Code plan",
+    "status": "planned",
+    "icon": "code-2",
+    "summary": "Backend, frontend, test, and rollout plan."
+  },
+  {
+    "id": "acceptance",
+    "label": "Acceptance",
+    "status": "planned",
+    "icon": "badge-check",
+    "summary": "Launch gate, evidence, and founder decision memo."
+  }
+] %}
+{% set stages = wizard_stages|default(default_wizard_stages, true) %}
+{% set active_stage = current_stage|default(stages|first, true) %}
+{% set next_actionable_stage = actionable_stage|default(active_stage, true) %}
+{% set active_stage_id = active_stage.id|default(active_stage.stage_id|default(active_stage.slug|default(active_stage, true), true), true) %}
+{% set active_stage_label = active_stage.label|default(active_stage.name|default(active_stage_id|replace("_", " ")|title, true), true) %}
+{% set next_actionable_stage_id = next_actionable_stage.id|default(next_actionable_stage.stage_id|default(next_actionable_stage.slug|default(next_actionable_stage, true), true), true) %}
+{% set has_latest_artifact = latest_artifact is defined and latest_artifact %}
+{% set fallback_artifact = workflow_items|first if not stages else {} %}
+{% set artifact = latest_artifact|default(fallback_artifact|default({}, true), true) %}
+{% set artifact_title = artifact.title|default(active_stage_label ~ " artifact", true) %}
+{% set artifact_status = artifact.status|default(active_stage.status|default("ready", true), true) %}
+{% set artifact_body = artifact.body|default(artifact.summary|default(project.founder_idea, true), true) %}
+{% set artifact_checks = artifact.quality_checks|default([], true) %}
+{% set artifact_sources = artifact.source_artifact_ids|default([], true) %}
+{% set artifact_memory_ids = artifact.memory_ids|default([], true) %}
+{% set artifact_sections = artifact.sections|default([], true) %}
+{% set generation_run = latest_generation_run|default(artifact.generation_run|default({}, true), true) %}
+{% set generation_run_sources = generation_run.source_artifact_ids|default([], true) %}
+{% set generation_run_memory_ids = generation_run.memory_ids|default([], true) %}
+{% set live_readiness = live_hermes_readiness|default({}, true) %}
+{% set live_readiness_checks = live_readiness.checks|default([], true) %}
+{% set live_operator = live_hermes_operator|default({}, true) %}
+{% set live_operator_preview = live_operator.command_preview|default({}, true) %}
+{% set live_operator_preview_memory_ids = live_operator_preview.memory_ids|default([], true) %}
+{% set live_operator_prompt_handoff = live_operator_preview.prompt_handoff|default({}, true) %}
+{% set live_operator_output_parser = live_operator_preview.output_parser|default({}, true) %}
+{% set live_operator_checks = live_operator.checklist|default([], true) %}
+{% set live_operator_last_run = live_operator.last_run|default({}, true) %}
+{% set live_operator_stdout_capture = live_operator_last_run.stdout_capture|default({}, true) %}
+{% set live_operator_stderr_capture = live_operator_last_run.stderr_capture|default({}, true) %}
+{% set live_operator_last_runner = live_operator_last_run.runner|default({}, true) %}
+{% set live_operator_last_preflight = live_operator_last_run.operator_preflight|default({}, true) %}
+{% set live_operator_last_audit = live_operator_last_run.execution_audit|default({}, true) %}
+{% set live_operator_last_audit_command = live_operator_last_audit.command_fingerprint|default({}, true) %}
+{% set live_operator_last_audit_approval = live_operator_last_audit.approval_consumption|default({}, true) %}
+{% set live_operator_last_audit_review = live_operator_last_audit.post_run_review|default({}, true) %}
+{% set live_run_confirmation = live_operator.run_confirmation|default({}, true) %}
+{% set artifacts_by_stage = stage_artifacts|default({}, true) %}
+{% set task_gate_ready = task_stage_approved|default(false) %}
+{% set kanban_gate_open = kanban_ready and task_gate_ready %}
+{% set founder_decision_items = founder_decisions|default([], true) %}
+{% set queue_items = agent_work_items|default([], true) %}
+{% set activity_events = project_activity_events|default([], true) %}
+{% set codex_package = codex_execution|default({}, true) %}
+{% set codex_state = codex_package.execution|default({}, true) %}
+{% set codex_gates = codex_package.approval_gates|default({}, true) %}
+{% set codex_branch_plan = codex_package.branch_plan|default({}, true) %}
+{% set codex_runner = codex_package.runner|default({}, true) %}
+{% set codex_latest_run = codex_runner.latest_run|default({}, true) %}
+{% set review_package = multi_agent_review|default({}, true) %}
+{% set review_aggregate = review_package.aggregate|default({}, true) %}
+{% set review_records = review_package.reviewers|default([], true) %}
+{% set memory_package = project_memory|default({}, true) %}
+{% set memory_aggregate = memory_package.aggregate|default({}, true) %}
+{% set memory_entries = memory_package.entries|default([], true) %}
+{% set reusable_memory_entries = memory_package.reusable_entries|default([], true) %}
+{% set memory_reuse = memory_reuse_policy|default({}, true) %}
+{% set memory_reuse_categories = memory_reuse.allowed_categories|default([], true) %}
+{% set operating_loop_package = operating_loop|default({}, true) %}
+{% set operating_loop_policy = operating_loop_package.policy|default({}, true) %}
+{% set operating_loop_aggregate = operating_loop_package.aggregate|default({}, true) %}
+{% set operating_loop_lanes = operating_loop_package.lanes|default([], true) %}
+{% set operating_loop_next_actions = operating_loop_package.next_actions|default([], true) %}
+{% set dispatch_preview_package = external_dispatch_preview|default({}, true) %}
+{% set dispatch_preview_policy = dispatch_preview_package.policy|default({}, true) %}
+{% set dispatch_preview_queue = dispatch_preview_package.queue|default({}, true) %}
+{% set dispatch_preview_items = dispatch_preview_package["items"]|default([], true) %}
+{% set dispatch_preview_approval = dispatch_preview_package.approval|default({}, true) %}
+{% set dispatch_preview_audit = dispatch_preview_package.audit|default({}, true) %}
+{% set dispatch_preview_latest_audit = dispatch_preview_audit.latest|default({}, true) %}
+{% set dispatch_preview_runner = dispatch_preview_package.runner|default({}, true) %}
+{% set dispatch_preview_latest_runner = dispatch_preview_runner.latest|default({}, true) %}
+{% set dispatch_preview_command_boundary = dispatch_preview_latest_runner.command_boundary|default(dispatch_preview_package.command_boundary|default({}, true), true) %}
+{% set dispatch_preview_command_fingerprints = dispatch_preview_latest_runner.command_fingerprints|default([], true) %}
+{% set dispatch_preview_next_actions = dispatch_preview_package.next_actions|default([], true) %}
+{% set memory_categories = memory_category_options|default([], true) %}
+{% set memory_confidences = memory_confidence_options|default([], true) %}
+{% set memory_owners = memory_owner_options|default([], true) %}
+{% set founder_control = founder_control_summary|default({}, true) %}
+{% set founder_action = founder_control.next_action|default({}, true) %}
+{% set founder_signals = founder_control.signals|default([], true) %}
+{% set intake = project.intake|default({}, true) %}
+
 <!doctype html>
 <html lang="en">
   <head>
@@ -8,60 +135,1488 @@
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>
   <body>
-    <main class="agent-page">
+    <main class="agent-page project-stage-page">
       <a class="back-link" href="/projects"><i data-lucide="arrow-left"></i> Projects</a>
-      <section class="agent-hero">
+
+      <section class="project-titlebar">
         <div>
           <p class="eyebrow">{{ project.status }}</p>
           <h1>{{ project.name }}</h1>
-          <p>{{ project.founder_idea }}</p>
+          <p class="page-subtitle">{{ project.founder_idea }}</p>
+        </div>
+        <div class="project-title-actions">
+          <span class="status-pill {{ artifact_status }}" aria-label="Artifact status: {{ artifact_status }}">{{ artifact_status }}</span>
+          {% if has_latest_artifact %}
+          <span
+            class="status-pill {% if artifact.selected %}needed{% else %}ready{% endif %}"
+            aria-label="{% if artifact.selected %}Selected artifact version{% else %}Latest artifact version{% endif %}"
+          >
+            {% if artifact.selected %}selected version{% else %}latest version{% endif %}
+          </span>
+          {% endif %}
+          <span
+            class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}"
+            aria-label="{% if kanban_gate_open %}Kanban ready{% else %}Kanban blocked{% endif %}"
+          >
+            {% if kanban_gate_open %}
+            Kanban ready
+            {% elif not kanban_ready %}
+            Kanban verification needed
+            {% else %}
+            Kanban gated
+            {% endif %}
+          </span>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Generated Company Workflow</h2>
-          {% if kanban_ready %}
-          <form method="post" action="/projects/{{ project.id }}/kanban">
-            <button class="primary-button" type="submit">
-              <i data-lucide="list-plus"></i>
-              Push workflow to Kanban
-            </button>
-          </form>
-          {% else %}
-          <a class="primary-button link-button" href="/setup#kanban-verification">
-            <i data-lucide="shield-alert"></i>
-            Kanban verification needed
-          </a>
-          {% endif %}
+      <section class="founder-control-summary" aria-label="Founder control summary">
+        <div class="founder-control-heading">
+          <span>Founder Control Summary</span>
         </div>
-        {% if kanban_blocker %}
-        <p class="empty-state">
-          {{ kanban_blocker }} Use one dashboard task push as the task-create drill,
-          then return here when the Kanban gate is ready.
-        </p>
-        {% endif %}
-        <p class="empty-state">
-          {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
-        </p>
-        <div class="integration-table">
-          {% for item in workflow_items %}
-          <div class="integration-row">
-            <div>
-              <span class="status-pill {{ item.status }}">{{ item.status }}</span>
-              <strong>{{ item.title }}</strong>
-              <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
-              {% if item.kanban_task_id %}
-              <p>Hermes Kanban task: {{ item.kanban_task_id }}</p>
+        <div class="founder-action-card {{ founder_action.status|default('manual', true) }}">
+          <span>Next Founder Action</span>
+          <h2>{{ founder_action.label|default("Continue staged review", true) }}</h2>
+          <p>{{ founder_action.detail|default("Open the current stage and review the next gate.", true) }}</p>
+          <a
+            class="primary-button link-button full-width-button"
+            href="{{ founder_action.href|default('#current-stage', true) }}"
+          >
+            <i data-lucide="{{ founder_action.icon|default('arrow-right', true) }}"></i>
+            {{ founder_action.cta_label|default("Open current stage", true) }}
+          </a>
+        </div>
+        <div class="founder-signal-grid" role="list">
+          {% for signal in founder_signals %}
+          {% if signal.href %}
+          <a
+            class="founder-signal {{ signal.status|default('manual', true) }}"
+            href="{{ signal.href }}"
+            role="listitem"
+          >
+            <span>{{ signal.label }}</span>
+            <strong>{{ signal.value }}</strong>
+            <small>{{ signal.detail }}</small>
+          </a>
+          {% else %}
+          <div
+            class="founder-signal {{ signal.status|default('manual', true) }}"
+            role="listitem"
+          >
+            <span>{{ signal.label }}</span>
+            <strong>{{ signal.value }}</strong>
+            <small>{{ signal.detail }}</small>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="project-decision-strip" aria-label="Project founder decisions">
+        <div>
+          <span class="status-pill {% if founder_decision_items %}needed{% else %}ready{% endif %}">
+            {{ founder_decision_items|length }} project decisions
+          </span>
+          <strong>Project decisions</strong>
+          <small>
+            {% if founder_decision_items %}
+            Review project-linked approvals, revisions, blockers, and launch gates.
+            {% else %}
+            No founder decision is currently linked to this project.
+            {% endif %}
+          </small>
+        </div>
+        <a class="secondary-button link-button-muted" href="/decisions?project_id={{ project.id }}">
+          <i data-lucide="gavel"></i>
+          Open project decisions
+        </a>
+      </section>
+
+      <section class="project-decision-strip project-queue-strip" aria-label="Project agent work queue">
+        <div>
+          <span class="status-pill {% if queue_items %}planned{% else %}ready{% endif %}">
+            {{ queue_items|length }} queue items
+          </span>
+          <strong>Project agent queue</strong>
+          <small>
+            {% if queue_items %}
+            Stage work is tracked by owner, review state, blockers, and founder handoff.
+            {% else %}
+            No queue items are linked to this project yet.
+            {% endif %}
+          </small>
+        </div>
+        <a class="secondary-button link-button-muted" href="/queue?project_id={{ project.id }}">
+          <i data-lucide="list-checks"></i>
+          Open project queue
+        </a>
+      </section>
+
+      <section class="project-activity-panel" id="project-activity" aria-label="Project agent activity">
+        <div class="panel-header inline-panel-header">
+          <div>
+            <h2>Agent Activity</h2>
+            <p class="panel-kicker">Recent project changes with their source records.</p>
+          </div>
+          <div class="panel-header-actions">
+            <span class="status-pill {% if activity_events %}ready{% else %}manual{% endif %}">
+              {{ activity_events|length }} events
+            </span>
+            <a class="secondary-button link-button-muted" href="/projects/{{ project.id }}/activity.json">
+              <i data-lucide="braces"></i>
+              Activity JSON
+            </a>
+          </div>
+        </div>
+        {% if activity_events %}
+        <div class="activity-event-list" role="list">
+          {% for event in activity_events %}
+          <div class="activity-event-row {{ event.status }}" role="listitem">
+            <span class="activity-event-icon" aria-hidden="true">
+              {% if "generation" in event.event_type %}
+              <i data-lucide="sparkles"></i>
+              {% elif "memory" in event.event_type %}
+              <i data-lucide="brain"></i>
+              {% elif "decision" in event.event_type %}
+              <i data-lucide="gavel"></i>
+              {% elif "codex" in event.event_type %}
+              <i data-lucide="square-terminal"></i>
+              {% else %}
+              <i data-lucide="activity"></i>
               {% endif %}
+            </span>
+            <div class="activity-event-main">
+              <div>
+                <strong>{{ event.event_label }}</strong>
+                <span class="status-pill {{ event.status }}">{{ event.status }}</span>
+              </div>
+              <p>{{ event.summary }}</p>
+              <small>
+                {{ event.source_table }} / {{ event.source_id }}
+                {% if event.actor_name %}- {{ event.actor_name }}{% endif %}
+              </small>
             </div>
-            <div class="integration-actions">
-              <code>Task: {{ item.task_id }}</code>
-              <code>Document: {{ item.document_id }}</code>
+            <time datetime="{{ event.created_at }}">{{ event.created_at[:16] }}</time>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">No project activity has been recorded yet.</p>
+        {% endif %}
+      </section>
+
+      <section class="stage-timeline-panel">
+        <div class="panel-header inline-panel-header">
+          <div>
+            <h2>Product wizard timeline</h2>
+            <p class="panel-kicker">Each artifact is approved before the next stage opens.</p>
+          </div>
+        </div>
+        <div class="stage-timeline" role="list">
+          {% for stage in stages %}
+          {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
+          {% set stage_label = stage.label|default(stage.name|default(stage_id|replace("_", " ")|title, true), true) %}
+          {% set stage_status = stage.status|default("planned", true) %}
+          <div
+            class="stage-node {% if stage_id == active_stage_id %}active{% endif %}"
+            data-stage-id="{{ stage_id }}"
+            role="listitem"
+            {% if stage_id == active_stage_id %}aria-current="step"{% endif %}
+            aria-label="{{ stage_label }} stage, {{ stage_status }}"
+          >
+            <span class="stage-icon"><i data-lucide="{{ stage.icon|default('circle') }}"></i></span>
+            <div>
+              <strong>{{ stage_label }}</strong>
+              <small>{{ stage_status }}</small>
             </div>
           </div>
           {% endfor %}
         </div>
+      </section>
+
+      <section class="project-stage-grid">
+        <div class="stage-main-column">
+          <section class="panel current-stage-panel" id="current-stage">
+            <div class="panel-header">
+              <div>
+                <h2>{{ active_stage_label }}</h2>
+                <p class="panel-kicker">
+                  {% if active_stage_id == "acceptance" %}
+                  Acceptance checklist
+                  {% else %}
+                  {{ active_stage.summary|default("Generate, review, approve, or revise this stage.", true) }}
+                  {% endif %}
+                </p>
+              </div>
+              <i data-lucide="{{ active_stage.icon|default('sparkles') }}"></i>
+            </div>
+
+            <section class="stage-decision-summary" aria-label="Stage decision summary">
+              <div>
+                <span>Review state</span>
+                <strong>{{ artifact_status }}</strong>
+              </div>
+              <div>
+                <span>Owner</span>
+                <strong>{{ artifact.owner_name|default(active_stage.owner_name|default("Not assigned", true), true) }}</strong>
+              </div>
+              <div>
+                <span>Generation mode</span>
+                <strong>{{ artifact.generation_mode|default("not generated", true) }}</strong>
+              </div>
+              <div>
+                <span>Generation run</span>
+                <strong>{% if generation_run %}{{ generation_run.status }}{% else %}Not started{% endif %}</strong>
+              </div>
+              <div>
+                <span>Version</span>
+                <strong>{% if has_latest_artifact %}{{ artifact.version }}{% else %}Not generated{% endif %}</strong>
+              </div>
+              <div class="summary-span">
+                <span>Next decision</span>
+                <strong>{{ artifact.next_decision|default("Generate this stage before approval.", true) }}</strong>
+              </div>
+              {% if active_stage.revision_notes %}
+              <div class="summary-span warning-summary">
+                <span>Revision notes</span>
+                <strong>{{ active_stage.revision_notes }}</strong>
+              </div>
+              {% endif %}
+              {% if artifact.selected %}
+              <div class="summary-span warning-summary">
+                <span>Selected artifact</span>
+                <strong>History inspection mode. Confirm that any action still matches the selected stage context.</strong>
+              </div>
+              {% endif %}
+            </section>
+
+            <div class="stage-action-grid" aria-label="Current stage actions">
+              {% if artifact.selected %}
+              <a class="secondary-button link-button-muted full-width-button" href="/projects/{{ project.id }}#artifact-preview">
+                <i data-lucide="history"></i> Return to latest review
+              </a>
+              {% else %}
+              {% if artifact_status in ["ready", "needs_revision", "blocked"] %}
+              <form method="post" action="/projects/{{ project.id }}/stages/current/generate">
+                <input type="hidden" name="generation_mode" value="local_fake_public_demo">
+                <button class="primary-button full-width-button" type="submit">
+                  <i data-lucide="play"></i> Generate
+                </button>
+              </form>
+              {% endif %}
+              {% if live_operator.live_run_possible %}
+              <form class="live-pilot-form" method="post" action="/projects/{{ project.id }}/stages/current/generate" aria-label="Live Hermes pilot execution">
+                <input type="hidden" name="generation_mode" value="live_hermes">
+                <label>
+                  Live pilot confirmation
+                  <input
+                    name="live_pilot_confirmation"
+                    autocomplete="off"
+                    placeholder="{{ live_operator.pilot_confirmation_phrase|default('RUN LIVE HERMES', true) }}"
+                  >
+                </label>
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="terminal"></i> Run live Hermes pilot
+                </button>
+                <small>Type {{ live_operator.pilot_confirmation_phrase|default("RUN LIVE HERMES", true) }} to consume the one-run token.</small>
+              </form>
+              {% else %}
+              <div class="live-mode-gate" aria-label="Live Hermes generation locked">
+                <button class="secondary-button full-width-button" type="button" disabled>
+                  <i data-lucide="lock"></i> Live Hermes locked
+                </button>
+                <small>{{ live_operator.pilot_detail|default("Founder approval and Hermes readiness required.", true) }}</small>
+              </div>
+              {% endif %}
+              {% if has_latest_artifact and artifact_status == "draft" %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/approve">
+                <button class="success-button full-width-button" type="submit">
+                  <i data-lucide="check"></i> Approve
+                </button>
+              </form>
+              {% endif %}
+              {% if has_latest_artifact %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/regenerate">
+                <input type="hidden" name="generation_mode" value="local_fake_public_demo">
+                <button class="secondary-button full-width-button" type="submit">
+                  <i data-lucide="refresh-cw"></i> Regenerate
+                </button>
+              </form>
+              {% endif %}
+              {% if has_latest_artifact %}
+              <form
+                class="revision-form"
+                method="post"
+                action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/revision"
+              >
+                <label>
+                  Revision reason
+                  <select name="revision_reason">
+                    {% for reason_id, reason_label in revision_reasons.items() %}
+                    <option value="{{ reason_id }}" {% if reason_id == "acceptance_concern" %}selected{% endif %}>{{ reason_label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Revision request
+                  <textarea
+                    name="revision_request"
+                    rows="3"
+                    placeholder="State the missing evidence, product change, or quality bar."
+                  ></textarea>
+                </label>
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="message-square-warning"></i> Request revision
+                </button>
+              </form>
+              {% endif %}
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel live-readiness-panel" id="live-hermes-readiness">
+            <div class="panel-header">
+              <div>
+                <h2>Live Hermes readiness</h2>
+                <p class="panel-kicker">Founder approval and profile gates before live generation.</p>
+              </div>
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="quality-check-list" aria-label="Live Hermes readiness checks">
+              {% for check in live_readiness_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.detail }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No live Hermes readiness checks are available.</p>
+              {% endfor %}
+            </div>
+            <div class="live-readiness-actions">
+              {% if live_readiness.ready %}
+              <span class="status-pill ready">ready</span>
+              <strong>Live Hermes gates are satisfied; operator console controls execution.</strong>
+              {% elif live_readiness.approval_request_allowed %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-approval">
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="send"></i> Request founder approval
+                </button>
+              </form>
+              {% elif live_readiness.founder_approval_decision_id %}
+              <a class="secondary-button link-button-muted full-width-button" href="/decisions/{{ live_readiness.founder_approval_decision_id }}">
+                <i data-lucide="inbox"></i> Open approval decision
+              </a>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel live-operator-panel" id="live-hermes-operator">
+            <div class="panel-header">
+              <div>
+                <h2>Live execution operator</h2>
+                <p class="panel-kicker">Command preview, config gate, and capture evidence before any real runner attempt.</p>
+              </div>
+              <span class="status-pill {% if live_operator.execution_enabled %}urgent{% else %}manual{% endif %}">
+                execution {{ live_operator.execution_status|default("disabled", true) }}
+              </span>
+            </div>
+            <div class="operator-warning {% if live_operator.execution_enabled %}operator-warning-enabled{% endif %}">
+              <strong>{{ live_operator.env_var|default("HERMES_LIVE_EXECUTION_ENABLED", true) }}</strong>
+              <span>{{ live_operator.warning|default("Real Hermes command execution is disabled for this process.", true) }}</span>
+            </div>
+            <div class="operator-command-grid">
+              <div>
+                <span>Command preview</span>
+                <code>{{ live_operator_preview.command_preview_text|default("No command preview available.", true) }}</code>
+              </div>
+              <div>
+                <span>Prompt handoff</span>
+                <code>{{ live_operator_prompt_handoff.contract|default("product_wizard_prompt_contract_v1", true) }} {{ live_operator_prompt_handoff.sha256|default("pending", true) }}</code>
+              </div>
+              <div>
+                <span>Prompt memory context</span>
+                {% if live_operator_preview_memory_ids %}
+                <strong>{{ live_operator_preview_memory_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>No approved memory in prompt.</strong>
+                {% endif %}
+              </div>
+              <div>
+                <span>Output parser</span>
+                <code>{{ live_operator_output_parser.name|default("product_wizard_artifact_v1", true) }} {{ live_operator_output_parser.status|default("pending", true) }}</code>
+              </div>
+              <div>
+                <span>Timeout</span>
+                <strong>{{ live_operator.timeout_seconds|default(live_operator_preview.timeout_seconds|default("not configured", true), true) }} seconds</strong>
+              </div>
+              <div>
+                <span>Pilot phrase</span>
+                <strong>{{ live_operator.pilot_confirmation_phrase|default("RUN LIVE HERMES", true) }}</strong>
+              </div>
+              <div>
+                <span>Pilot status</span>
+                <strong>{{ live_operator.pilot_status|default("blocked", true) }}</strong>
+              </div>
+            </div>
+            <div class="quality-check-list" aria-label="Live execution operator checklist">
+              <h3>Operator checklist</h3>
+              {% for check in live_operator_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.detail }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No live execution operator checklist is available.</p>
+              {% endfor %}
+            </div>
+            <div class="live-readiness-actions">
+              {% if live_operator.run_confirmation_ready %}
+              <span class="status-pill ready">one-run confirmation ready</span>
+              <strong>Founder-confirmed run token is fresh for this stage.</strong>
+              {% elif live_operator.run_confirmation_request_allowed %}
+              <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-run-confirmation">
+                <button class="warning-button full-width-button" type="submit">
+                  <i data-lucide="shield-alert"></i> Request one-run confirmation
+                </button>
+              </form>
+              {% elif live_run_confirmation.decision_id %}
+              <a class="secondary-button link-button-muted full-width-button" href="/decisions/{{ live_run_confirmation.decision_id }}">
+                <i data-lucide="inbox"></i> Open run confirmation
+              </a>
+              {% elif live_operator.execution_enabled %}
+              <span class="status-pill needed">one-run confirmation needed</span>
+              <strong>Complete readiness before requesting a one-run confirmation.</strong>
+              {% else %}
+              <span class="status-pill manual">dry-run only</span>
+              <strong>One-run confirmation is required only when real execution is enabled.</strong>
+              {% endif %}
+            </div>
+            {% if live_operator_last_run.available %}
+            <div class="operator-last-run">
+              <h3>Last adapter capture</h3>
+              <div class="operator-command-grid">
+                <div>
+                  <span>Adapter</span>
+                  <strong>{{ live_operator_last_run.adapter }} / {{ live_operator_last_run.status }}</strong>
+                </div>
+                <div>
+                  <span>External execution</span>
+                  <strong>{{ live_operator_last_run.external_execution }}</strong>
+                </div>
+                <div>
+                  <span>Runner</span>
+                  <strong>{{ live_operator_last_runner.label|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Last command</span>
+                  <code>{{ live_operator_last_run.command_preview_text|default("No command recorded.", true) }}</code>
+                </div>
+                <div>
+                  <span>Duration</span>
+                  <strong>{{ live_operator_last_run.duration_ms|default(0, true) }} ms</strong>
+                </div>
+                <div>
+                  <span>Stdout capture</span>
+                  <strong>{{ live_operator_stdout_capture.bytes|default(0, true) }} bytes {{ live_operator_stdout_capture.sha256|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Stderr capture</span>
+                  <strong>{{ live_operator_stderr_capture.bytes|default(0, true) }} bytes {{ live_operator_stderr_capture.sha256|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Pilot confirmation</span>
+                  <strong>{{ live_operator_last_preflight.manual_pilot_confirmation|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Run token</span>
+                  <strong>{{ live_operator_last_preflight.run_confirmation_decision_id|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Execution audit</span>
+                  <strong>{{ live_operator_last_audit.schema|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Command fingerprint</span>
+                  <strong>{{ live_operator_last_audit_command.sha256|default("not recorded", true) }}</strong>
+                </div>
+                <div>
+                  <span>Approval consumed</span>
+                  <strong>{{ live_operator_last_audit_approval.status|default("not recorded", true) }} {{ live_operator_last_audit_approval.consumed_by_generation_run_id|default("", true) }}</strong>
+                </div>
+                <div>
+                  <span>Post-run review</span>
+                  <strong>{{ live_operator_last_audit_review.status|default("not recorded", true) }}</strong>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <p class="empty-state">No adapter capture exists yet. Generate a dry-run artifact before enabling real execution.</p>
+            {% endif %}
+          </section>
+
+          <section class="panel review-contract-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact review contract</h2>
+                <p class="panel-kicker">Owner, generation run, sources, checks, and approval context before founder action.</p>
+              </div>
+              <i data-lucide="clipboard-check"></i>
+            </div>
+            {% if has_latest_artifact or generation_run %}
+            <div class="review-contract-grid">
+              <div>
+                <span>Owner agent</span>
+                <strong>
+                  {{ artifact.owner_name|default(active_stage.owner_name|default("Not assigned", true), true) }}
+                  {% if artifact.owner_command %} - {{ artifact.owner_command }}{% endif %}
+                </strong>
+              </div>
+              <div>
+                <span>Generation mode</span>
+                <strong>{{ artifact.generation_mode|default(generation_run.generation_mode|default("not recorded", true), true) }}</strong>
+              </div>
+              <div>
+                <span>Run status</span>
+                <strong>{% if generation_run %}{{ generation_run.status }}{% else %}No run recorded{% endif %}</strong>
+              </div>
+              <div>
+                <span>Run ID</span>
+                <strong>{{ generation_run.id|default("No run recorded", true) }}</strong>
+              </div>
+              <div>
+                <span>Source artifacts</span>
+                {% if artifact_sources %}
+                <strong>{{ artifact_sources|join(", ") }}</strong>
+                {% elif generation_run_sources %}
+                <strong>{{ generation_run_sources|join(", ") }}</strong>
+                {% else %}
+                <strong>No prior artifact required for this stage.</strong>
+                {% endif %}
+              </div>
+              <div>
+                <span>Memory used</span>
+                {% if artifact_memory_ids %}
+                <strong>{{ artifact_memory_ids|join(", ") }}</strong>
+                {% elif generation_run_memory_ids %}
+                <strong>{{ generation_run_memory_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>No approved memory context used.</strong>
+                {% endif %}
+              </div>
+              <div>
+                <span>Supporting agents</span>
+                {% if artifact.supporting_agent_ids %}
+                <strong>{{ artifact.supporting_agent_ids|join(", ") }}</strong>
+                {% else %}
+                <strong>None</strong>
+                {% endif %}
+              </div>
+              {% if generation_run.error %}
+              <div>
+                <span>Run error</span>
+                <strong>{{ generation_run.error }}</strong>
+              </div>
+              {% endif %}
+            </div>
+            <div class="quality-check-list" aria-label="Quality checks">
+              <h3>Quality checks</h3>
+              {% for check in artifact_checks %}
+              <div class="quality-check-row">
+                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                <div>
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.evidence }}</small>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">Generate an artifact to see quality checks.</p>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state">
+              Generate this stage to see owner metadata, generation mode, source artifacts,
+              quality checks, and the next founder decision.
+            </p>
+            {% endif %}
+          </section>
+
+          <section class="panel intake-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Founder Intake</h2>
+                <p class="panel-kicker">Structured context captured before generation.</p>
+              </div>
+              <i data-lucide="clipboard-list"></i>
+            </div>
+            <div class="intake-grid">
+              <div>
+                <span>Target audience</span>
+                <strong>{{ intake.target_customer|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Problem statement</span>
+                <strong>{{ intake.problem|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Constraints</span>
+                <strong>{{ intake.constraints|default("Not specified", true) }}</strong>
+              </div>
+              <div>
+                <span>Success metrics</span>
+                <strong>{{ intake.success_metric|default("Not specified", true) }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel project-memory-panel" id="project-memory">
+            <div class="panel-header">
+              <div>
+                <h2>Project Memory</h2>
+                <p class="panel-kicker">
+                  Reusable context for founder decisions, strategy, standards, risks, and launch lessons.
+                </p>
+              </div>
+              <span class="status-pill {% if memory_aggregate.reusable_count %}ready{% else %}manual{% endif %}">
+                {{ memory_aggregate.reusable_count|default(0, true) }} reusable
+              </span>
+            </div>
+            <div class="memory-summary-strip" aria-label="Project memory summary">
+              <span>Reusable context: {{ memory_aggregate.reusable_count|default(0, true) }}</span>
+              <span>Total: {{ memory_aggregate.total_count|default(0, true) }}</span>
+              <span>Stale: {{ memory_aggregate.stale_count|default(0, true) }}</span>
+              <span>Retired: {{ memory_aggregate.retired_count|default(0, true) }}</span>
+            </div>
+            <div class="memory-policy-card" aria-label="Project memory auto-reuse policy">
+              <div>
+                <span>Auto-reuse policy</span>
+                <strong>{{ memory_reuse.source|default("product_wizard_memory_policy_disabled", true) }}</strong>
+                <small>
+                  {% if memory_reuse.enabled %}enabled{% else %}disabled{% endif %}
+                  - max {{ memory_reuse.max_entries|default(0, true) }} entries per prompt
+                </small>
+              </div>
+              <div>
+                <span>Allowed auto-reuse categories</span>
+                <div class="audit-chip-list">
+                  {% for category in memory_reuse_categories %}
+                  <span class="audit-chip">{{ category.label }}</span>
+                  {% else %}
+                  <span class="audit-chip muted">None</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="memory-entry-list" aria-label="Project memory entries">
+              {% for entry in memory_entries %}
+              <div class="memory-entry-row {% if entry.reusable %}reusable{% elif entry.status == 'retired' %}retired{% else %}stale{% endif %}">
+                <div>
+                  <span class="status-pill {{ entry.status }}">{{ entry.status }}</span>
+                  {% if entry.reusable %}
+                  <span class="status-pill ready">Reusable context</span>
+                  {% elif entry.expired or entry.review_due %}
+                  <span class="status-pill needed">review needed</span>
+                  {% endif %}
+                  {% if entry.pinned %}
+                  <span class="status-pill planned">pinned</span>
+                  {% endif %}
+                  <strong>{{ entry.title }}</strong>
+                  <small>
+                    {{ entry.category_label }} - {{ entry.scope_label }} - {{ entry.confidence }}
+                    - {{ entry.owner_name|default(entry.owner_agent_id, true) }}
+                  </small>
+                  <p>{{ entry.summary }}</p>
+                </div>
+                <div class="memory-entry-actions">
+                  {% if entry.status != "retired" %}
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="{% if entry.pinned %}unpin{% else %}pin{% endif %}">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="{% if entry.pinned %}pin-off{% else %}pin{% endif %}"></i>
+                      {% if entry.pinned %}Unpin{% else %}Pin{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="retire">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="archive"></i>
+                      Retire
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="/projects/{{ project.id }}/memory/{{ entry.id }}">
+                    <input type="hidden" name="memory_action" value="reactivate">
+                    <button class="secondary-button full-width-button" type="submit">
+                      <i data-lucide="rotate-ccw"></i>
+                      Reactivate
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">
+                No project memory yet. Add founder-approved preferences, decisions, standards,
+                or launch lessons before allowing agents to reuse context.
+              </p>
+              {% endfor %}
+            </div>
+            <div class="memory-export-actions">
+              <a
+                class="secondary-button link-button-muted full-width-button"
+                href="/projects/{{ project.id }}/memory.json"
+              >
+                <i data-lucide="braces"></i>
+                Memory package JSON
+              </a>
+              <a
+                class="secondary-button link-button-muted full-width-button"
+                href="/projects/{{ project.id }}/memory.md"
+              >
+                <i data-lucide="file-text"></i>
+                Memory package MD
+              </a>
+            </div>
+            <form class="memory-create-form" method="post" action="/projects/{{ project.id }}/memory">
+              <h3>Add founder-approved memory</h3>
+              <label>
+                Category
+                <select name="category">
+                  {% for option in memory_categories %}
+                  <option value="{{ option.id }}">{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Type
+                <input name="memory_type" value="context" autocomplete="off">
+              </label>
+              <label>
+                Owner
+                <select name="owner_agent_id">
+                  {% for owner in memory_owners %}
+                  <option value="{{ owner.id }}" {% if owner.id == "chief-of-staff" %}selected{% endif %}>{{ owner.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                Confidence
+                <select name="confidence">
+                  {% for option in memory_confidences %}
+                  <option value="{{ option.id }}" {% if option.id == "medium" %}selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="form-span">
+                Title
+                <input name="title" placeholder="Founder preference, standard, accepted risk, or lesson">
+              </label>
+              <label class="form-span">
+                Summary
+                <input name="summary" placeholder="One sentence the founder can review quickly">
+              </label>
+              <label class="form-span">
+                Body
+                <textarea name="body" rows="3" placeholder="Reusable context. Do not include credentials or customer secrets."></textarea>
+              </label>
+              <label>
+                Source
+                <input name="source" value="founder-memory-form" autocomplete="off">
+              </label>
+              <label>
+                Review after
+                <input name="review_after" type="datetime-local">
+              </label>
+              <label>
+                Expires at
+                <input name="expires_at" type="datetime-local">
+              </label>
+              <label class="checkbox-label">
+                <input name="pinned" type="checkbox">
+                Pin for founder review
+              </label>
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="brain"></i>
+                Save memory
+              </button>
+            </form>
+          </section>
+
+          <section class="panel artifact-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact Preview</h2>
+                <p class="panel-kicker">{{ artifact_title }}</p>
+              </div>
+              <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
+            </div>
+            <article
+              class="artifact-preview"
+              id="artifact-preview"
+              aria-labelledby="artifact-preview-heading"
+              aria-describedby="artifact-status-summary"
+            >
+              <p id="artifact-status-summary" class="sr-only">
+                Artifact status {{ artifact_status }}{% if has_latest_artifact %}, version {{ artifact.version }}{% endif %}.
+              </p>
+              <h3 id="artifact-preview-heading">{{ artifact_title }}</h3>
+              {% if artifact_sections %}
+              <div class="artifact-section-list">
+                {% for section in artifact_sections %}
+                <section class="artifact-section">
+                  <h4>{{ section.title }}</h4>
+                  <p class="artifact-copy">{{ section.body }}</p>
+                </section>
+                {% endfor %}
+              </div>
+              {% else %}
+              <p class="artifact-copy">{{ artifact_body }}</p>
+              {% endif %}
+            </article>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Generated Company Workflow</h2>
+                <p class="panel-kicker">
+                  {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
+                </p>
+              </div>
+            </div>
+            <div class="integration-table compact-table">
+              {% for item in workflow_items %}
+              <div class="integration-row workflow-item-row">
+                <div>
+                  <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
+                  {% if item.kanban_task_id %}
+                  <p>Hermes Kanban task: {{ item.kanban_task_id }}</p>
+                  {% endif %}
+                </div>
+                <div class="integration-actions">
+                  <code>Task: {{ item.task_id }}</code>
+                  <code>Document: {{ item.document_id }}</code>
+                </div>
+              </div>
+              {% else %}
+              <p class="empty-state">No workflow items have been generated yet.</p>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Agent Work Queue</h2>
+                <p class="panel-kicker">Read-first operating queue linked to wizard stages.</p>
+              </div>
+              <a href="/queue?project_id={{ project.id }}">Open</a>
+            </div>
+            <div class="queue-strip compact">
+              {% for item in queue_items %}
+              <a class="queue-strip-row" href="/queue?project_id={{ project.id }}&owner_agent_id={{ item.owner_agent_id }}">
+                <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>
+                    {{ item.owner_name }} - {{ item.priority }}
+                    {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
+                  </small>
+                  {% if item.status == "blocked" %}
+                  <p>{{ item.blocked_reason }}</p>
+                  {% endif %}
+                </div>
+                {% if item.founder_action_required %}
+                <span class="status-pill urgent">founder</span>
+                {% endif %}
+              </a>
+              {% else %}
+              <p class="empty-state">No agent work items have been created for this project.</p>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel" id="multi-agent-review">
+            <div class="panel-header">
+              <div>
+                <h2>Multi-agent Review</h2>
+                <p class="panel-kicker">
+                  {% if review_aggregate.status == "approved" %}
+                  Review approved - {{ review_aggregate.reviewer_count }} reviewer records.
+                  {% elif review_package.ready %}
+                  Approved artifacts are ready for reviewer acceptance checks.
+                  {% else %}
+                  Review waits for approved code plan and acceptance package.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ review_aggregate.status|default('blocked', true) }}">
+                {{ review_aggregate.status|default("blocked", true) }}
+              </span>
+            </div>
+            {% if review_records %}
+            <div class="quality-check-list" aria-label="Multi-agent review records">
+              {% for reviewer in review_records %}
+              <div class="quality-check-row">
+                <span>{{ reviewer.reviewer_name }} <code>{{ reviewer.reviewer_agent_id }}</code></span>
+                <span class="status-pill {{ reviewer.verdict }}">{{ reviewer.verdict }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state gate-copy">
+              {% if review_package.blocker %}
+              {{ review_package.blocker }}
+              {% else %}
+              Run the reviewer loop to create QA, test automation, product, engineering,
+              and UI/UX research acceptance records.
+              {% endif %}
+            </p>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/multi-agent-review.json"
+            >
+              <i data-lucide="braces"></i>
+              Review package JSON
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/multi-agent-review.md"
+            >
+              <i data-lucide="file-text"></i>
+              Review package MD
+            </a>
+            {% if review_package.ready and review_aggregate.status != "approved" %}
+            <form method="post" action="/projects/{{ project.id }}/multi-agent-review">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="scan-search"></i>
+                Run multi-agent review
+              </button>
+            </form>
+            {% elif not review_package.ready %}
+            <button
+              class="secondary-button full-width-button"
+              type="button"
+              disabled
+            >
+              <i data-lucide="lock"></i>
+              Run multi-agent review
+            </button>
+            {% else %}
+            <span class="status-pill approved">Review approved</span>
+            {% endif %}
+          </section>
+        </div>
+
+        <aside class="stage-side-column">
+          <section class="panel readiness-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Founder Readiness</h2>
+                <p class="panel-kicker">Decision and handoff gates.</p>
+              </div>
+              <i data-lucide="shield-check"></i>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>Current stage</span>
+                <strong>{{ active_stage_label }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Task stage</span>
+                <strong>{% if task_gate_ready %}Approved{% else %}Awaiting approval{% endif %}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Latest artifact</span>
+                <strong>{{ artifact_status }}</strong>
+              </div>
+              {% if founder_decision_items %}
+              {% for decision in founder_decision_items %}
+              <a class="readiness-line linked-readiness-line" href="/decisions/{{ decision.id }}">
+                <span>{{ decision.title|default("Founder decision") }}</span>
+                <strong>{{ decision.status|default("needs_input") }}</strong>
+              </a>
+              {% endfor %}
+              {% else %}
+              <div class="readiness-line">
+                <span>Founder decision</span>
+                <strong>Not requested</strong>
+              </div>
+              {% endif %}
+            </div>
+          </section>
+
+          <section class="panel operating-loop-panel" id="external-operating-loop">
+            <div class="panel-header">
+              <div>
+                <h2>External Operating Loop</h2>
+                <p class="panel-kicker">
+                  {% if operating_loop_aggregate.ready %}
+                  Operating loop ready. Manual review only; no external dispatch is enabled.
+                  {% else %}
+                  External dispatch disabled until Slack, Telegram, and Kanban gates are ready.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ operating_loop_aggregate.status|default('blocked', true) }}">
+                {{ operating_loop_aggregate.status|default("blocked", true) }}
+              </span>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>External dispatch</span>
+                <strong>
+                  {% if operating_loop_policy.external_dispatch_enabled %}
+                  External dispatch enabled
+                  {% else %}
+                  External dispatch disabled
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="readiness-line">
+                <span>Dispatch mode</span>
+                <strong>Manual review only</strong>
+              </div>
+              {% for lane in operating_loop_lanes %}
+              <a class="readiness-line linked-readiness-line" href="{{ lane.setup_href }}">
+                <span>{{ lane.label }}</span>
+                <strong>{{ lane.status }}</strong>
+                {% if lane.blockers %}
+                <small>{{ lane.blockers|first }}</small>
+                {% endif %}
+              </a>
+              {% endfor %}
+            </div>
+            {% if operating_loop_next_actions %}
+            <div class="quality-check-list" aria-label="External operating loop next actions">
+              {% for action in operating_loop_next_actions %}
+              <a class="quality-check-row linked-readiness-line" href="{{ action.href }}">
+                <span>{{ action.label }}</span>
+                <span>{{ action.detail }}</span>
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/operating-loop.json"
+            >
+              <i data-lucide="braces"></i>
+              Operating loop JSON
+            </a>
+          </section>
+
+          <section class="panel dispatch-preview-panel" id="external-dispatch-preview">
+            <div class="panel-header">
+              <div>
+                <h2>External Dispatch Preview</h2>
+                <p class="panel-kicker">
+                  {% if dispatch_preview_queue.status == "ready_for_review" %}
+                  Ready for founder review. Dispatch remains disabled until a separate live connector approval.
+                  {% else %}
+                  Dispatch remains disabled while operating-loop readiness is blocked.
+                  {% endif %}
+                </p>
+              </div>
+              <span class="status-pill {{ dispatch_preview_queue.status|default('blocked', true) }}">
+                {{ dispatch_preview_queue.status|default("blocked", true)|replace("_", " ") }}
+              </span>
+            </div>
+            <div class="readiness-stack">
+              <div class="readiness-line">
+                <span>Dispatch policy</span>
+                <strong>
+                  {% if dispatch_preview_policy.external_dispatch_enabled %}
+                  Live dispatch enabled
+                  {% else %}
+                  Dispatch remains disabled
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="readiness-line">
+                <span>Preview items</span>
+                <strong>{{ dispatch_preview_queue.preview_item_count|default(0, true) }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Sendable items</span>
+                <strong>{{ dispatch_preview_queue.sendable_item_count|default(0, true) }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Approval</span>
+                <strong>{{ dispatch_preview_approval.status|default("not requested", true)|replace("_", " ") }}</strong>
+              </div>
+              <div class="readiness-line">
+                <span>Runner</span>
+                <strong>
+                  {% if dispatch_preview_runner.external_dispatch_enabled %}
+                  External dispatch runner enabled
+                  {% else %}
+                  External dispatch runner disabled
+                  {% endif %}
+                </strong>
+              </div>
+              <div class="readiness-line">
+                <span>Command boundary</span>
+                <strong>{{ dispatch_preview_command_boundary.name|default("Hermes command boundary", true) }}</strong>
+              </div>
+            </div>
+            {% if dispatch_preview_items %}
+            <div class="quality-check-list" aria-label="External dispatch preview queue">
+              <h3>Review previews</h3>
+              {% for item in dispatch_preview_items %}
+              <div class="quality-check-row dispatch-preview-row">
+                <span>
+                  {{ item.label }}
+                  <small>{{ item.platform }} - {{ item.owner_agent_id }}</small>
+                </span>
+                <span class="status-pill {{ item.status }}">
+                  {{ item.status|replace("_", " ") }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if dispatch_preview_next_actions %}
+            <div class="quality-check-list" aria-label="External dispatch preview next actions">
+              {% for action in dispatch_preview_next_actions %}
+              <a class="quality-check-row linked-readiness-line" href="{{ action.href }}">
+                <span>{{ action.label }}</span>
+                <span>{{ action.detail }}</span>
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if dispatch_preview_latest_audit %}
+            <div class="quality-check-list" aria-label="External dispatch approval audit">
+              <h3>Dispatch approval consumed</h3>
+              <div class="quality-check-row">
+                <span>Audit event</span>
+                <span>{{ dispatch_preview_latest_audit.event_id }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>Preview fingerprint</span>
+                <span>{{ dispatch_preview_latest_audit.preview_fingerprint.sha256 }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>External dispatch still disabled</span>
+                <span class="status-pill consumed">consumed</span>
+              </div>
+            </div>
+            {% endif %}
+            {% if dispatch_preview_latest_runner %}
+            <div class="quality-check-list" aria-label="External dispatch runner evidence">
+              <h3>Runner evidence</h3>
+              <div class="quality-check-row">
+                <span>
+                  {% if dispatch_preview_latest_runner.status == "succeeded" %}
+                  External dispatch runner completed
+                  {% else %}
+                  External dispatch runner disabled
+                  {% endif %}
+                </span>
+                <span class="status-pill {{ dispatch_preview_latest_runner.status }}">
+                  {{ dispatch_preview_latest_runner.status }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Runner label</span>
+                <span>{{ dispatch_preview_latest_runner.runner_label }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>{{ dispatch_preview_command_boundary.name|default("Hermes command boundary", true) }}</span>
+                <span class="status-pill {{ dispatch_preview_command_boundary.status|default('disabled', true) }}">
+                  {{ dispatch_preview_command_boundary.status|default("disabled", true) }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Command fingerprints</span>
+                <span>{{ dispatch_preview_command_fingerprints|length }} contracts</span>
+              </div>
+              <div class="quality-check-row">
+                <span>
+                  {% if dispatch_preview_latest_runner.dispatch_attempted %}
+                  Dispatch attempted
+                  {% else %}
+                  No live send attempted
+                  {% endif %}
+                </span>
+                <span>{{ dispatch_preview_latest_runner.result_count }} results</span>
+              </div>
+            </div>
+            {% endif %}
+            {% if dispatch_preview_approval.request_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-approval">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="shield-check"></i>
+                Request dispatch approval
+              </button>
+            </form>
+            {% elif dispatch_preview_approval.request_open %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/decisions/{{ dispatch_preview_approval.id }}"
+            >
+              <i data-lucide="inbox"></i>
+              Open dispatch approval {{ dispatch_preview_approval.id }}
+            </a>
+            {% elif dispatch_preview_audit.consume_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-audit">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="fingerprint"></i>
+                Record approval consumption audit
+              </button>
+            </form>
+            {% elif dispatch_preview_runner.run_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="send"></i>
+                Run external dispatch
+              </button>
+            </form>
+            {% elif dispatch_preview_audit.blocker and not dispatch_preview_latest_audit %}
+            <p class="empty-state gate-copy">{{ dispatch_preview_audit.blocker }}</p>
+            {% elif dispatch_preview_runner.blocker and dispatch_preview_latest_audit and not dispatch_preview_latest_runner %}
+            <form method="post" action="/projects/{{ project.id }}/external-dispatch-run">
+              <button class="secondary-button full-width-button" type="submit">
+                <i data-lucide="lock"></i>
+                Record disabled runner evidence
+              </button>
+            </form>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/external-dispatch-preview.json"
+            >
+              <i data-lucide="braces"></i>
+              Dispatch preview JSON
+            </a>
+          </section>
+
+          <section class="panel kanban-gate-panel" id="kanban-push">
+            <div class="panel-header">
+              <div>
+                <h2>Kanban Push</h2>
+                <p class="panel-kicker">Visible after task-stage approval and Kanban verification.</p>
+              </div>
+              <i data-lucide="kanban-square"></i>
+            </div>
+            {% if kanban_gate_open %}
+            <form method="post" action="/projects/{{ project.id }}/kanban">
+              <button class="primary-button full-width-button" type="submit">
+                <i data-lucide="list-plus"></i>
+                Push workflow to Kanban
+              </button>
+            </form>
+            {% else %}
+            <p class="empty-state gate-copy" id="kanban-gate-reason">
+              {% if not task_gate_ready %}
+              Approve the tasks stage before pushing workflow items to Hermes Kanban.
+              {% elif kanban_blocker %}
+              {{ kanban_blocker }}
+              {% else %}
+              Kanban verification must be ready before external handoff.
+              {% endif %}
+            </p>
+            <button
+              class="primary-button full-width-button"
+              type="button"
+              disabled
+              aria-describedby="kanban-gate-reason"
+            >
+              <i data-lucide="lock"></i>
+              Push workflow to Kanban
+            </button>
+            {% if not kanban_ready %}
+            <a class="secondary-button link-button-muted full-width-button" href="/setup#kanban-verification">
+              <i data-lucide="shield-alert"></i>
+              Kanban verification
+            </a>
+            {% endif %}
+            {% endif %}
+          </section>
+
+          <section class="panel codex-gate-panel" id="codex-execution">
+            <div class="panel-header">
+              <div>
+                <h2>Codex Execution</h2>
+                <p class="panel-kicker">Future implementation handoff remains founder-gated.</p>
+              </div>
+              <i data-lucide="square-terminal"></i>
+            </div>
+            <p class="empty-state gate-copy" id="codex-gate-reason">
+              {% if codex_latest_run.status == "completed" %}
+              Git worktree ready. Founder-approved Codex execution created the planned
+              branch/worktree; Codex process spawning still requires the next review gate.
+              {% elif codex_runner.queue_open %}
+              Codex runner queued. Approval consumed into a source-only audit record;
+              actual branch, worktree, and Codex process execution remain disabled.
+              {% elif codex_state.founder_approved_for_execution %}
+              Codex execution is founder-approved. Real workstream launch is still disabled
+              until a separate runner implementation exists. You can queue the disabled
+              runner record to preserve approval consumption evidence.
+              {% elif codex_state.approval_request_open %}
+              Open Codex execution approval: {{ codex_state.decision_id }}.
+              {% elif codex_state.ready_for_founder_approval %}
+              Codex package is ready for founder approval. Export the package, then request
+              approval before any branch, worktree, or parallel workstream starts.
+              {% else %}
+              Codex package locked until code plan and acceptance artifacts are approved.
+              Future Codex execution requires approved code plan, approved acceptance package,
+              and a separate founder execution approval before real branches or parallel workstreams start.
+              {% endif %}
+            </p>
+            {% if codex_gates %}
+            <div class="quality-check-list" aria-label="Codex execution gates">
+              {% for gate in codex_gates.values() %}
+              <div class="quality-check-row">
+                <span>{{ gate.label }}</span>
+                <span class="status-pill {{ gate.status }}">{{ gate.status }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if codex_branch_plan.branch_name %}
+            <p class="panel-kicker">
+              Branch preview: <code>{{ codex_branch_plan.branch_name }}</code>
+            </p>
+            {% endif %}
+            {% if codex_latest_run %}
+            <div class="quality-check-list" aria-label="Codex runner evidence">
+              <div class="quality-check-row">
+                <span>Runner status</span>
+                <span class="status-pill {{ codex_latest_run.status }}">
+                  {{ codex_latest_run.status }}
+                </span>
+              </div>
+              <div class="quality-check-row">
+                <span>Approval consumed</span>
+                <span>{{ codex_latest_run.decision_id }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>Run ID</span>
+                <span>{{ codex_latest_run.id }}</span>
+              </div>
+              <div class="quality-check-row">
+                <span>External execution</span>
+                {% if codex_latest_run.external_execution_enabled %}
+                <span class="status-pill urgent">External execution enabled</span>
+                {% else %}
+                <span class="status-pill manual">External execution disabled</span>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/codex-execution.json"
+            >
+              <i data-lucide="braces"></i>
+              Codex package JSON
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/codex-execution.md"
+            >
+              <i data-lucide="file-text"></i>
+              Codex package MD
+            </a>
+            {% if codex_state.approval_request_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-approval">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="shield-check"></i>
+                Request Codex execution approval
+              </button>
+            </form>
+            {% elif codex_state.approval_request_open %}
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/decisions/{{ codex_state.decision_id }}"
+            >
+              <i data-lucide="external-link"></i>
+              Open Codex execution approval
+            </a>
+            {% elif codex_state.founder_approved_for_execution %}
+            <span class="status-pill ready">founder-approved</span>
+            {% endif %}
+            {% if codex_runner.queue_request_allowed %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="list-start"></i>
+                Queue Codex runner
+              </button>
+            </form>
+            {% elif codex_runner.queue_open %}
+            <span class="status-pill queued">Codex runner queued</span>
+            {% elif codex_latest_run.status == "completed" %}
+            <span class="status-pill ready">Git worktree ready</span>
+            {% endif %}
+            {% if codex_runner.queue_open %}
+            <form method="post" action="/projects/{{ project.id }}/codex-execution-real-run">
+              <button class="warning-button full-width-button" type="submit">
+                <i data-lucide="git-branch-plus"></i>
+                Start Git worktree runner
+              </button>
+            </form>
+            {% endif %}
+            <button
+              class="secondary-button full-width-button"
+              type="button"
+              disabled
+              aria-describedby="codex-gate-reason"
+            >
+              <i data-lucide="lock"></i>
+              Start Codex workstreams
+            </button>
+          </section>
+
+          <section class="panel stage-artifacts-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Artifact history</h2>
+                <p class="panel-kicker">Generated outputs by stage.</p>
+              </div>
+              <i data-lucide="files"></i>
+            </div>
+            <div class="artifact-list">
+              {% for stage in stages %}
+              {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
+              {% set stage_label = stage.label|default(stage.name|default(stage_id|replace("_", " ")|title, true), true) %}
+              {% set stage_artifact_list = artifacts_by_stage.get(stage_id, []) %}
+              <div class="artifact-list-row">
+                <strong>{{ stage_label }}</strong>
+                <small>
+                  {% if stage_artifact_list %}
+                  {{ stage_artifact_list|length }} artifacts
+                  {% else %}
+                  Waiting
+                  {% endif %}
+                </small>
+              </div>
+              {% if stage_artifact_list %}
+              <div class="artifact-version-list">
+                {% for artifact_item in stage_artifact_list %}
+                <a
+                  href="/projects/{{ project.id }}?artifact_id={{ artifact_item.id }}#artifact-preview"
+                  class="artifact-version-chip {% if selected_artifact_id == artifact_item.id %}active{% endif %}"
+                  aria-label="Inspect {{ stage_label }} artifact version {{ artifact_item.version }} with status {{ artifact_item.status }}"
+                >
+                  Version {{ artifact_item.version }} - {{ artifact_item.status }}
+                  {% if artifact_item.owner_name %} - {{ artifact_item.owner_name }}{% endif %}
+                </a>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </section>
+        </aside>
       </section>
     </main>
     <script>lucide.createIcons();</script>

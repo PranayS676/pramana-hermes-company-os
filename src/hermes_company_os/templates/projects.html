@@ -21,23 +21,48 @@
           <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
           <a href="/setup"><i data-lucide="settings-2"></i> Setup</a>
           <a class="active" href="/projects"><i data-lucide="rocket"></i> Projects</a>
+          <a href="/decisions"><i data-lucide="gavel"></i> Decisions</a>
         </nav>
       </aside>
-      <main class="content">
-        <section class="topbar">
+      <main class="content projects-workspace">
+        <section class="topbar workspace-topbar">
           <div>
-            <p class="eyebrow">Idea phase ready</p>
+            <p class="eyebrow">Product workspace</p>
             <h1>Company kickoff workflows</h1>
+            <p class="page-subtitle">
+              Shape a founder idea into staged research, PRD, architecture, tasks,
+              code planning, and acceptance evidence.
+            </p>
           </div>
-          <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
-            <i data-lucide="shield-check"></i> Kickoff readiness
-          </a>
-          <a class="primary-button link-button" href="/setup/idea-intake.md">
-            <i data-lucide="clipboard-list"></i> Idea intake
-          </a>
+          <div class="topbar-actions">
+            <a class="secondary-button link-button-muted" href="/setup/kickoff-readiness.md">
+              <i data-lucide="shield-check"></i> Kickoff readiness
+            </a>
+            <a class="secondary-button link-button-muted" href="/setup/idea-intake.md">
+              <i data-lucide="clipboard-list"></i> Idea intake
+            </a>
+            <a class="primary-button link-button" href="/projects/new">
+              <i data-lucide="sparkles"></i> New product wizard
+            </a>
+          </div>
         </section>
 
-        <section class="notice-band">
+        <section class="workspace-summary" aria-label="Project workspace summary">
+          <div>
+            <span>{{ projects|length }}</span>
+            <small>Active projects</small>
+          </div>
+          <div>
+            <span>{{ templates|length }}</span>
+            <small>Workflow templates</small>
+          </div>
+          <div>
+            <span>{% if kickoff_readiness.live_kickoff_ready %}Ready{% else %}Draft{% endif %}</span>
+            <small>{{ kickoff_readiness.mode }}</small>
+          </div>
+        </section>
+
+        <section class="notice-band workspace-notice">
           <strong>Kickoff readiness</strong>
           <span>
             {{ kickoff_readiness.mode }}
@@ -48,11 +73,48 @@
           </span>
         </section>
 
-        <section class="workspace-grid">
-          <div class="panel">
+        <section class="workspace-grid project-workspace-grid">
+          <div class="panel project-list-panel">
             <div class="panel-header">
-              <h2>New Company Idea</h2>
-              <a href="/setup/idea-intake.md">Intake packet</a>
+              <div>
+                <h2>Projects</h2>
+                <p class="panel-kicker">One staged workflow per product bet.</p>
+              </div>
+              <a class="primary-button link-button compact-button" href="/projects/new">
+                <i data-lucide="plus"></i> New
+              </a>
+            </div>
+            <div class="item-list">
+              {% for project in projects %}
+              <a class="project-row polished-project-row" href="/projects/{{ project.id }}">
+                <div>
+                  <strong>{{ project.name }}</strong>
+                  <small>{{ project.status }} - {{ project.workflow_count }} workflow items</small>
+                </div>
+                <span class="status-pill {{ project.status }}">{{ project.status }}</span>
+                <i data-lucide="chevron-right"></i>
+              </a>
+              {% else %}
+              <div class="empty-workspace">
+                <i data-lucide="folder-plus"></i>
+                <div>
+                  <strong>No company projects yet.</strong>
+                  <p class="empty-state">
+                    New product workflows appear here after creation.
+                  </p>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <aside class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>New Product Wizard</h2>
+                <p class="panel-kicker">Basics, audience, constraints, review.</p>
+              </div>
+              <i data-lucide="wand-sparkles"></i>
             </div>
             {% if not kickoff_readiness.live_kickoff_ready %}
             <p class="empty-state">
@@ -60,56 +122,40 @@
               scheduled standups, and Kanban handoff as blocked until kickoff readiness is ready.
             </p>
             {% endif %}
-            <form class="stacked-form" method="post" action="/projects">
-              <label>
-                Project name
-                <input name="name" required placeholder="AI company concept">
-              </label>
-              <label>
-                Founder idea
-                <textarea name="founder_idea" rows="9" required placeholder="Paste the startup idea or rough direction here when ready."></textarea>
-              </label>
-              <button class="primary-button" type="submit">
-                <i data-lucide="rocket"></i> Create workflow
-              </button>
-            </form>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h2>Workflow Templates</h2>
+            <div class="wizard-launch-panel">
+              <div class="wizard-mini-steps">
+                <span><i data-lucide="badge-info"></i> Basics</span>
+                <span><i data-lucide="users"></i> Audience</span>
+                <span><i data-lucide="sliders-horizontal"></i> Constraints</span>
+                <span><i data-lucide="check-check"></i> Review</span>
+              </div>
+              <a class="primary-button link-button full-width-button" href="/projects/new">
+                <i data-lucide="arrow-right"></i> Open wizard
+              </a>
             </div>
-            <div class="item-list compact">
+          </aside>
+
+          <section class="panel full workflow-template-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Workflow Templates</h2>
+                <p class="panel-kicker">Default specialist handoff for every new product.</p>
+              </div>
+              <a href="/setup/project-workflow.md">Project workflow handoff</a>
+            </div>
+            <div class="template-stage-grid">
               {% for template in templates %}
-              <div class="run-row">
+              <div class="template-stage">
+                <span class="status-pill {{ template.priority }}">{{ template.priority }}</span>
                 <div>
                   <strong>{{ template.name }}</strong>
-                  <small>{{ template.phase }} - {{ template.owner_name }} - {{ template.priority }}</small>
+                  <small>{{ template.phase }} - {{ template.owner_name }} - {{ template.doc_type }}</small>
                 </div>
                 <p>{{ template.title_template }}</p>
               </div>
               {% endfor %}
             </div>
-          </div>
-
-          <div class="panel wide">
-            <div class="panel-header">
-              <h2>Projects</h2>
-            </div>
-            <div class="item-list">
-              {% for project in projects %}
-              <a class="project-row" href="/projects/{{ project.id }}">
-                <div>
-                  <strong>{{ project.name }}</strong>
-                  <small>{{ project.status }} - {{ project.workflow_count }} workflow items</small>
-                </div>
-                <i data-lucide="chevron-right"></i>
-              </a>
-              {% else %}
-              <p class="empty-state">No company projects yet.</p>
-              {% endfor %}
-            </div>
-          </div>
+          </section>
         </section>
       </main>
     </div>

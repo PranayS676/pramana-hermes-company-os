@@ -659,7 +659,7 @@
                   </label>
                   <label class="setup-input">
                     <span>Status</span>
-                    <select name="status">
+                    <select name="status" aria-label="Model preference status for {{ preference.agent_name }}">
                       {% for option in ["planned", "needs_secret", "ready_for_verification"] %}
                       <option value="{{ option }}" {% if preference.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
@@ -727,13 +727,18 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/profile-installation-checks/{{ check.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Installation status for {{ check.agent_name }} {{ check.label }}">
                       {% for option in ["needed", "verified", "blocked", "deferred"] %}
                       <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret installation evidence">
-                    <button class="icon-button" title="Save installation status" type="submit">
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret installation evidence"
+                      aria-label="Installation evidence for {{ check.agent_name }} {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save installation status" type="submit" aria-label="Save installation status for {{ check.agent_name }} {{ check.label }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -765,12 +770,13 @@
                   <p>Run after the profile command, model config, and external credential are ready.</p>
                   {% endif %}
                   {% if smoke_blocker %}
-                  <p>{{ smoke_blocker }}</p>
+                  <p id="profile-smoke-blocker-{{ preference.agent_id }}">{{ smoke_blocker }}</p>
                   {% endif %}
                   <form method="post" action="/setup/profile-smoke/{{ preference.agent_id }}">
                     <button
                       class="primary-button"
                       type="submit"
+                      {% if smoke_blocker %}aria-describedby="profile-smoke-blocker-{{ preference.agent_id }}"{% endif %}
                       {% if smoke_blocker %}disabled title="{{ smoke_blocker }}"{% endif %}
                     >
                       <i data-lucide="activity"></i> Run smoke check
@@ -832,13 +838,18 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/profile-acceptance-checks/{{ check.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Acceptance status for {{ check.agent_name }} {{ check.title }}">
                       {% for option in ["needed", "verified", "failed", "blocked", "deferred"] %}
                       <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret acceptance evidence">
-                    <button class="icon-button" title="Save acceptance status" type="submit">
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret acceptance evidence"
+                      aria-label="Acceptance evidence for {{ check.agent_name }} {{ check.title }}"
+                    >
+                    <button class="icon-button" title="Save acceptance status" type="submit" aria-label="Save acceptance status for {{ check.agent_name }} {{ check.title }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -897,13 +908,18 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/messaging-checks/{{ check.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Messaging status for {{ check.owner_name }} {{ check.label }}">
                       {% for option in ["needed", "loaded", "verified", "blocked", "deferred"] %}
                       <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
-                    <button class="icon-button" title="Save verification" type="submit">
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Messaging evidence for {{ check.owner_name }} {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save messaging verification for {{ check.owner_name }} {{ check.label }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -966,7 +982,7 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/secret-requirements/{{ secret.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Secret requirement status for {{ secret.label }}">
                       {% if secret.category == "llm" %}
                       {% set secret_status_options = ["needed", "loaded", "deferred"] %}
                       {% else %}
@@ -979,8 +995,13 @@
                       <option value="loaded">verified by smoke check</option>
                       {% endif %}
                     </select>
-                    <input name="notes" value="{{ secret.notes }}" placeholder="no secret values">
-                    <button class="icon-button" title="Save status" type="submit">
+                    <input
+                      name="notes"
+                      value="{{ secret.notes }}"
+                      placeholder="no secret values"
+                      aria-label="Secret requirement notes for {{ secret.label }}"
+                    >
+                    <button class="icon-button" title="Save status" type="submit" aria-label="Save secret requirement status for {{ secret.label }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -1101,13 +1122,18 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/schedule-checks/{{ check.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Schedule verification status for {{ check.label }}">
                       {% for option in ["needed", "verified", "blocked", "deferred"] %}
                       <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
-                    <button class="icon-button" title="Save verification" type="submit">
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Schedule verification evidence for {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save schedule verification for {{ check.label }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -1167,13 +1193,18 @@
                 </div>
                 <div class="integration-actions">
                   <form method="post" action="/setup/kanban-checks/{{ check.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Kanban verification status for {{ check.label }}">
                       {% for option in ["needed", "verified", "blocked", "deferred"] %}
                       <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <input name="evidence" value="{{ check.evidence }}" placeholder="non-secret evidence">
-                    <button class="icon-button" title="Save verification" type="submit">
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Kanban verification evidence for {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save Kanban verification for {{ check.label }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>
@@ -1207,12 +1238,12 @@
                 <div class="integration-actions">
                   <code>{{ integration.validation_command }}</code>
                   <form method="post" action="/setup/integrations/{{ integration.id }}">
-                    <select name="status">
+                    <select name="status" aria-label="Integration status for {{ integration.name }}">
                       {% for option in ["needs_input", "needs_setup", "ready", "configured", "deferred"] %}
                       <option value="{{ option }}" {% if integration.status == option %}selected{% endif %}>{{ option }}</option>
                       {% endfor %}
                     </select>
-                    <button class="icon-button" title="Save status" type="submit">
+                    <button class="icon-button" title="Save status" type="submit" aria-label="Save integration status for {{ integration.name }}">
                       <i data-lucide="save"></i>
                     </button>
                   </form>

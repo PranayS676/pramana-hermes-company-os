@@ -113,6 +113,76 @@ DEFAULT_FOUNDER_DECISIONS = [
 ]
 
 
+DEFAULT_PRODUCT_WIZARD_STAGES = [
+    {
+        "id": "research",
+        "name": "Research",
+        "description": (
+            "Validate the opportunity, audience, alternatives, risks, and open "
+            "questions."
+        ),
+        "owner_agent_id": "research-agent",
+        "sort_order": 10,
+        "artifact_type": "research",
+    },
+    {
+        "id": "prd",
+        "name": "PRD",
+        "description": (
+            "Define the narrow product problem, users, scope, non-goals, and "
+            "launch slice."
+        ),
+        "owner_agent_id": "product-manager",
+        "sort_order": 20,
+        "artifact_type": "prd",
+    },
+    {
+        "id": "architecture",
+        "name": "Architecture",
+        "description": (
+            "Choose system boundaries, core data model, interfaces, risks, and "
+            "operations."
+        ),
+        "owner_agent_id": "engineering-manager",
+        "sort_order": 30,
+        "artifact_type": "architecture",
+    },
+    {
+        "id": "tasks",
+        "name": "Tasks",
+        "description": (
+            "Break the approved plan into ordered implementation tasks and "
+            "dependencies."
+        ),
+        "owner_agent_id": "engineering-manager",
+        "sort_order": 40,
+        "artifact_type": "tasks",
+    },
+    {
+        "id": "code_plan",
+        "name": "Code Plan",
+        "description": (
+            "Map tasks to concrete files, modules, migrations, tests, and "
+            "validation gates."
+        ),
+        "owner_agent_id": "backend-engineer",
+        "sort_order": 50,
+        "artifact_type": "code_plan",
+    },
+    {
+        "id": "acceptance",
+        "name": "Acceptance",
+        "description": (
+            "Define launch acceptance criteria, regression coverage, and "
+            "remaining blockers."
+        ),
+        "owner_agent_id": "qa-critic",
+        "sort_order": 60,
+        "artifact_type": "acceptance",
+    },
+]
+
+
 DEFAULT_INTEGRATIONS = [
     {
         "id": "llm-provider",

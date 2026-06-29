@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+import hashlib
+import json
+import sqlite3
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -23,7 +26,22 @@ from hermes_company_os.activation_runner import (
     activation_runner_powershell,
 )
 from hermes_company_os.activation_sequence import activation_sequence_markdown
+from hermes_company_os.agent_work_queue import (
+    QUEUE_PRIORITIES,
+    QUEUE_PRIORITY_LABELS,
+    QUEUE_STATE_LABELS,
+    QUEUE_STATES,
+)
 from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
+from hermes_company_os.codex_execution import (
+    CODEX_EXECUTION_DECISION_SOURCE,
+    CODEX_EXECUTION_DECISION_TYPE,
+    CODEX_EXECUTION_STAGE_ID,
+    codex_execution_markdown,
+    codex_execution_package,
+    queue_codex_execution_run,
+    start_codex_execution_git_worktree,
+)
 from hermes_company_os.company_launch_drill import (
     company_launch_drill_json,
     company_launch_drill_markdown,
@@ -57,10 +75,13 @@ from hermes_company_os.first_run import (
     first_run_markdown,
     first_run_powershell,
 )
+from hermes_company_os.founder_control import project_founder_control_summary
 from hermes_company_os.founder_decisions import (
+    DECISION_TYPE_LABELS,
     RESOLVED_DECISION_STATUSES,
     founder_decisions_json,
     founder_decisions_markdown,
+    founder_decisions_payload,
 )
 from hermes_company_os.founder_handoff import (
     founder_handoff_json,
@@ -84,6 +105,17 @@ from hermes_company_os.gateway_operations import (
     gateway_operations_json,
     gateway_operations_markdown,
     gateway_operations_powershell,
+)
+from hermes_company_os.generation_service import (
+    LIVE_HERMES_GENERATION_MODE,
+    LOCAL_DEMO_GENERATION_MODE,
+    GenerationMode,
+    LiveHermesCommandAdapter,
+    LiveHermesGenerationService,
+    LocalDemoGenerationService,
+    StageGenerationRequest,
+    live_hermes_operator_preview,
+    normalize_generation_mode,
 )
 from hermes_company_os.hermes_client import HermesClient
 from hermes_company_os.hermes_runtime import (
@@ -113,6 +145,14 @@ from hermes_company_os.kickoff_readiness import (
     kickoff_readiness_json,
     kickoff_readiness_markdown,
     kickoff_readiness_payload,
+)
+from hermes_company_os.live_hermes_readiness import (
+    LIVE_HERMES_DECISION_SOURCE,
+    LIVE_HERMES_DECISION_TYPE,
+    LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+    LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+    evaluate_live_hermes_readiness,
+    evaluate_live_hermes_run_confirmation,
 )
 from hermes_company_os.live_verification import live_verification_markdown
 from hermes_company_os.llm_artifacts import (
@@ -154,6 +194,15 @@ from hermes_company_os.messaging_verification_import import (
     messaging_verification_template_markdown,
     parse_messaging_verification_reply,
 )
+from hermes_company_os.multi_agent_review import (
+    generate_multi_agent_review,
+    multi_agent_review_markdown,
+    multi_agent_review_package,
+)
+from hermes_company_os.product_wizard import (
+    FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+    ProductWizardIntake,
+)
 from hermes_company_os.profile_acceptance import (
     profile_acceptance_json,
     profile_acceptance_markdown,
@@ -169,6 +218,10 @@ from hermes_company_os.profile_artifacts import (
     profile_artifacts_markdown,
     profile_manifest_json,
     profile_soul_markdown,
+)
+from hermes_company_os.profile_handoff_contracts import (
+    profile_handoff_contract,
+    profile_handoff_contract_markdown,
 )
 from hermes_company_os.profile_installation import (
     profile_installation_json,
@@ -197,6 +250,18 @@ from hermes_company_os.progress_board import (
     progress_board_json,
     progress_board_markdown,
 )
+from hermes_company_os.project_memory import (
+    memory_category_options,
+    memory_confidence_options,
+    memory_reuse_policy_summary,
+    product_wizard_memory_context,
+    project_memory_markdown,
+    project_memory_package,
+)
+from hermes_company_os.project_operating_loop import (
+    project_external_dispatch_preview_package,
+    project_operating_loop_package,
+)
 from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
     project_workflow_markdown,
@@ -204,6 +269,9 @@ from hermes_company_os.project_workflow_artifacts import (
 from hermes_company_os.prompts import build_agent_prompt, build_standup_prompt
 from hermes_company_os.readiness import ReadinessService
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.routers.external_dispatch import (
+    register_external_dispatch_routes,
+)
 from hermes_company_os.runtime_preflight import (
     runtime_preflight_checks,
     runtime_preflight_json,
@@ -300,6 +368,19 @@ from hermes_company_os.verification_evidence import (
 )
 
 PACKAGE_ROOT = Path(__file__).parent
+LIVE_HERMES_PILOT_CONFIRMATION_PHRASE = "RUN LIVE HERMES"
+LIVE_HERMES_PILOT_CONFIRMATION_ERROR = (
+    "Live Hermes manual pilot blocked: type RUN LIVE HERMES before real execution."
+)
+DECISION_STATUS_OPTIONS = ("needed", "blocked", "approved", "rejected", "deferred")
+REVISION_REASON_LABELS = {
+    "evidence_gap": "Evidence gap",
+    "scope_issue": "Scope issue",
+    "risk_concern": "Risk concern",
+    "test_gap": "Test gap",
+    "owner_mismatch": "Owner mismatch",
+    "acceptance_concern": "Acceptance concern",
+}
 
 
 def reject_secret_values(values: dict[str, str]) -> None:
@@ -307,6 +388,16 @@ def reject_secret_values(values: dict[str, str]) -> None:
         assert_no_secret_values(values)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def safe_return_path(return_to: str, fallback: str) -> str:
+    if return_to.startswith("/") and not return_to.startswith("//"):
+        return return_to
+    return fallback
+
+
+def form_checkbox_checked(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes", "on", "confirmed"}
 
 
 def kanban_project_push_blocker(repository: CompanyRepository) -> str:
@@ -325,6 +416,26 @@ def kanban_project_push_blocker(repository: CompanyRepository) -> str:
     )
 
 
+def project_task_stage_approved(repository: CompanyRepository, project_id: str) -> bool:
+    stages = repository.list_project_wizard_stages(project_id)
+    if not stages:
+        return True
+    task_stage = next((stage for stage in stages if stage["stage_id"] == "tasks"), None)
+    return bool(task_stage and task_stage["status"] == "approved")
+
+
+def project_wizard_kanban_blocker(
+    repository: CompanyRepository,
+    project_id: str,
+) -> str:
+    if not project_task_stage_approved(repository, project_id):
+        return (
+            "Complete product wizard tasks approval before pushing this project to "
+            "Kanban."
+        )
+    return kanban_project_push_blocker(repository)
+
+
 def kanban_task_push_blocker(repository: CompanyRepository) -> str:
     prerequisite_checks = [
         item
@@ -339,6 +450,601 @@ def kanban_task_push_blocker(repository: CompanyRepository) -> str:
         "Complete Kanban initialization and diagnostics before running the task-create "
         f"drill. Open checks: {labels}."
     )
+
+
+def product_wizard_intake_from_form(
+    *,
+    name: str,
+    founder_idea: str,
+    target_audience: str = "",
+    problem_statement: str = "",
+    current_alternative: str = "",
+    product_category: str = "",
+    launch_tier: str = "",
+    deadline_pressure: str = "",
+    desired_outcome: str = "",
+    constraints: str = "",
+    non_goals: str = "",
+    success_metrics: str = "",
+) -> dict[str, str]:
+    return {
+        "project_name": name.strip(),
+        "founder_idea": founder_idea.strip(),
+        "target_customer": target_audience.strip(),
+        "problem": problem_statement.strip(),
+        "current_alternatives": current_alternative.strip(),
+        "desired_outcome": desired_outcome.strip(),
+        "constraints": "\n".join(
+            item
+            for item in [
+                f"Product category: {product_category.strip()}" if product_category.strip() else "",
+                f"Launch tier: {launch_tier.strip()}" if launch_tier.strip() else "",
+                (
+                    f"Deadline pressure: {deadline_pressure.strip()}"
+                    if deadline_pressure.strip()
+                    else ""
+                ),
+                constraints.strip(),
+                f"Non-goals: {non_goals.strip()}" if non_goals.strip() else "",
+            ]
+            if item
+        ),
+        "success_metric": success_metrics.strip(),
+    }
+
+
+def product_wizard_intake_from_project(project: dict) -> ProductWizardIntake:
+    intake = dict(project.get("intake") or {})
+    intake.setdefault("project_name", project["name"])
+    intake.setdefault("founder_idea", project["founder_idea"])
+    return ProductWizardIntake.from_mapping(intake)
+
+
+def stage_icon(stage_id: str) -> str:
+    return {
+        "research": "search",
+        "prd": "file-text",
+        "architecture": "network",
+        "tasks": "list-checks",
+        "code_plan": "code-2",
+        "acceptance": "badge-check",
+    }.get(stage_id, "circle")
+
+
+def stage_view(stage: dict) -> dict:
+    return {
+        **stage,
+        "id": stage["stage_id"],
+        "label": stage["name"],
+        "icon": stage_icon(stage["stage_id"]),
+        "summary": stage["description"],
+    }
+
+
+def markdown_review_sections(markdown_content: str) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
+    current_title = "Summary"
+    current_lines: list[str] = []
+
+    def flush_section() -> None:
+        body = "\n".join(current_lines).strip()
+        if body:
+            sections.append({"title": current_title, "body": body})
+
+    for line in markdown_content.splitlines():
+        if line.startswith("## "):
+            flush_section()
+            current_title = line.removeprefix("## ").strip()
+            current_lines = []
+            continue
+        if line.startswith("# ") and not sections and not current_lines:
+            current_title = line.removeprefix("# ").strip()
+            continue
+        current_lines.append(line)
+    flush_section()
+    if not sections and markdown_content.strip():
+        sections.append({"title": "Summary", "body": markdown_content.strip()})
+    return sections
+
+
+def artifact_view(artifact: dict | None) -> dict | None:
+    if artifact is None:
+        return None
+    metadata = artifact.get("json", {})
+    title = metadata.get("title") or artifact["stage_id"].replace("_", " ").title()
+    checks = metadata.get("checks") if isinstance(metadata.get("checks"), list) else []
+    source_artifact_ids = metadata.get("source_artifact_ids")
+    memory_ids = metadata.get("memory_ids")
+    supporting_agent_ids = metadata.get("supporting_agent_ids")
+    return {
+        **artifact,
+        "title": title,
+        "body": artifact["markdown_content"],
+        "summary": artifact["markdown_content"],
+        "metadata": metadata,
+        "generation_mode": metadata.get("generation_mode", ""),
+        "next_decision": metadata.get("next_decision", ""),
+        "source_artifact_ids": (
+            source_artifact_ids if isinstance(source_artifact_ids, list) else []
+        ),
+        "memory_ids": memory_ids if isinstance(memory_ids, list) else [],
+        "supporting_agent_ids": (
+            supporting_agent_ids if isinstance(supporting_agent_ids, list) else []
+        ),
+        "quality_checks": checks,
+        "sections": markdown_review_sections(artifact["markdown_content"]),
+        "selected": False,
+    }
+
+
+def stage_artifacts_view(
+    repository: CompanyRepository,
+    project_id: str,
+    stages: list[dict],
+) -> dict[str, list[dict]]:
+    return {
+        stage["stage_id"]: [
+            artifact_view(artifact)
+            for artifact in repository.list_project_stage_artifacts(
+                project_id,
+                stage["stage_id"],
+            )
+        ]
+        for stage in stages
+    }
+
+
+def approved_source_artifacts(
+    repository: CompanyRepository,
+    project_id: str,
+) -> list[dict]:
+    sources = []
+    for stage in repository.list_project_wizard_stages(project_id):
+        artifact = repository.latest_project_stage_artifact(project_id, stage["stage_id"])
+        if not artifact or artifact["status"] != "approved":
+            continue
+        sources.append(
+            {
+                "id": artifact["id"],
+                "stage": artifact["stage_id"],
+                "title": artifact.get("json", {}).get("title") or stage["name"],
+                "content": artifact["markdown_content"],
+                "status": "approved",
+            }
+        )
+    return sources
+
+
+def generation_run_view(run: dict | None) -> dict | None:
+    if run is None:
+        return None
+    source_artifact_ids = run.get("source_artifact_ids")
+    memory_ids = run.get("memory_ids")
+    return {
+        **run,
+        "source_artifact_ids": (
+            source_artifact_ids if isinstance(source_artifact_ids, list) else []
+        ),
+        "memory_ids": memory_ids if isinstance(memory_ids, list) else [],
+    }
+
+
+def project_activity_package(
+    repository: CompanyRepository,
+    project: dict,
+    *,
+    limit: int = 50,
+) -> dict:
+    events = []
+    for event in repository.list_audit_events(project_id=project["id"], limit=limit):
+        event_payload = dict(event)
+        event_payload.pop("payload_json", None)
+        events.append(event_payload)
+    payload = {
+        "schema": "project_activity_package_v1",
+        "project": {
+            "id": project["id"],
+            "name": project["name"],
+            "status": project["status"],
+        },
+        "aggregate": {
+            "event_count": len(events),
+            "latest_event_type": events[0]["event_type"] if events else "",
+        },
+        "events": events,
+    }
+    assert_no_secret_values({"project_activity_package": json.dumps(payload, sort_keys=True)})
+    return payload
+
+
+def live_hermes_operator_console(
+    *,
+    settings: Settings,
+    repository: CompanyRepository,
+    project: dict,
+    stage_id: str,
+    live_readiness: dict | None,
+    run_confirmation: dict | None,
+    latest_artifact: dict | None,
+) -> dict:
+    memory_context = product_wizard_memory_context(repository, project["id"])
+    preview = live_hermes_operator_preview(
+        stage_id,
+        product_wizard_intake_from_project(project),
+        approved_source_artifacts(repository, project["id"]),
+        memory_context=memory_context,
+        memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+        timeout_seconds=settings.hermes_timeout_seconds,
+        live_execution_enabled=settings.hermes_live_execution_enabled,
+    )
+    generation_metadata = {}
+    if latest_artifact:
+        artifact_metadata = latest_artifact.get("metadata") or latest_artifact.get("json", {})
+        raw_generation_metadata = artifact_metadata.get("generation_metadata")
+        if isinstance(raw_generation_metadata, dict):
+            generation_metadata = raw_generation_metadata
+
+    live_ready = bool(live_readiness and live_readiness.get("ready"))
+    founder_approved = bool(live_readiness and live_readiness.get("founder_approved"))
+    run_confirmed = bool(run_confirmation and run_confirmation.get("fresh"))
+    run_request_open = bool(run_confirmation and run_confirmation.get("request_open"))
+    run_request_allowed = bool(
+        settings.hermes_live_execution_enabled
+        and live_ready
+        and run_confirmation
+        and run_confirmation.get("request_allowed")
+    )
+    last_adapter = str(generation_metadata.get("adapter", ""))
+    last_status = str(generation_metadata.get("status", ""))
+    last_external_execution = str(generation_metadata.get("external_execution", ""))
+    last_command_preview = generation_metadata.get("command_preview")
+    if not isinstance(last_command_preview, list):
+        last_command_preview = []
+    stdout_capture = generation_metadata.get("stdout_capture")
+    stderr_capture = generation_metadata.get("stderr_capture")
+    if not isinstance(stdout_capture, dict):
+        stdout_capture = {}
+    if not isinstance(stderr_capture, dict):
+        stderr_capture = {}
+    runner = generation_metadata.get("runner")
+    if not isinstance(runner, dict):
+        runner = {}
+    operator_preflight = generation_metadata.get("operator_preflight")
+    if not isinstance(operator_preflight, dict):
+        operator_preflight = {}
+    execution_audit = generation_metadata.get("execution_audit")
+    if not isinstance(execution_audit, dict):
+        execution_audit = {}
+    live_run_possible = (
+        settings.hermes_live_execution_enabled and live_ready and run_confirmed
+    )
+
+    return {
+        "execution_enabled": settings.hermes_live_execution_enabled,
+        "execution_status": (
+            "enabled" if settings.hermes_live_execution_enabled else "disabled"
+        ),
+        "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
+        "timeout_seconds": settings.hermes_timeout_seconds,
+        "command_preview": preview,
+        "live_run_possible": live_run_possible,
+        "pilot_confirmation_phrase": LIVE_HERMES_PILOT_CONFIRMATION_PHRASE,
+        "pilot_status": "ready" if live_run_possible else "blocked",
+        "pilot_detail": (
+            "Type the confirmation phrase to consume the one-run token and start the pilot."
+            if live_run_possible
+            else "Complete execution flag, readiness, and one-run confirmation first."
+        ),
+        "run_confirmation": run_confirmation or {},
+        "run_confirmation_ready": run_confirmed,
+        "run_confirmation_request_open": run_request_open,
+        "run_confirmation_request_allowed": run_request_allowed,
+        "warning": (
+            "Real Hermes command execution is enabled for this process."
+            if settings.hermes_live_execution_enabled
+            else (
+                "Real Hermes command execution is disabled for this process; "
+                "live mode will stay on the dry-run runner boundary."
+            )
+        ),
+        "checklist": [
+            {
+                "id": "execution_flag",
+                "label": "Execution flag",
+                "status": (
+                    "ready" if settings.hermes_live_execution_enabled else "manual"
+                ),
+                "detail": (
+                    "HERMES_LIVE_EXECUTION_ENABLED is true."
+                    if settings.hermes_live_execution_enabled
+                    else "Set HERMES_LIVE_EXECUTION_ENABLED=true outside the dashboard."
+                ),
+            },
+            {
+                "id": "readiness_gates",
+                "label": "Readiness gates",
+                "status": "ready" if live_ready else "blocked",
+                "detail": (
+                    "Founder and runtime readiness gates are satisfied."
+                    if live_ready
+                    else "Complete live Hermes readiness before a real runner attempt."
+                ),
+            },
+            {
+                "id": "founder_approval",
+                "label": "Founder approval",
+                "status": "ready" if founder_approved else "needed",
+                "detail": (
+                    "Founder approval is recorded for this stage."
+                    if founder_approved
+                    else "Founder approval is required before live Hermes execution."
+                ),
+            },
+            {
+                "id": "run_confirmation",
+                "label": "One-run confirmation",
+                "status": (
+                    "ready"
+                    if run_confirmed
+                    else ("manual" if not settings.hermes_live_execution_enabled else "needed")
+                ),
+                "detail": (
+                    "Founder-confirmed one-run approval is fresh for this stage."
+                    if run_confirmed
+                    else (
+                        "Dry-run mode does not require one-run confirmation."
+                        if not settings.hermes_live_execution_enabled
+                        else "Request and approve a one-run token before real execution."
+                    )
+                ),
+            },
+            {
+                "id": "dry_run_evidence",
+                "label": "Dry-run evidence",
+                "status": "ready" if last_adapter else "needed",
+                "detail": (
+                    f"Last adapter evidence: {last_adapter} / {last_status}."
+                    if last_adapter
+                    else "Run the dry-run adapter and review the generated artifact first."
+                ),
+            },
+            {
+                "id": "capture_boundary",
+                "label": "Capture boundary",
+                "status": "ready",
+                "detail": (
+                    "Runner output stores hashes and byte counts; "
+                    "secret-shaped errors are redacted."
+                ),
+            },
+            {
+                "id": "manual_pilot_confirmation",
+                "label": "Manual pilot confirmation",
+                "status": "ready" if live_run_possible else "needed",
+                "detail": (
+                    "Founder can type the pilot phrase in the stage action panel."
+                    if live_run_possible
+                    else "The pilot phrase is accepted only after all live gates pass."
+                ),
+            },
+        ],
+        "last_run": {
+            "available": bool(generation_metadata),
+            "adapter": last_adapter,
+            "status": last_status,
+            "external_execution": last_external_execution,
+            "duration_ms": generation_metadata.get("duration_ms", ""),
+            "command_preview": last_command_preview,
+            "command_preview_text": " ".join(str(part) for part in last_command_preview),
+            "prompt_handoff": generation_metadata.get("prompt_handoff", {}),
+            "output_parser": generation_metadata.get("output_parser", {}),
+            "stdout_capture": stdout_capture,
+            "stderr_capture": stderr_capture,
+            "runner": runner,
+            "operator_preflight": operator_preflight,
+            "execution_audit": execution_audit,
+        },
+    }
+
+
+def live_hermes_gate_for(
+    live_readiness,
+    run_confirmation,
+):
+    gate = live_readiness.gate
+    if run_confirmation:
+        gate = gate.with_run_confirmation(run_confirmation.fresh)
+    return gate
+
+
+def validate_live_hermes_pilot_confirmation(
+    *,
+    settings: Settings,
+    mode: GenerationMode,
+    confirmation: str,
+) -> None:
+    if mode != LIVE_HERMES_GENERATION_MODE:
+        return
+    if not settings.hermes_live_execution_enabled:
+        return
+    if confirmation.strip() != LIVE_HERMES_PILOT_CONFIRMATION_PHRASE:
+        raise ValueError(LIVE_HERMES_PILOT_CONFIRMATION_ERROR)
+
+
+def artifact_with_live_hermes_pilot_evidence(
+    *,
+    artifact,
+    settings: Settings,
+    mode: GenerationMode,
+    confirmation: str,
+    run_confirmation,
+    generation_run_id: str,
+):
+    if mode != LIVE_HERMES_GENERATION_MODE:
+        return artifact
+    if not settings.hermes_live_execution_enabled:
+        return artifact
+    generation_metadata = dict(artifact.generation_metadata)
+    generation_metadata["operator_preflight"] = {
+        "manual_pilot_confirmation": "verified",
+        "confirmation_phrase_sha256": hashlib.sha256(
+            confirmation.strip().encode("utf-8")
+        ).hexdigest(),
+        "run_confirmation_decision_id": (
+            run_confirmation.decision_id if run_confirmation else ""
+        ),
+        "run_confirmation_fresh": bool(run_confirmation and run_confirmation.fresh),
+        "env_var": "HERMES_LIVE_EXECUTION_ENABLED",
+        "external_execution_enabled": True,
+    }
+    generation_metadata["execution_audit"] = live_hermes_execution_audit(
+        generation_metadata,
+        run_confirmation=run_confirmation,
+        generation_run_id=generation_run_id,
+    )
+    return replace(artifact, generation_metadata=generation_metadata)
+
+
+def live_hermes_execution_audit(
+    generation_metadata: dict,
+    *,
+    run_confirmation,
+    generation_run_id: str,
+) -> dict:
+    command_preview = [
+        str(part) for part in generation_metadata.get("command_preview", [])
+    ]
+    source_artifact_ids = [
+        str(source_id) for source_id in generation_metadata.get("source_artifact_ids", [])
+    ]
+    memory_ids = [
+        str(memory_id) for memory_id in generation_metadata.get("memory_ids", [])
+    ]
+    prompt_handoff = generation_metadata.get("prompt_handoff")
+    if not isinstance(prompt_handoff, dict):
+        prompt_handoff = {}
+    stdout_capture = generation_metadata.get("stdout_capture")
+    if not isinstance(stdout_capture, dict):
+        stdout_capture = {}
+    stderr_capture = generation_metadata.get("stderr_capture")
+    if not isinstance(stderr_capture, dict):
+        stderr_capture = {}
+    decision_id = run_confirmation.decision_id if run_confirmation else ""
+    return {
+        "schema": "live_hermes_execution_audit_v1",
+        "immutable": True,
+        "generation_run_id": generation_run_id,
+        "command_fingerprint": {
+            "sha256": hashlib.sha256(
+                "\n".join(command_preview).encode("utf-8")
+            ).hexdigest(),
+            "command_preview": command_preview,
+        },
+        "prompt_fingerprint": {
+            "sha256": str(prompt_handoff.get("sha256", "")),
+            "contract": str(
+                prompt_handoff.get("contract", "product_wizard_prompt_contract_v1")
+            ),
+            "source_artifact_ids": source_artifact_ids,
+            "memory_ids": memory_ids,
+        },
+        "approval_consumption": {
+            "decision_id": decision_id,
+            "consumed_by_generation_run_id": generation_run_id,
+            "status": "consumed" if decision_id else "not_recorded",
+        },
+        "output_fingerprints": {
+            "stdout_sha256": str(stdout_capture.get("sha256", "")),
+            "stderr_sha256": str(stderr_capture.get("sha256", "")),
+            "stdout_bytes": int(stdout_capture.get("bytes", 0) or 0),
+            "stderr_bytes": int(stderr_capture.get("bytes", 0) or 0),
+        },
+        "post_run_review": {
+            "status": "awaiting_founder_review",
+            "next_action": "Review the live Hermes artifact before stage approval.",
+        },
+    }
+
+
+def product_wizard_generation_service(
+    request: Request,
+    mode: GenerationMode,
+    live_gate=None,
+):
+    if mode == LOCAL_DEMO_GENERATION_MODE:
+        return request.app.state.generation_service
+    if mode == LIVE_HERMES_GENERATION_MODE:
+        settings: Settings = request.app.state.settings
+        injected_runner = getattr(request.app.state, "live_hermes_command_runner", None)
+        adapter = None
+        if injected_runner is not None:
+            adapter = LiveHermesCommandAdapter(
+                live_execution_enabled=settings.hermes_live_execution_enabled,
+                runner=injected_runner,
+                runner_label=getattr(
+                    request.app.state,
+                    "live_hermes_runner_label",
+                    "injected_runner",
+                ),
+            )
+        return LiveHermesGenerationService(
+            live_gate,
+            adapter=adapter,
+            timeout_seconds=settings.hermes_timeout_seconds,
+            live_execution_enabled=settings.hermes_live_execution_enabled,
+        )
+    raise ValueError(f"Unsupported Product Wizard generation mode: {mode}")
+
+
+def wizard_review_decision_type(stage_id: str) -> str:
+    return "final_artifact_approval" if stage_id == "acceptance" else "artifact_approval"
+
+
+def create_project_stage_review_decision(
+    repository: CompanyRepository,
+    project: dict,
+    stage_id: str,
+    artifact_id: str,
+    artifact,
+) -> str:
+    decision_type = wizard_review_decision_type(stage_id)
+    stage = repository.get_project_wizard_stage(project["id"], stage_id)
+    stage_label = stage["name"] if stage else stage_id.replace("_", " ").title()
+    is_final = decision_type == "final_artifact_approval"
+    return repository.create_founder_decision(
+        title=f"Approve {stage_label} artifact for {project['name']}",
+        urgency="urgent" if is_final else "routine",
+        decision_type=decision_type,
+        source="product_wizard",
+        owner_agent_id=artifact.owner_agent_id,
+        project_id=project["id"],
+        stage_id=stage_id,
+        artifact_id=artifact_id,
+        slack_channel="#founder-command" if is_final else "#decisions",
+        telegram_policy=(
+            "Telegram only if this final artifact approval blocks launch."
+            if is_final
+            else "Slack first; Telegram only if this blocks founder progress."
+        ),
+        context=(
+            f"Review the generated {stage_label} artifact before it becomes approved "
+            f"source input for {project['name']}."
+        ),
+        evidence=(
+            f"Artifact {artifact_id} was generated in {artifact.generation_mode}. "
+            f"Next decision: {artifact.next_decision}"
+        ),
+        requires_founder_approval=is_final,
+    )
+
+
+def resolve_stage_id(repository: CompanyRepository, project_id: str, stage_id: str) -> str:
+    if stage_id != "current":
+        return stage_id
+    stage = repository.next_actionable_stage(project_id)
+    if stage is None:
+        raise HTTPException(status_code=409, detail="No actionable product wizard stage.")
+    return stage["stage_id"]
 
 
 def profile_live_run_blocker(repository: CompanyRepository, agent_id: str) -> str:
@@ -496,9 +1202,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.repository = CompanyRepository(database_path)
     app.state.hermes_client = HermesClient(resolved_settings)
     app.state.kanban_client = KanbanClient()
+    app.state.generation_service = LocalDemoGenerationService()
+    app.state.live_generation_service = LiveHermesGenerationService(
+        timeout_seconds=resolved_settings.hermes_timeout_seconds,
+        live_execution_enabled=resolved_settings.hermes_live_execution_enabled,
+    )
+    app.state.live_hermes_command_runner = None
+    app.state.live_hermes_runner_label = "subprocess"
+    app.state.external_dispatch_runner = None
+    app.state.external_dispatch_runner_label = "not_configured"
     app.state.readiness_service = ReadinessService(database_path)
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
+    app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
 
     @app.get("/health")
@@ -520,6 +1236,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profile_acceptance_checks = repository.list_profile_acceptance_checks()
         profile_installation_checks = repository.list_profile_installation_checks()
         founder_decisions = repository.list_founder_decisions()
+        agent_work_items = repository.list_agent_work_items(limit=6, include_done=False)
+        agent_work_summary = repository.agent_work_queue_summary()
         runtime_checks = [
             asdict(check)
             for check in runtime_preflight_checks(
@@ -551,6 +1269,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "runs": repository.list_runs(),
                 "projects": repository.list_projects(),
                 "founder_decisions": founder_decisions,
+                "agent_work_items": agent_work_items,
+                "agent_work_summary": agent_work_summary,
                 "founder_actions": founder_next_actions_payload(
                     activation_checks=checks,
                     setup_inputs=setup_inputs,
@@ -3491,16 +4211,237 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 repository.update_integration_status("llm-provider", "configured")
         return RedirectResponse("/setup#profile-smoke", status_code=303)
 
+    @app.get("/queue")
+    def agent_work_queue(
+        request: Request,
+        status: str = "",
+        project_id: str = "",
+        owner_agent_id: str = "",
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        try:
+            items = repository.list_agent_work_items(
+                project_id=project_id,
+                owner_agent_id=owner_agent_id,
+                status=status,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(
+            request,
+            "queue.html",
+            {
+                "items": items,
+                "summary": repository.agent_work_queue_summary(),
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "states": QUEUE_STATES,
+                "state_labels": QUEUE_STATE_LABELS,
+                "priorities": QUEUE_PRIORITIES,
+                "priority_labels": QUEUE_PRIORITY_LABELS,
+                "filters": {
+                    "status": status,
+                    "project_id": project_id,
+                    "owner_agent_id": owner_agent_id,
+                },
+            },
+        )
+
+    @app.post("/queue")
+    def create_agent_work_item(
+        request: Request,
+        title: str = Form(...),
+        owner_agent_id: str = Form("chief-of-staff"),
+        status: str = Form("planned"),
+        priority: str = Form("medium"),
+        project_id: str = Form(""),
+        summary: str = Form(""),
+        blocked_reason: str = Form(""),
+        blocked_owner: str = Form(""),
+        founder_action_required: str = Form(""),
+        return_to: str = Form("/queue"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        reject_secret_values(
+            {
+                "title": title,
+                "owner_agent_id": owner_agent_id,
+                "status": status,
+                "priority": priority,
+                "project_id": project_id,
+                "summary": summary,
+                "blocked_reason": blocked_reason,
+                "blocked_owner": blocked_owner,
+            }
+        )
+        try:
+            repository.create_agent_work_item(
+                title=title,
+                owner_agent_id=owner_agent_id,
+                summary=summary,
+                status=status,
+                priority=priority,
+                project_id=project_id or None,
+                blocked_reason=blocked_reason,
+                blocked_owner=blocked_owner,
+                founder_action_required=form_checkbox_checked(founder_action_required),
+                source="manual",
+                external_handoff_status="dashboard_source_of_truth",
+                slack_channel="#decisions",
+                telegram_policy="Telegram only if this blocks founder progress.",
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
+
+    @app.post("/queue/{work_item_id}")
+    def update_agent_work_item(
+        request: Request,
+        work_item_id: str,
+        status: str = Form(...),
+        priority: str = Form(""),
+        owner_agent_id: str = Form(""),
+        blocked_reason: str = Form(""),
+        blocked_owner: str = Form(""),
+        founder_action_required: str = Form(""),
+        founder_confirmed: str = Form(""),
+        return_to: str = Form("/queue"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_agent_work_item(work_item_id) is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        reject_secret_values(
+            {
+                "status": status,
+                "priority": priority,
+                "owner_agent_id": owner_agent_id,
+                "blocked_reason": blocked_reason,
+                "blocked_owner": blocked_owner,
+            }
+        )
+        try:
+            repository.update_agent_work_item(
+                work_item_id,
+                status=status,
+                priority=priority or None,
+                owner_agent_id=owner_agent_id or None,
+                blocked_reason=blocked_reason,
+                blocked_owner=blocked_owner,
+                founder_action_required=form_checkbox_checked(founder_action_required),
+                founder_confirmed=form_checkbox_checked(founder_confirmed),
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
+
+    @app.get("/queue/{work_item_id}/handoff.json")
+    def agent_work_item_handoff_json(request: Request, work_item_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        work_item = repository.get_agent_work_item(work_item_id)
+        if work_item is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        return profile_handoff_contract(repository, work_item)
+
+    @app.get("/queue/{work_item_id}/handoff.md")
+    def agent_work_item_handoff_markdown(request: Request, work_item_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        work_item = repository.get_agent_work_item(work_item_id)
+        if work_item is None:
+            raise HTTPException(status_code=404, detail="Agent work item not found")
+        contract = profile_handoff_contract(repository, work_item)
+        return PlainTextResponse(profile_handoff_contract_markdown(contract))
+
+    @app.get("/decisions")
+    def founder_decision_inbox(
+        request: Request,
+        status: str = "",
+        urgency: str = "",
+        decision_type: str = "",
+        project_id: str = "",
+        stage_id: str = "",
+        owner_agent_id: str = "",
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        try:
+            decisions = repository.list_founder_decisions(
+                status=status,
+                urgency=urgency,
+                decision_type=decision_type,
+                project_id=project_id,
+                stage_id=stage_id,
+                owner_agent_id=owner_agent_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        all_decisions = repository.list_founder_decisions()
+        return templates.TemplateResponse(
+            request,
+            "decisions.html",
+            {
+                "decisions": decisions,
+                "selected_decision": decisions[0] if len(decisions) == 1 else None,
+                "summary": founder_decisions_payload(all_decisions)["summary"],
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "decision_types": DECISION_TYPE_LABELS,
+                "statuses": DECISION_STATUS_OPTIONS,
+                "filters": {
+                    "status": status,
+                    "urgency": urgency,
+                    "decision_type": decision_type,
+                    "project_id": project_id,
+                    "stage_id": stage_id,
+                    "owner_agent_id": owner_agent_id,
+                },
+            },
+        )
+
+    @app.get("/decisions/{decision_id}")
+    def founder_decision_detail(request: Request, decision_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        selected_decision = repository.get_founder_decision(decision_id)
+        if selected_decision is None:
+            raise HTTPException(status_code=404, detail="Founder decision not found")
+        all_decisions = repository.list_founder_decisions()
+        return templates.TemplateResponse(
+            request,
+            "decisions.html",
+            {
+                "decisions": [selected_decision],
+                "selected_decision": selected_decision,
+                "summary": founder_decisions_payload(all_decisions)["summary"],
+                "agents": repository.list_agents(),
+                "projects": repository.list_projects(),
+                "decision_types": DECISION_TYPE_LABELS,
+                "statuses": DECISION_STATUS_OPTIONS,
+                "filters": {
+                    "status": "",
+                    "urgency": "",
+                    "decision_type": "",
+                    "project_id": selected_decision.get("project_id") or "",
+                    "stage_id": selected_decision.get("stage_id") or "",
+                    "owner_agent_id": selected_decision.get("owner_agent_id") or "",
+                },
+            },
+        )
+
     @app.post("/decisions")
     def create_founder_decision(
         request: Request,
         title: str = Form(...),
         urgency: str = Form("routine"),
+        decision_type: str = Form("operating_decision"),
         source: str = Form("manual"),
         owner_agent_id: str = Form("chief-of-staff"),
+        project_id: str = Form(""),
+        stage_id: str = Form(""),
+        artifact_id: str = Form(""),
         slack_channel: str = Form("#decisions"),
         telegram_policy: str = Form("Telegram only if this blocks founder progress."),
         context: str = Form(""),
+        evidence: str = Form(""),
+        requires_founder_approval: str = Form(""),
+        return_to: str = Form("/decisions"),
     ):
         repository: CompanyRepository = request.app.state.repository
         allowed_urgencies = {"routine", "urgent"}
@@ -3517,23 +4458,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "title": title,
                 "urgency": urgency,
+                "decision_type": decision_type,
                 "source": source,
                 "owner_agent_id": owner_agent_id,
+                "project_id": project_id,
+                "stage_id": stage_id,
+                "artifact_id": artifact_id,
                 "slack_channel": slack_channel,
                 "telegram_policy": telegram_policy,
                 "context": context,
+                "evidence": evidence,
             }
         )
-        repository.create_founder_decision(
-            title=title,
-            urgency=urgency,
-            source=source,
-            owner_agent_id=owner_agent_id,
-            slack_channel=slack_channel,
-            telegram_policy=telegram_policy,
-            context=context,
+        try:
+            repository.create_founder_decision(
+                title=title,
+                urgency=urgency,
+                decision_type=decision_type,
+                source=source,
+                owner_agent_id=owner_agent_id,
+                project_id=project_id or None,
+                stage_id=stage_id or None,
+                artifact_id=artifact_id or None,
+                slack_channel=slack_channel,
+                telegram_policy=telegram_policy,
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=(
+                    True if form_checkbox_checked(requires_founder_approval) else None
+                ),
+            )
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            safe_return_path(return_to, "/decisions"),
+            status_code=303,
         )
-        return RedirectResponse("/#founder-decisions", status_code=303)
 
     @app.post("/decisions/{decision_id}")
     def update_founder_decision(
@@ -3541,12 +4501,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         decision_id: str,
         status: str = Form(...),
         decision: str = Form(""),
+        founder_confirmed: str = Form(""),
+        return_to: str = Form("/decisions"),
     ):
         repository: CompanyRepository = request.app.state.repository
         current = repository.get_founder_decision(decision_id)
         if current is None:
             raise HTTPException(status_code=404, detail="Founder decision not found")
-        allowed_statuses = RESOLVED_DECISION_STATUSES | {"needed", "blocked"}
+        allowed_statuses = set(DECISION_STATUS_OPTIONS)
         if status not in allowed_statuses:
             raise HTTPException(status_code=400, detail="Invalid founder decision status")
         if status in RESOLVED_DECISION_STATUSES and not decision.strip():
@@ -3555,12 +4517,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="A decision note is required before resolving a founder decision",
             )
         reject_secret_values({"status": status, "decision": decision})
-        repository.update_founder_decision(
-            decision_id=decision_id,
-            status=status,
-            decision=decision,
+        try:
+            repository.update_founder_decision(
+                decision_id=decision_id,
+                status=status,
+                decision=decision,
+                founder_confirmed=form_checkbox_checked(founder_confirmed),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(
+            safe_return_path(return_to, "/decisions"),
+            status_code=303,
         )
-        return RedirectResponse("/#founder-decisions", status_code=303)
 
     @app.get("/projects")
     def projects(request: Request):
@@ -3614,28 +4583,177 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/projects/new")
+    def new_project(request: Request):
+        return templates.TemplateResponse(request, "project_new.html", {})
+
     @app.post("/projects")
     def create_project(
         request: Request,
         name: str = Form(...),
         founder_idea: str = Form(...),
+        wizard_version: str = Form(""),
+        product_category: str = Form(""),
+        target_audience: str = Form(""),
+        current_alternative: str = Form(""),
+        problem_statement: str = Form(""),
+        desired_outcome: str = Form(""),
+        launch_tier: str = Form(""),
+        deadline_pressure: str = Form(""),
+        constraints: str = Form(""),
+        non_goals: str = Form(""),
+        success_metrics: str = Form(""),
     ):
-        reject_secret_values({"name": name, "founder_idea": founder_idea})
-        repository: CompanyRepository = request.app.state.repository
-        project_id = repository.create_project_with_workflow(
-            name=name.strip(),
-            founder_idea=founder_idea.strip(),
+        intake = product_wizard_intake_from_form(
+            name=name,
+            founder_idea=founder_idea,
+            product_category=product_category,
+            target_audience=target_audience,
+            current_alternative=current_alternative,
+            problem_statement=problem_statement,
+            desired_outcome=desired_outcome,
+            launch_tier=launch_tier,
+            deadline_pressure=deadline_pressure,
+            constraints=constraints,
+            non_goals=non_goals,
+            success_metrics=success_metrics,
         )
+        reject_secret_values(intake)
+        repository: CompanyRepository = request.app.state.repository
+        if wizard_version == "product-wizard-v1":
+            project_id = repository.create_structured_project(
+                name=name.strip(),
+                founder_idea=founder_idea.strip(),
+                intake=intake,
+            )
+        else:
+            project_id = repository.create_project_with_workflow(
+                name=name.strip(),
+                founder_idea=founder_idea.strip(),
+            )
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.get("/projects/{project_id}")
-    def project_detail(request: Request, project_id: str):
+    def project_detail(
+        request: Request,
+        project_id: str,
+        artifact_id: str = "",
+    ):
         repository: CompanyRepository = request.app.state.repository
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         workflow_items = repository.list_project_workflow_items(project_id)
-        kanban_blocker = kanban_project_push_blocker(repository)
+        wizard_stages = repository.list_project_wizard_stages(project_id)
+        selected_artifact = None
+        selected_stage = None
+        if artifact_id:
+            selected_artifact = repository.get_project_wizard_artifact(
+                project_id,
+                artifact_id,
+            )
+            if selected_artifact is None:
+                raise HTTPException(status_code=404, detail="Artifact not found")
+            selected_stage = repository.get_project_wizard_stage(
+                project_id,
+                selected_artifact["stage_id"],
+            )
+        current_stage = repository.next_actionable_stage(project_id)
+        if current_stage is None and wizard_stages:
+            current_stage = wizard_stages[-1]
+        review_stage = selected_stage or current_stage
+        latest_artifact = (
+            artifact_view(
+                selected_artifact
+                or repository.latest_project_stage_artifact(
+                    project_id,
+                    review_stage["stage_id"],
+                )
+            )
+            if review_stage
+            else None
+        )
+        latest_generation_run = (
+            generation_run_view(
+                repository.latest_generation_run(
+                    project_id=project_id,
+                    stage_id=review_stage["stage_id"],
+                    artifact_id=selected_artifact["id"] if selected_artifact else None,
+                )
+            )
+            if review_stage
+            else None
+        )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                review_stage["stage_id"],
+            ).to_dict()
+            if review_stage
+            else None
+        )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                review_stage["stage_id"],
+            ).to_dict()
+            if review_stage
+            else None
+        )
+        live_hermes_operator = (
+            live_hermes_operator_console(
+                settings=request.app.state.settings,
+                repository=repository,
+                project=project,
+                stage_id=review_stage["stage_id"],
+                live_readiness=live_hermes_readiness,
+                run_confirmation=live_hermes_run_confirmation,
+                latest_artifact=latest_artifact,
+            )
+            if review_stage
+            else None
+        )
+        if latest_artifact:
+            latest_artifact["selected"] = bool(selected_artifact)
+            latest_artifact["generation_run"] = latest_generation_run
+        task_stage_approved = project_task_stage_approved(repository, project_id)
+        kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
+        codex_execution = codex_execution_package(repository, project_id)
+        multi_agent_review = multi_agent_review_package(repository, project_id)
+        project_memory = project_memory_package(repository, project_id)
+        operating_loop = project_operating_loop_package(repository, project_id)
+        external_dispatch_preview = project_external_dispatch_preview_package(
+            repository,
+            project_id,
+            external_dispatch_enabled=request.app.state.settings.external_dispatch_enabled,
+        )
+        project_activity_events = repository.list_audit_events(
+            project_id=project_id,
+            limit=12,
+        )
+        founder_decisions = repository.list_founder_decisions(
+            project_id=project_id,
+            limit=6,
+        )
+        agent_work_items = repository.list_agent_work_items(
+            project_id=project_id,
+            limit=8,
+        )
+        founder_control_summary = project_founder_control_summary(
+            project=project,
+            active_stage=stage_view(review_stage) if review_stage else None,
+            latest_artifact=latest_artifact,
+            founder_decisions=founder_decisions,
+            agent_work_items=agent_work_items,
+            task_stage_approved=task_stage_approved,
+            kanban_ready=not kanban_blocker,
+            codex_execution=codex_execution,
+            multi_agent_review=multi_agent_review,
+        )
+        memory_owner_options = repository.list_agents()
         return templates.TemplateResponse(
             request,
             "project.html",
@@ -3645,8 +4763,769 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "kanban_linked_count": sum(1 for item in workflow_items if item["kanban_task_id"]),
                 "kanban_ready": not kanban_blocker,
                 "kanban_blocker": kanban_blocker,
+                "codex_execution": codex_execution,
+                "multi_agent_review": multi_agent_review,
+                "project_memory": project_memory,
+                "operating_loop": operating_loop,
+                "external_dispatch_preview": external_dispatch_preview,
+                "project_activity_events": project_activity_events,
+                "memory_reuse_policy": memory_reuse_policy_summary(
+                    FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY
+                ),
+                "memory_category_options": memory_category_options(),
+                "memory_confidence_options": memory_confidence_options(),
+                "memory_owner_options": memory_owner_options,
+                "founder_control_summary": founder_control_summary,
+                "wizard_stages": [stage_view(stage) for stage in wizard_stages],
+                "current_stage": stage_view(review_stage) if review_stage else None,
+                "actionable_stage": stage_view(current_stage) if current_stage else None,
+                "latest_artifact": latest_artifact,
+                "latest_generation_run": latest_generation_run,
+                "live_hermes_readiness": live_hermes_readiness,
+                "live_hermes_run_confirmation": live_hermes_run_confirmation,
+                "live_hermes_operator": live_hermes_operator,
+                "stage_artifacts": stage_artifacts_view(
+                    repository,
+                    project_id,
+                    wizard_stages,
+                ),
+                "selected_artifact_id": artifact_id,
+                "revision_reasons": REVISION_REASON_LABELS,
+                "task_stage_approved": task_stage_approved,
+                "founder_decisions": founder_decisions,
+                "agent_work_items": agent_work_items,
             },
         )
+
+    @app.get("/projects/{project_id}/activity.json")
+    def project_activity_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_activity_package(repository, project)
+
+    @app.get("/projects/{project_id}/operating-loop.json")
+    def project_operating_loop_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_operating_loop_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/codex-execution.json")
+    def project_codex_execution_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return codex_execution_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/multi-agent-review.json")
+    def project_multi_agent_review_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return multi_agent_review_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/multi-agent-review.md")
+    def project_multi_agent_review_markdown(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = multi_agent_review_package(repository, project_id)
+        return PlainTextResponse(multi_agent_review_markdown(package))
+
+    @app.post("/projects/{project_id}/multi-agent-review")
+    def generate_project_multi_agent_review(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            package = generate_multi_agent_review(repository, project_id)
+        except ValueError as exc:
+            repository.create_audit_event(
+                project_id=project_id,
+                event_type="multi_agent_review_blocked",
+                status="blocked",
+                actor_agent_id="qa-critic",
+                source_table="company_projects",
+                source_id=project_id,
+                summary=f"Multi-agent review blocked: {exc}",
+                payload={"blocker": str(exc)},
+            )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        repository.create_audit_event(
+            project_id=project_id,
+            event_type="multi_agent_review_completed",
+            status=package["aggregate"]["status"],
+            actor_agent_id="qa-critic",
+            source_table="project_review_records",
+            source_id=package["review_batch_id"],
+            summary=(
+                "Multi-agent review completed with "
+                f"{package['aggregate']['reviewer_count']} reviewer records."
+            ),
+            payload={
+                "review_batch_id": package["review_batch_id"],
+                "reviewer_count": package["aggregate"]["reviewer_count"],
+                "required_reviewer_count": package["aggregate"]["required_reviewer_count"],
+                "status": package["aggregate"]["status"],
+            },
+        )
+        return RedirectResponse(
+            f"/projects/{project_id}#multi-agent-review",
+            status_code=303,
+        )
+
+    @app.get("/projects/{project_id}/memory.json")
+    def project_memory_json(request: Request, project_id: str) -> dict:
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project_memory_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/memory.md")
+    def project_memory_markdown_route(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = project_memory_package(repository, project_id)
+        return PlainTextResponse(project_memory_markdown(package))
+
+    @app.post("/projects/{project_id}/memory")
+    def create_project_memory(
+        request: Request,
+        project_id: str,
+        category: str = Form(...),
+        memory_type: str = Form("context"),
+        owner_agent_id: str = Form("chief-of-staff"),
+        source: str = Form("founder-memory-form"),
+        title: str = Form(...),
+        summary: str = Form(...),
+        body: str = Form(...),
+        confidence: str = Form("medium"),
+        pinned: str | None = Form(None),
+        review_after: str = Form(""),
+        expires_at: str = Form(""),
+        source_artifact_id: str = Form(""),
+        source_decision_id: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            repository.create_project_memory_entry(
+                project_id=project_id,
+                category=category,
+                memory_type=memory_type,
+                owner_agent_id=owner_agent_id,
+                source=source,
+                title=title,
+                summary=summary,
+                body=body,
+                confidence=confidence,
+                status="active",
+                pinned=bool(pinned),
+                review_after=review_after,
+                expires_at=expires_at,
+                source_artifact_id=source_artifact_id,
+                source_decision_id=source_decision_id,
+            )
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
+
+    @app.post("/projects/{project_id}/memory/{memory_id}")
+    def update_project_memory(
+        request: Request,
+        project_id: str,
+        memory_id: str,
+        memory_action: str = Form("pin"),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        entry = repository.get_project_memory_entry(memory_id)
+        if entry is None or (entry["project_id"] and entry["project_id"] != project_id):
+            raise HTTPException(status_code=404, detail="Project memory entry not found")
+        try:
+            if memory_action == "retire":
+                repository.update_project_memory_entry(memory_id, status="retired")
+            elif memory_action == "pin":
+                repository.update_project_memory_entry(memory_id, pinned=True)
+            elif memory_action == "unpin":
+                repository.update_project_memory_entry(memory_id, pinned=False)
+            elif memory_action == "reactivate":
+                repository.update_project_memory_entry(memory_id, status="active")
+            else:
+                raise ValueError(f"Unsupported memory action: {memory_action}")
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
+
+    @app.get("/projects/{project_id}/codex-execution.md")
+    def project_codex_execution_markdown(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = codex_execution_package(repository, project_id)
+        return PlainTextResponse(codex_execution_markdown(package))
+
+    @app.post("/projects/{project_id}/codex-execution-approval")
+    def request_project_codex_execution_approval(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = codex_execution_package(repository, project_id)
+        if package["execution"]["approval_request_allowed"]:
+            source_artifacts = ", ".join(
+                f"{artifact['stage_id']}={artifact['id']}@v{artifact['version']}"
+                for artifact in package["source_artifacts"]
+            )
+            command_preview = "; ".join(
+                command["command"] for command in package["command_preview"]
+            )
+            acceptance_artifact = next(
+                (
+                    artifact
+                    for artifact in package["source_artifacts"]
+                    if artifact["stage_id"] == CODEX_EXECUTION_STAGE_ID
+                ),
+                {},
+            )
+            repository.create_founder_decision(
+                title=f"Approve Codex execution for {project['name']}",
+                urgency="urgent",
+                decision_type=CODEX_EXECUTION_DECISION_TYPE,
+                source=CODEX_EXECUTION_DECISION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=CODEX_EXECUTION_STAGE_ID,
+                artifact_id=acceptance_artifact.get("id") or None,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if Codex execution blocks launch.",
+                context=(
+                    f"Approve Codex implementation start for {project['name']}. "
+                    "This dashboard action does not create branches, create "
+                    "worktrees, spawn chats, or run commands."
+                ),
+                evidence=(
+                    f"Source artifacts: {source_artifacts}. Branch preview: "
+                    f"{package['branch_plan']['branch_name']}. Commands previewed: "
+                    f"{command_preview}."
+                ),
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#codex-execution",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/codex-execution-run")
+    def queue_project_codex_execution_run(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            queue_codex_execution_run(repository, project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#codex-execution",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/codex-execution-real-run")
+    def start_project_codex_execution_real_run(request: Request, project_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        settings: Settings = request.app.state.settings
+        try:
+            start_codex_execution_git_worktree(
+                repository,
+                project_id,
+                enabled=settings.codex_execution_enabled,
+                workspace_root=settings.codex_workspace_root,
+                worktree_root=settings.codex_worktree_root,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(
+            f"/projects/{project_id}#codex-execution",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/generate")
+    def generate_project_stage(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+        live_pilot_confirmation: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            resolved_generation_mode = normalize_generation_mode(generation_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        source_artifacts = approved_source_artifacts(repository, project_id)
+        memory_context = product_wizard_memory_context(repository, project_id)
+        generation_request = StageGenerationRequest(
+            stage_id=resolved_stage_id,
+            intake=product_wizard_intake_from_project(project),
+            approved_sources=source_artifacts,
+            memory_context=memory_context,
+            memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+            mode=resolved_generation_mode,
+        )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
+            memory_ids=[memory["id"] for memory in memory_context],
+        )
+        generation_service = product_wizard_generation_service(
+            request,
+            resolved_generation_mode,
+            (
+                live_hermes_gate_for(
+                    live_hermes_readiness,
+                    live_hermes_run_confirmation,
+                )
+                if live_hermes_readiness
+                else None
+            ),
+        )
+        try:
+            if live_hermes_readiness and not live_hermes_readiness.ready:
+                raise ValueError(live_hermes_readiness.blocker)
+            if (
+                request.app.state.settings.hermes_live_execution_enabled
+                and live_hermes_run_confirmation
+                and not live_hermes_run_confirmation.fresh
+            ):
+                raise ValueError(live_hermes_run_confirmation.blocker)
+            validate_live_hermes_pilot_confirmation(
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+            )
+            artifact = generation_service.generate_stage(generation_request)
+            artifact = artifact_with_live_hermes_pilot_evidence(
+                artifact=artifact,
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+                run_confirmation=live_hermes_run_confirmation,
+                generation_run_id=generation_run_id,
+            )
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="deferred",
+                decision="Superseded by a newly generated artifact draft.",
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            artifact_id = repository.save_stage_artifact_draft(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                markdown_content=artifact.markdown,
+                json_content=artifact.metadata,
+                owner_agent_id=artifact.owner_agent_id,
+            )
+            repository.complete_generation_run(
+                generation_run_id,
+                artifact_id,
+                source_artifact_ids=list(artifact.source_artifact_ids),
+                memory_ids=list(artifact.memory_ids),
+            )
+            create_project_stage_review_decision(
+                repository=repository,
+                project=project,
+                stage_id=resolved_stage_id,
+                artifact_id=artifact_id,
+                artifact=artifact,
+            )
+            repository.sync_project_wizard_work_items(project_id)
+        except ValueError as exc:
+            repository.fail_generation_run(generation_run_id, str(exc))
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/regenerate")
+    def regenerate_project_stage(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        generation_mode: str = Form(LOCAL_DEMO_GENERATION_MODE),
+        live_pilot_confirmation: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            resolved_generation_mode = normalize_generation_mode(generation_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        latest_artifact = repository.latest_project_stage_artifact(
+            project_id,
+            resolved_stage_id,
+        )
+        source_artifacts = approved_source_artifacts(repository, project_id)
+        memory_context = product_wizard_memory_context(repository, project_id)
+        generation_request = StageGenerationRequest(
+            stage_id=resolved_stage_id,
+            intake=product_wizard_intake_from_project(project),
+            approved_sources=source_artifacts,
+            memory_context=memory_context,
+            memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+            mode=resolved_generation_mode,
+        )
+        live_hermes_readiness = (
+            evaluate_live_hermes_readiness(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
+        live_hermes_run_confirmation = (
+            evaluate_live_hermes_run_confirmation(
+                repository,
+                project_id,
+                resolved_stage_id,
+            )
+            if resolved_generation_mode == LIVE_HERMES_GENERATION_MODE
+            else None
+        )
+        generation_run_id = repository.create_generation_run(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            generation_mode=generation_request.mode,
+            source_artifact_ids=[source["id"] for source in source_artifacts],
+            memory_ids=[memory["id"] for memory in memory_context],
+        )
+        generation_service = product_wizard_generation_service(
+            request,
+            resolved_generation_mode,
+            (
+                live_hermes_gate_for(
+                    live_hermes_readiness,
+                    live_hermes_run_confirmation,
+                )
+                if live_hermes_readiness
+                else None
+            ),
+        )
+        try:
+            if live_hermes_readiness and not live_hermes_readiness.ready:
+                raise ValueError(live_hermes_readiness.blocker)
+            if (
+                request.app.state.settings.hermes_live_execution_enabled
+                and live_hermes_run_confirmation
+                and not live_hermes_run_confirmation.fresh
+            ):
+                raise ValueError(live_hermes_run_confirmation.blocker)
+            validate_live_hermes_pilot_confirmation(
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+            )
+            artifact = generation_service.generate_stage(generation_request)
+            artifact = artifact_with_live_hermes_pilot_evidence(
+                artifact=artifact,
+                settings=request.app.state.settings,
+                mode=resolved_generation_mode,
+                confirmation=live_pilot_confirmation,
+                run_confirmation=live_hermes_run_confirmation,
+                generation_run_id=generation_run_id,
+            )
+            if latest_artifact and latest_artifact["status"] == "approved":
+                repository.request_stage_revision(
+                    project_id=project_id,
+                    stage_id=resolved_stage_id,
+                    notes="Regeneration requested from the product wizard.",
+                )
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="deferred",
+                decision="Superseded by a regenerated artifact draft.",
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            artifact_id = repository.save_stage_artifact_draft(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                markdown_content=artifact.markdown,
+                json_content=artifact.metadata,
+                owner_agent_id=artifact.owner_agent_id,
+            )
+            repository.complete_generation_run(
+                generation_run_id,
+                artifact_id,
+                source_artifact_ids=list(artifact.source_artifact_ids),
+                memory_ids=list(artifact.memory_ids),
+            )
+            create_project_stage_review_decision(
+                repository=repository,
+                project=project,
+                stage_id=resolved_stage_id,
+                artifact_id=artifact_id,
+                artifact=artifact,
+            )
+            repository.sync_project_wizard_work_items(project_id)
+        except ValueError as exc:
+            repository.fail_generation_run(generation_run_id, str(exc))
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/live-hermes-approval")
+    def request_live_hermes_approval(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        stage = repository.get_project_wizard_stage(project_id, resolved_stage_id)
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Project stage not found")
+        readiness = evaluate_live_hermes_readiness(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        if readiness.approval_request_allowed:
+            context = (
+                f"Approve live Hermes generation for {stage['name']} in "
+                f"{project['name']}. Live execution remains blocked until profile "
+                "installation, profile smoke, profile acceptance, and prior artifact "
+                "readiness checks pass."
+            )
+            evidence = (
+                "Current live Hermes readiness: "
+                + "; ".join(
+                    f"{check['label']}={check['status']}"
+                    for check in readiness.checks
+                )
+                + "."
+            )
+            repository.create_founder_decision(
+                title=f"Approve live Hermes generation for {stage['name']}",
+                urgency="urgent",
+                decision_type=LIVE_HERMES_DECISION_TYPE,
+                source=LIVE_HERMES_DECISION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if live Hermes execution blocks launch.",
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#live-hermes-readiness",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/live-hermes-run-confirmation")
+    def request_live_hermes_run_confirmation(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        stage = repository.get_project_wizard_stage(project_id, resolved_stage_id)
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Project stage not found")
+        readiness = evaluate_live_hermes_readiness(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        run_confirmation = evaluate_live_hermes_run_confirmation(
+            repository,
+            project_id,
+            resolved_stage_id,
+        )
+        settings: Settings = request.app.state.settings
+        if (
+            settings.hermes_live_execution_enabled
+            and readiness.ready
+            and run_confirmation.request_allowed
+        ):
+            preview = live_hermes_operator_preview(
+                resolved_stage_id,
+                product_wizard_intake_from_project(project),
+                approved_source_artifacts(repository, project_id),
+                memory_context=product_wizard_memory_context(repository, project_id),
+                memory_policy=FOUNDER_APPROVED_PRODUCT_WIZARD_MEMORY_POLICY,
+                timeout_seconds=settings.hermes_timeout_seconds,
+                live_execution_enabled=True,
+            )
+            context = (
+                f"Confirm exactly one live Hermes command runner attempt for "
+                f"{stage['name']} in {project['name']}. This confirmation is consumed "
+                "by the next live_hermes generation run for this stage."
+            )
+            evidence = (
+                "Command preview: "
+                + preview["command_preview_text"]
+                + f". Prompt SHA256: {preview['prompt_handoff']['sha256']}."
+            )
+            repository.create_founder_decision(
+                title=f"Confirm one live Hermes run for {stage['name']}",
+                urgency="urgent",
+                decision_type=LIVE_HERMES_RUN_CONFIRMATION_TYPE,
+                source=LIVE_HERMES_RUN_CONFIRMATION_SOURCE,
+                owner_agent_id="chief-of-staff",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                slack_channel="#founder-command",
+                telegram_policy="Telegram only if live Hermes execution blocks launch.",
+                context=context,
+                evidence=evidence,
+                requires_founder_approval=True,
+            )
+        return RedirectResponse(
+            f"/projects/{project_id}#live-hermes-operator",
+            status_code=303,
+        )
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/approve")
+    def approve_project_stage(request: Request, project_id: str, stage_id: str):
+        repository: CompanyRepository = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        try:
+            repository.approve_stage(project_id, resolved_stage_id)
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="approved",
+                decision=(
+                    f"Founder approved the {resolved_stage_id} artifact from the "
+                    "project review workspace."
+                ),
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            if resolved_stage_id == "tasks":
+                repository.ensure_project_workflow_items(project_id)
+            repository.sync_project_wizard_work_items(project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/revision")
+    def request_project_stage_revision(
+        request: Request,
+        project_id: str,
+        stage_id: str,
+        revision_reason: str = Form("acceptance_concern"),
+        revision_request: str = Form(""),
+    ):
+        repository: CompanyRepository = request.app.state.repository
+        project = repository.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
+        if revision_reason not in REVISION_REASON_LABELS:
+            raise HTTPException(status_code=400, detail="Invalid revision reason")
+        reject_secret_values(
+            {
+                "revision_reason": revision_reason,
+                "revision_request": revision_request,
+            }
+        )
+        try:
+            latest_artifact = repository.latest_project_stage_artifact(
+                project_id,
+                resolved_stage_id,
+            )
+            revision_reason_label = REVISION_REASON_LABELS[revision_reason]
+            revision_note = (
+                f"{revision_reason_label}: {revision_request.strip()}"
+                if revision_request.strip()
+                else (
+                    f"{revision_reason_label}: Founder requested a revision before "
+                    "approving this stage."
+                )
+            )
+            repository.request_stage_revision(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                notes=revision_note,
+                reason=revision_reason,
+            )
+            repository.resolve_project_stage_decisions(
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                status="rejected",
+                decision=revision_note,
+                decision_types={"artifact_approval", "final_artifact_approval"},
+            )
+            revision_decision_id = repository.create_founder_decision(
+                title=f"Revision requested for {resolved_stage_id} in {project['name']}",
+                urgency="routine",
+                decision_type="revision_request",
+                source="product_wizard",
+                owner_agent_id="product-manager",
+                project_id=project_id,
+                stage_id=resolved_stage_id,
+                artifact_id=latest_artifact["id"] if latest_artifact else None,
+                slack_channel="#decisions",
+                telegram_policy="Slack first; Telegram only if this blocks launch.",
+                context=(
+                    "Founder requested a revision in the project review workspace."
+                ),
+                evidence=revision_note,
+            )
+            repository.update_founder_decision(
+                revision_decision_id,
+                status="approved",
+                decision=revision_note,
+                founder_confirmed=True,
+            )
+            repository.sync_project_wizard_work_items(project_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/kanban")
     def push_project_workflow_to_kanban(request: Request, project_id: str):
@@ -3654,10 +5533,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project = repository.get_project(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
-        kanban_blocker = kanban_project_push_blocker(repository)
+        kanban_blocker = project_wizard_kanban_blocker(repository, project_id)
         if kanban_blocker:
+            repository.create_audit_event(
+                project_id=project_id,
+                event_type="kanban_push_blocked",
+                status="blocked",
+                actor_agent_id="chief-of-staff",
+                source_table="company_projects",
+                source_id=project_id,
+                summary=f"Kanban push blocked: {kanban_blocker}",
+                payload={"blocker": kanban_blocker},
+            )
             raise HTTPException(status_code=409, detail=kanban_blocker)
         workflow_items = repository.list_project_workflow_items(project_id)
+        pending_items = [
+            item
+            for item in workflow_items
+            if not item["kanban_task_id"] and item["task_id"]
+        ]
+        repository.create_audit_event(
+            project_id=project_id,
+            event_type="kanban_push_started",
+            status="running",
+            actor_agent_id="chief-of-staff",
+            source_table="company_projects",
+            source_id=project_id,
+            summary=f"Kanban push started for {len(pending_items)} project tasks.",
+            payload={"pending_task_count": len(pending_items)},
+        )
         for item in workflow_items:
             if item["kanban_task_id"] or not item["task_id"]:
                 continue
@@ -3673,6 +5577,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             repository.complete_run(run_id, output=result.output, error=result.error)
             if result.ok and result.task_id:
                 repository.attach_kanban_task(task["id"], result.task_id)
+                repository.create_audit_event(
+                    project_id=project_id,
+                    event_type="kanban_task_linked",
+                    status="succeeded",
+                    actor_agent_id=task["owner_agent_id"],
+                    source_table="tasks",
+                    source_id=task["id"],
+                    summary=f"Kanban task linked: {task['title']}.",
+                    payload={
+                        "run_id": run_id,
+                        "kanban_task_id": result.task_id,
+                        "workflow_item_id": item["id"],
+                        "owner_agent_id": task["owner_agent_id"],
+                    },
+                )
                 repository.update_kanban_check(
                     check_id="kanban-task-create",
                     status="verified",
@@ -3694,6 +5613,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "agent": agent,
                 "live_run_blocker": profile_live_run_blocker(repository, agent_id),
+                "agent_work_items": repository.list_agent_work_items(
+                    owner_agent_id=agent_id,
+                    limit=8,
+                    include_done=False,
+                ),
                 "settings": request.app.state.settings,
             },
         )
@@ -3875,6 +5799,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = request.app.state.hermes_client.run_prompt(agent, prompt)
         repository.complete_run(run_id, output=result.output, error=result.error)
         return RedirectResponse("/", status_code=303)
+
+    register_external_dispatch_routes(app)
 
     return app
 

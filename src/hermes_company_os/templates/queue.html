@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent Work Queue - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <main class="agent-page queue-page">
+      <a class="back-link" href="/"><i data-lucide="arrow-left"></i> Dashboard</a>
+
+      <section class="project-titlebar">
+        <div>
+          <p class="eyebrow">Chief of Staff triage</p>
+          <h1>Agent work queue</h1>
+          <p class="page-subtitle">
+            Dashboard state is the source of truth. Slack, Telegram, Kanban, Hermes, and
+            Codex remain secondary handoff signals until their live gates are approved.
+          </p>
+        </div>
+        <div class="project-title-actions">
+          <a class="secondary-button link-button-muted" href="/decisions">
+            <i data-lucide="gavel"></i> Decisions
+          </a>
+          <span id="queue-codex-blocker" class="sr-only">
+            Future Codex execution requires approved code plan, approved acceptance package, and founder execution approval.
+          </span>
+          <button
+            class="secondary-button"
+            type="button"
+            disabled
+            aria-describedby="queue-codex-blocker"
+          >
+            <i data-lucide="lock"></i> Start Codex
+          </button>
+        </div>
+      </section>
+
+      <section class="metric-grid queue-summary-grid" aria-label="Queue summary">
+        <div class="metric">
+          <span>{{ summary.open }}</span>
+          <small>open work items</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.blocked }}</span>
+          <small>blocked</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.needs_review }}</span>
+          <small>needs review</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.founder_required }}</span>
+          <small>founder required</small>
+        </div>
+      </section>
+
+      <section class="queue-layout">
+        <aside class="panel queue-controls">
+          <div class="panel-header">
+            <div>
+              <h2>Filters</h2>
+              <p class="panel-kicker">Blocked and review-needed work stays visible first.</p>
+            </div>
+            <i data-lucide="sliders-horizontal"></i>
+          </div>
+          <form class="stacked-form" method="get" action="/queue">
+            <label>
+              State
+              <select name="status">
+                <option value="">All states</option>
+                {% for state in states %}
+                <option value="{{ state }}" {% if filters.status == state %}selected{% endif %}>{{ state_labels[state] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Project
+              <select name="project_id">
+                <option value="">All projects</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}" {% if filters.project_id == project.id %}selected{% endif %}>{{ project.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Owner
+              <select name="owner_agent_id">
+                <option value="">All agents</option>
+                {% for agent in agents %}
+                <option value="{{ agent.id }}" {% if filters.owner_agent_id == agent.id %}selected{% endif %}>{{ agent.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button class="primary-button full-width-button" type="submit">
+              <i data-lucide="search"></i> Apply filters
+            </button>
+          </form>
+
+          <div class="queue-policy-callout">
+            <strong>Read-first autonomy boundary</strong>
+            <p>
+              Agents may propose execution-state movement. Founder approval is required
+              for approval, rejection, accepted risk, launch, external action, and
+              irreversible scope changes.
+            </p>
+          </div>
+
+          <div class="panel-header compact-panel-header">
+            <h2>Add manual item</h2>
+          </div>
+          <form class="stacked-form" method="post" action="/queue">
+            <input type="hidden" name="return_to" value="/queue">
+            <label>
+              Title
+              <input name="title" required placeholder="Review code plan evidence">
+            </label>
+            <label>
+              Owner
+              <select name="owner_agent_id">
+                {% for agent in agents %}
+                <option value="{{ agent.id }}" {% if agent.id == "chief-of-staff" %}selected{% endif %}>{{ agent.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              State
+              <select name="status">
+                <option value="planned">Planned</option>
+                <option value="assigned">Assigned</option>
+                <option value="blocked">Blocked</option>
+                <option value="needs_review">Needs review</option>
+              </select>
+            </label>
+            <label>
+              Priority
+              <select name="priority">
+                {% for priority in priorities %}
+                <option value="{{ priority }}" {% if priority == "medium" %}selected{% endif %}>{{ priority_labels[priority] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Project
+              <select name="project_id">
+                <option value="">No project link</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}">{{ project.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Summary
+              <textarea name="summary" rows="4" required placeholder="Expected output, source input, and acceptance signal."></textarea>
+            </label>
+            <label>
+              Blocker reason
+              <textarea name="blocked_reason" rows="3" placeholder="Required only for blocked state."></textarea>
+            </label>
+            <label>
+              Blocked owner
+              <input name="blocked_owner" placeholder="Founder, Chief of Staff, or agent owner">
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="founder_action_required" value="confirmed">
+              Founder action required
+            </label>
+            <button class="primary-button full-width-button" type="submit">
+              <i data-lucide="plus"></i> Add queue item
+            </button>
+          </form>
+        </aside>
+
+        <section class="panel queue-table-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Queue items</h2>
+              <p class="panel-kicker">`needs_review` is not approved. External handoffs are status only.</p>
+            </div>
+            <span class="status-pill planned">{{ items|length }} shown</span>
+          </div>
+
+          <div class="queue-row-list">
+            {% for item in items %}
+            <article class="queue-row {{ item.status }}">
+              <div class="queue-row-main">
+                <div class="queue-title-line">
+                  <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ state_labels[item.status] }}">{{ state_labels[item.status] }}</span>
+                  <span class="status-pill {{ item.priority }}" aria-label="Queue priority: {{ priority_labels[item.priority] }}">{{ priority_labels[item.priority] }}</span>
+                  {% if item.founder_action_required %}
+                  <span class="status-pill urgent">Founder required</span>
+                  {% endif %}
+                  <strong>{{ item.title }}</strong>
+                </div>
+                <p>{{ item.summary }}</p>
+                <div class="queue-meta-grid">
+                  <span><strong>Owner</strong>{{ item.owner_name }}</span>
+                  <span><strong>Source</strong>{{ item.source }}</span>
+                  <span><strong>Handoff</strong>{{ item.external_handoff_status }}</span>
+                  <span><strong>Updated</strong>{{ item.updated_at }}</span>
+                  {% if item.project_id %}
+                  <span><strong>Project</strong><a href="/projects/{{ item.project_id }}">{{ item.project_name }}</a></span>
+                  {% endif %}
+                  {% if item.stage_id %}
+                  <span><strong>Stage</strong>{{ item.stage_name|default(item.stage_id, true) }}</span>
+                  {% endif %}
+                  {% if item.artifact_id %}
+                  <span><strong>Artifact</strong>{{ item.artifact_id }}</span>
+                  {% endif %}
+                  {% if item.decision_id %}
+                  <span><strong>Decision</strong><a href="/decisions/{{ item.decision_id }}">{{ item.decision_status }}</a></span>
+                  {% endif %}
+                  <span>
+                    <strong>Profile handoff</strong>
+                    <a href="/queue/{{ item.id }}/handoff.json">Handoff JSON</a>
+                    <a href="/queue/{{ item.id }}/handoff.md">Handoff MD</a>
+                  </span>
+                </div>
+                {% if item.status == "blocked" %}
+                <div class="queue-blocker">
+                  <strong>Blocked {{ item.blocked_age_label }}</strong>
+                  <span>{{ item.blocked_reason }}</span>
+                  <small>Owner: {{ item.blocked_owner|default("Not assigned", true) }}</small>
+                </div>
+                {% endif %}
+              </div>
+
+              <form class="queue-update-form" method="post" action="/queue/{{ item.id }}">
+                <input type="hidden" name="return_to" value="/queue">
+                <label>
+                  State
+                  <select name="status" aria-label="State for {{ item.title }}">
+                    {% for state in states %}
+                    <option value="{{ state }}" {% if item.status == state %}selected{% endif %}>{{ state_labels[state] }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select name="priority" aria-label="Priority for {{ item.title }}">
+                    {% for priority in priorities %}
+                    <option value="{{ priority }}" {% if item.priority == priority %}selected{% endif %}>{{ priority_labels[priority] }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Owner
+                  <select name="owner_agent_id" aria-label="Owner for {{ item.title }}">
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}" {% if item.owner_agent_id == agent.id %}selected{% endif %}>{{ agent.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Blocker reason
+                  <textarea name="blocked_reason" rows="2" placeholder="Required before marking blocked.">{{ item.blocked_reason }}</textarea>
+                </label>
+                <label>
+                  Blocked owner
+                  <input name="blocked_owner" value="{{ item.blocked_owner }}" placeholder="Owner of unblock action">
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" name="founder_action_required" value="confirmed" {% if item.founder_action_required %}checked{% endif %}>
+                  Founder action required
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" name="founder_confirmed" value="confirmed">
+                  Founder confirmed approval or rejection
+                </label>
+                <button class="secondary-button full-width-button" type="submit">
+                  <i data-lucide="save"></i> Save queue state
+                </button>
+              </form>
+            </article>
+            {% else %}
+            <p class="empty-state">
+              No active work items. Approved wizard tasks and manual Chief of Staff
+              triage items will appear here after queue sync.
+            </p>
+            {% endfor %}
+          </div>
+        </section>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>
