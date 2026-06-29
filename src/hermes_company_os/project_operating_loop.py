@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from hashlib import sha256
 
 from hermes_company_os.external_dispatch import (
     command_boundary_summary,
     external_dispatch_command_contract,
 )
+from hermes_company_os.fingerprints import fingerprint_json as _fingerprint_json
+from hermes_company_os.fingerprints import fingerprint_text as _fingerprint_text
 from hermes_company_os.founder_decisions import RESOLVED_DECISION_STATUSES
+from hermes_company_os.repository_protocol import RepositoryProtocol
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 PROJECT_OPERATING_LOOP_SCHEMA = "project_operating_loop_v1"
@@ -25,7 +27,9 @@ EXTERNAL_DISPATCH_RUNNER_BLOCKED_EVENT_TYPE = "external_dispatch_runner_blocked"
 EXTERNAL_DISPATCH_RUNNER_COMPLETED_EVENT_TYPE = "external_dispatch_runner_completed"
 
 
-def project_operating_loop_package(repository, project_id: str) -> dict:
+def project_operating_loop_package(
+    repository: RepositoryProtocol, project_id: str
+) -> dict:
     project = repository.get_project(project_id)
     if project is None:
         raise ValueError(f"Unknown project: {project_id}")
@@ -78,7 +82,7 @@ def project_operating_loop_package(repository, project_id: str) -> dict:
 
 
 def project_external_dispatch_preview_package(
-    repository,
+    repository: RepositoryProtocol,
     project_id: str,
     *,
     external_dispatch_enabled: bool = False,
@@ -986,11 +990,3 @@ def _preview_snapshot(package: Mapping) -> dict:
         "queue": package["queue"],
         "items": package["items"],
     }
-
-
-def _fingerprint_json(value: Mapping | Sequence) -> str:
-    return _fingerprint_text(json.dumps(value, sort_keys=True, separators=(",", ":")))
-
-
-def _fingerprint_text(value: str) -> str:
-    return sha256(value.encode("utf-8")).hexdigest()
