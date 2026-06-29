@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Observability - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    {% set scope = package.scope %}
+    {% set runs = package.runs %}
+    {% set blocked = package.blocked_work %}
+    {% set decisions = package.open_founder_decisions %}
+    {% set findings = package.open_review_findings %}
+    {% set scope_label = "Company-wide" if scope.company_wide else scope.project_name %}
+    <main class="agent-page observability-page">
+      {% if scope.company_wide %}
+      <a class="back-link" href="/"><i data-lucide="arrow-left"></i> Dashboard</a>
+      {% else %}
+      <a class="back-link" href="/projects/{{ scope.project_id }}"><i data-lucide="arrow-left"></i> {{ scope.project_name }}</a>
+      {% endif %}
+
+      <section class="project-titlebar">
+        <div>
+          <p class="eyebrow">Run observability - read-only metrics</p>
+          <h1>{{ scope_label }} observability</h1>
+          <p class="page-subtitle">
+            Derived from existing run and audit records. Rates and averages read
+            <code>n/a</code> when the denominator is zero. No live calls are made.
+          </p>
+        </div>
+        <div class="project-title-actions">
+          <span class="status-pill {% if scope.company_wide %}ready{% else %}current{% endif %}">
+            {% if scope.company_wide %}Company-wide{% else %}Project scope{% endif %}
+          </span>
+          {% if scope.company_wide %}
+          <a class="secondary-button link-button-muted" href="/observability.json">
+            <i data-lucide="braces"></i> Metrics JSON
+          </a>
+          {% else %}
+          <a class="secondary-button link-button-muted" href="/projects/{{ scope.project_id }}/observability.json">
+            <i data-lucide="braces"></i> Metrics JSON
+          </a>
+          <a class="secondary-button link-button-muted" href="/projects/{{ scope.project_id }}/observability.md">
+            <i data-lucide="file-text"></i> Metrics MD
+          </a>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Run summary metrics">
+        <div class="metric">
+          <span>{{ runs.total }}</span>
+          <small>Total runs</small>
+        </div>
+        <div class="metric">
+          <span>{{ runs.succeeded }}</span>
+          <small>Succeeded</small>
+        </div>
+        <div class="metric">
+          <span>{{ runs.failed }}</span>
+          <small>Failed</small>
+        </div>
+        <div class="metric">
+          <span>{{ runs.running }}</span>
+          <small>Running</small>
+        </div>
+        <div class="metric">
+          <span>
+            {% if runs.success_rate is none %}n/a{% else %}{{ "%.1f"|format(runs.success_rate * 100) }}%{% endif %}
+          </span>
+          <small>Success rate</small>
+        </div>
+        <div class="metric">
+          <span>
+            {% if runs.average_latency_seconds is none %}n/a{% else %}{{ "%.2f"|format(runs.average_latency_seconds) }}s{% endif %}
+          </span>
+          <small>Average latency</small>
+        </div>
+        <div class="metric">
+          <span>{{ runs.retry_count }}</span>
+          <small>Retry count</small>
+        </div>
+        <div class="metric">
+          <span>{{ blocked.blocked }}</span>
+          <small>Blocked work</small>
+        </div>
+        <div class="metric">
+          <span>{{ decisions.total }}</span>
+          <small>Open founder decisions</small>
+        </div>
+        <div class="metric">
+          <span>{{ findings.total }}</span>
+          <small>Open review findings</small>
+        </div>
+      </section>
+
+      <section class="observability-layout">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Runs by agent</h2>
+              <p class="panel-kicker">Aggregated from the legacy runs table only.</p>
+            </div>
+            <i data-lucide="users-round"></i>
+          </div>
+          <div class="readiness-stack">
+            {% for agent_id, count in runs.runs_by_agent|dictsort %}
+            <div class="readiness-line">
+              <span><code>{{ agent_id }}</code></span>
+              <strong>{{ count }}</strong>
+            </div>
+            {% else %}
+            <p class="empty-state">
+              No agent-attributed runs yet. Generation and Codex runs do not carry
+              an explicit agent id.
+            </p>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Runs by source</h2>
+              <p class="panel-kicker">Agent, generation, and Codex run tables.</p>
+            </div>
+            <i data-lucide="activity"></i>
+          </div>
+          <div class="readiness-stack">
+            {% for source, count in runs.runs_by_source.items() %}
+            <div class="readiness-line">
+              <span><code>{{ source }}</code></span>
+              <strong>{{ count }}</strong>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Blocked work</h2>
+              <p class="panel-kicker">Agent work queue summary.</p>
+            </div>
+            <i data-lucide="octagon-alert"></i>
+          </div>
+          <div class="readiness-stack">
+            <div class="readiness-line">
+              <span>Blocked</span>
+              <strong>{{ blocked.blocked }}</strong>
+            </div>
+            <div class="readiness-line">
+              <span>Needs review</span>
+              <strong>{{ blocked.needs_review }}</strong>
+            </div>
+            <div class="readiness-line">
+              <span>Founder required</span>
+              <strong>{{ blocked.founder_required }}</strong>
+            </div>
+            <div class="readiness-line">
+              <span>Open</span>
+              <strong>{{ blocked.open }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Founder attention</h2>
+              <p class="panel-kicker">Open decisions and outstanding review findings.</p>
+            </div>
+            <i data-lucide="gavel"></i>
+          </div>
+          <div class="readiness-stack">
+            <a class="readiness-line linked-readiness-line" href="/decisions{% if not scope.company_wide %}?project_id={{ scope.project_id }}{% endif %}">
+              <span>Open founder decisions</span>
+              <strong>{{ decisions.total }}</strong>
+            </a>
+            <div class="readiness-line">
+              <span>Urgent decisions</span>
+              <strong>{{ decisions.urgent }}</strong>
+            </div>
+            <div class="readiness-line">
+              <span>Open review findings</span>
+              <strong>{{ findings.total }}</strong>
+            </div>
+            <div class="readiness-line">
+              <span>Non-approved review records</span>
+              <strong>{{ findings.records }}</strong>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      {% if scope.company_wide and projects %}
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Per-project observability</h2>
+            <p class="panel-kicker">Scoped metrics for each company project.</p>
+          </div>
+          <span class="status-pill ready">{{ projects|length }} projects</span>
+        </div>
+        <div class="readiness-stack">
+          {% for project in projects %}
+          <a class="readiness-line linked-readiness-line" href="/projects/{{ project.id }}/observability">
+            <span>{{ project.name }}</span>
+            <strong><i data-lucide="chevron-right"></i></strong>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="queue-policy-callout">
+        <strong>Read-only observability</strong>
+        <p>
+          {{ package.notes.retry_count }}
+          {{ package.notes.null_metrics }}
+        </p>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>
