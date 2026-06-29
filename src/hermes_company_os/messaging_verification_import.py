@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import re
 
+from hermes_company_os.setup_import_parsing import (
+    parse_status_value as _parse_status_value,
+)
+
 STATUS_LINE = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*(?:=|:)\s*(.*?)\s*$")
 ALLOWED_MESSAGING_STATUSES = {"needed", "loaded", "verified", "blocked", "deferred"}
 
@@ -133,15 +137,3 @@ def messaging_verification_import_redirect(summary: dict) -> str:
         f"&messaging_ignored={len(summary['ignored_lines'])}"
         "#messaging-verification"
     )
-
-
-def _parse_status_value(value: str) -> tuple[str, str]:
-    status_part, separator, evidence = value.partition("|")
-    status = _strip_inline_comment(status_part).strip().lower()
-    return status, evidence.strip() if separator else ""
-
-
-def _strip_inline_comment(value: str) -> str:
-    if " #" not in value:
-        return value
-    return value.split(" #", 1)[0].rstrip()

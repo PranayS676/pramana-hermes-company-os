@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 
+from hermes_company_os.setup_import_parsing import strip_inline_comment as _strip_inline_comment
+
 SCHEDULE_LINE = re.compile(r"^\s*([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)\s*(?:=|:)\s*(.*?)\s*$")
 TIMEZONE = re.compile(r"^[A-Za-z][A-Za-z0-9_./+-]*$")
 SLACK_TARGET = re.compile(r"^(#[a-z0-9][a-z0-9_-]{1,79}|[CGD][A-Z0-9]{2,})$")
@@ -294,9 +296,3 @@ def _parse_bool(value: object) -> bool | None:
     if normalized in {"0", "false", "no", "n", "off", "paused", "inactive"}:
         return False
     return None
-
-
-def _strip_inline_comment(value: str) -> str:
-    if " #" not in value:
-        return value
-    return value.split(" #", 1)[0].rstrip()

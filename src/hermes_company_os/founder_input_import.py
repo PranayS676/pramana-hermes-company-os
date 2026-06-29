@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from hermes_company_os.setup_import_parsing import strip_inline_comment as _strip_inline_comment
+
 INPUT_LINE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*(?:=|:)\s*(.*?)\s*$")
 
 
@@ -56,9 +58,3 @@ def founder_input_import_redirect(summary: dict) -> str:
         f"&input_ignored={len(summary['ignored_lines'])}"
         "#inputs"
     )
-
-
-def _strip_inline_comment(value: str) -> str:
-    if " #" not in value:
-        return value
-    return value.split(" #", 1)[0].rstrip()
