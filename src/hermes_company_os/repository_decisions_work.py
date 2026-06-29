@@ -3,6 +3,11 @@ from __future__ import annotations
 import sqlite3
 from uuid import uuid4
 
+from hermes_company_os.agent_work_pickup import (
+    AutoPickupPolicy,
+    eligible_for_auto_pickup,
+    next_auto_pickup_status,
+)
 from hermes_company_os.agent_work_queue import (
     QUEUE_STATES,
     validate_queue_priority,
@@ -623,6 +628,97 @@ class DecisionsAndWorkQueueMixin:
                     work_item_id,
                 ),
             )
+
+    def auto_pickup_agent_work_items(
+        self,
+        *,
+        policy: AutoPickupPolicy,
+        project_id: str = "",
+        owner_agent_id: str = "",
+    ) -> list[dict]:
+        """Advance an agent's OWN planned/assigned work under a founder-gated policy.
+
+        Pure queue-state orchestration: each eligible item is nudged one legal
+        step forward (planned -> assigned, and assigned -> running only when the
+        policy opts in) via ``validate_queue_transition`` with
+        ``founder_confirmed=False`` so it can never reach approved/rejected/done.
+        Every transition emits an audit event in the SAME transaction. No live
+        external side effects are performed. When the policy is disabled this is
+        a no-op returning an empty list.
+        """
+        if not policy.enabled:
+            return []
+
+        candidates = [
+            item
+            for item in self.list_agent_work_items(
+                project_id=project_id,
+                owner_agent_id=owner_agent_id,
+            )
+            if item["status"] in {"planned", "assigned"}
+            and eligible_for_auto_pickup(item, policy)
+        ]
+
+        picked_up: list[dict] = []
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            for item in candidates:
+                if policy.max_items is not None and len(picked_up) >= policy.max_items:
+                    break
+                current_status = item["status"]
+                target_status = next_auto_pickup_status(current_status, policy=policy)
+                if target_status is None:
+                    continue
+                # Re-run the state-machine guard inside the transaction; this
+                # raises if a forbidden/illegal target ever slipped through and
+                # never passes founder_confirmed=True.
+                next_status = validate_queue_transition(
+                    current_status,
+                    target_status,
+                    founder_confirmed=False,
+                )
+                event_type = (
+                    "agent_work_item_auto_started"
+                    if next_status == "running"
+                    else "agent_work_item_auto_assigned"
+                )
+                payload = {
+                    "from_status": current_status,
+                    "to_status": next_status,
+                    "policy": "auto_pickup",
+                    "external_execution": False,
+                }
+                summary = (
+                    f"Auto-pickup advanced '{item['title']}' "
+                    f"from {current_status} to {next_status}."
+                )
+                assert_no_secret_values({"summary": summary})
+                connection.execute(
+                    """
+                    UPDATE agent_work_items
+                    SET status = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (next_status, now, item["id"]),
+                )
+                self._insert_audit_event(
+                    connection,
+                    project_id=(item.get("project_id") or "").strip() or None,
+                    event_type=event_type,
+                    status=next_status,
+                    actor_agent_id=item["owner_agent_id"],
+                    source_table="agent_work_items",
+                    source_id=item["id"],
+                    summary=summary,
+                    payload=payload,
+                )
+                advanced = dict(item)
+                advanced["status"] = next_status
+                advanced["from_status"] = current_status
+                advanced["updated_at"] = now
+                picked_up.append(advanced)
+        return picked_up
 
     def sync_project_wizard_work_items(self, project_id: str) -> int:
         project = self.get_project(project_id)

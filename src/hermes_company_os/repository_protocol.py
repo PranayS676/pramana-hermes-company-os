@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from hermes_company_os.agent_work_pickup import AutoPickupPolicy
+
 
 class RepositoryProtocol(Protocol):
     """Structural interface implemented by :class:`CompanyRepository`.
@@ -18,6 +20,13 @@ class RepositoryProtocol(Protocol):
     def approve_stage(self, project_id: str, stage_id: str) -> None: ...
     def assert_agent_exists(self, agent_id: str) -> None: ...
     def attach_kanban_task(self, task_id: str, kanban_task_id: str) -> None: ...
+    def auto_pickup_agent_work_items(
+        self,
+        *,
+        policy: AutoPickupPolicy,
+        project_id: str = "",
+        owner_agent_id: str = "",
+    ) -> list[dict]: ...
     def block_stage(self, project_id: str, stage_id: str, notes: str = "") -> None: ...
     def complete_generation_run(
         self,
