@@ -9,6 +9,7 @@ from hermes_company_os.multi_agent_review import (
     multi_agent_review_package,
 )
 from hermes_company_os.repository_protocol import RepositoryProtocol
+from hermes_company_os.review_policy import stage_review_requirements
 
 
 def register_multi_agent_review_routes(app: FastAPI) -> None:
@@ -20,6 +21,15 @@ def register_multi_agent_review_routes(app: FastAPI) -> None:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return multi_agent_review_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/stages/{stage_id}/review-requirements.json")
+    def project_stage_review_requirements_json(
+        request: Request, project_id: str, stage_id: str
+    ) -> dict:
+        repository: RepositoryProtocol = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return stage_review_requirements(repository, project_id, stage_id)
 
     @app.get("/projects/{project_id}/multi-agent-review.md")
     def project_multi_agent_review_markdown(request: Request, project_id: str):

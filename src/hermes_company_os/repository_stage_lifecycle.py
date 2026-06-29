@@ -8,10 +8,29 @@ from hermes_company_os.repository_support import (
     serialize_wizard_json_content,
     utc_now,
 )
+from hermes_company_os.review_policy import (
+    review_policy_blocker,
+    stage_review_requirements,
+)
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 
 class StageLifecycleMixin:
+    def configure_review_enforcement(self, enabled: bool) -> None:
+        """Enable/disable cross-agent review enforcement on stage approval.
+
+        Off by default (the attribute is absent until set), so a repository built
+        without this call behaves exactly as before — preserving the demo and the
+        existing happy-path tests. ``create_app`` may thread the
+        ``HERMES_REVIEW_ENFORCEMENT_ENABLED`` settings flag in via this setter.
+        """
+
+        self.review_enforcement_enabled = bool(enabled)
+
+    def stage_review_requirements(self, project_id: str, stage_id: str) -> dict:
+        """Read-only view of the cross-agent review requirements for a stage."""
+
+        return stage_review_requirements(self, project_id, stage_id)
     def save_stage_artifact_draft(
         self,
         project_id: str,
@@ -108,6 +127,12 @@ class StageLifecycleMixin:
         artifact = self.latest_project_stage_artifact(project_id, stage_id)
         if artifact is None or artifact["status"] != "draft":
             raise ValueError("Cannot approve a stage without a draft artifact.")
+
+        if getattr(self, "review_enforcement_enabled", False):
+            requirements = stage_review_requirements(self, project_id, stage_id)
+            blocker = review_policy_blocker(requirements)
+            if blocker:
+                raise ValueError(blocker)
 
         now = utc_now()
         with connect(self.database_path) as connection:
