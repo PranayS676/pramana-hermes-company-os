@@ -1206,6 +1206,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Hermes Company OS")
     app.state.settings = resolved_settings
     app.state.repository = CompanyRepository(database_path)
+    app.state.repository.configure_review_enforcement(
+        resolved_settings.review_enforcement_enabled
+    )
     app.state.hermes_client = HermesClient(resolved_settings)
     app.state.kanban_client = KanbanClient()
     app.state.generation_service = LocalDemoGenerationService()
