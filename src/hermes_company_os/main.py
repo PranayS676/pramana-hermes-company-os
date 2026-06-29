@@ -34,13 +34,7 @@ from hermes_company_os.agent_work_queue import (
 )
 from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
 from hermes_company_os.codex_execution import (
-    CODEX_EXECUTION_DECISION_SOURCE,
-    CODEX_EXECUTION_DECISION_TYPE,
-    CODEX_EXECUTION_STAGE_ID,
-    codex_execution_markdown,
     codex_execution_package,
-    queue_codex_execution_run,
-    start_codex_execution_git_worktree,
 )
 from hermes_company_os.company_launch_drill import (
     company_launch_drill_json,
@@ -195,8 +189,6 @@ from hermes_company_os.messaging_verification_import import (
     parse_messaging_verification_reply,
 )
 from hermes_company_os.multi_agent_review import (
-    generate_multi_agent_review,
-    multi_agent_review_markdown,
     multi_agent_review_package,
 )
 from hermes_company_os.product_wizard import (
@@ -255,7 +247,6 @@ from hermes_company_os.project_memory import (
     memory_confidence_options,
     memory_reuse_policy_summary,
     product_wizard_memory_context,
-    project_memory_markdown,
     project_memory_package,
 )
 from hermes_company_os.project_operating_loop import (
@@ -269,8 +260,17 @@ from hermes_company_os.project_workflow_artifacts import (
 from hermes_company_os.prompts import build_agent_prompt, build_standup_prompt
 from hermes_company_os.readiness import ReadinessService
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.routers.codex_execution import (
+    register_codex_execution_routes,
+)
 from hermes_company_os.routers.external_dispatch import (
     register_external_dispatch_routes,
+)
+from hermes_company_os.routers.multi_agent_review import (
+    register_multi_agent_review_routes,
+)
+from hermes_company_os.routers.project_memory import (
+    register_project_memory_routes,
 )
 from hermes_company_os.runtime_preflight import (
     runtime_preflight_checks,
@@ -4812,250 +4812,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Project not found")
         return project_operating_loop_package(repository, project_id)
 
-    @app.get("/projects/{project_id}/codex-execution.json")
-    def project_codex_execution_json(request: Request, project_id: str) -> dict:
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        return codex_execution_package(repository, project_id)
-
-    @app.get("/projects/{project_id}/multi-agent-review.json")
-    def project_multi_agent_review_json(request: Request, project_id: str) -> dict:
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        return multi_agent_review_package(repository, project_id)
-
-    @app.get("/projects/{project_id}/multi-agent-review.md")
-    def project_multi_agent_review_markdown(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        package = multi_agent_review_package(repository, project_id)
-        return PlainTextResponse(multi_agent_review_markdown(package))
-
-    @app.post("/projects/{project_id}/multi-agent-review")
-    def generate_project_multi_agent_review(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        try:
-            package = generate_multi_agent_review(repository, project_id)
-        except ValueError as exc:
-            repository.create_audit_event(
-                project_id=project_id,
-                event_type="multi_agent_review_blocked",
-                status="blocked",
-                actor_agent_id="qa-critic",
-                source_table="company_projects",
-                source_id=project_id,
-                summary=f"Multi-agent review blocked: {exc}",
-                payload={"blocker": str(exc)},
-            )
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        repository.create_audit_event(
-            project_id=project_id,
-            event_type="multi_agent_review_completed",
-            status=package["aggregate"]["status"],
-            actor_agent_id="qa-critic",
-            source_table="project_review_records",
-            source_id=package["review_batch_id"],
-            summary=(
-                "Multi-agent review completed with "
-                f"{package['aggregate']['reviewer_count']} reviewer records."
-            ),
-            payload={
-                "review_batch_id": package["review_batch_id"],
-                "reviewer_count": package["aggregate"]["reviewer_count"],
-                "required_reviewer_count": package["aggregate"]["required_reviewer_count"],
-                "status": package["aggregate"]["status"],
-            },
-        )
-        return RedirectResponse(
-            f"/projects/{project_id}#multi-agent-review",
-            status_code=303,
-        )
-
-    @app.get("/projects/{project_id}/memory.json")
-    def project_memory_json(request: Request, project_id: str) -> dict:
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        return project_memory_package(repository, project_id)
-
-    @app.get("/projects/{project_id}/memory.md")
-    def project_memory_markdown_route(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        package = project_memory_package(repository, project_id)
-        return PlainTextResponse(project_memory_markdown(package))
-
-    @app.post("/projects/{project_id}/memory")
-    def create_project_memory(
-        request: Request,
-        project_id: str,
-        category: str = Form(...),
-        memory_type: str = Form("context"),
-        owner_agent_id: str = Form("chief-of-staff"),
-        source: str = Form("founder-memory-form"),
-        title: str = Form(...),
-        summary: str = Form(...),
-        body: str = Form(...),
-        confidence: str = Form("medium"),
-        pinned: str | None = Form(None),
-        review_after: str = Form(""),
-        expires_at: str = Form(""),
-        source_artifact_id: str = Form(""),
-        source_decision_id: str = Form(""),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        try:
-            repository.create_project_memory_entry(
-                project_id=project_id,
-                category=category,
-                memory_type=memory_type,
-                owner_agent_id=owner_agent_id,
-                source=source,
-                title=title,
-                summary=summary,
-                body=body,
-                confidence=confidence,
-                status="active",
-                pinned=bool(pinned),
-                review_after=review_after,
-                expires_at=expires_at,
-                source_artifact_id=source_artifact_id,
-                source_decision_id=source_decision_id,
-            )
-        except (ValueError, sqlite3.IntegrityError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
-
-    @app.post("/projects/{project_id}/memory/{memory_id}")
-    def update_project_memory(
-        request: Request,
-        project_id: str,
-        memory_id: str,
-        memory_action: str = Form("pin"),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        entry = repository.get_project_memory_entry(memory_id)
-        if entry is None or (entry["project_id"] and entry["project_id"] != project_id):
-            raise HTTPException(status_code=404, detail="Project memory entry not found")
-        try:
-            if memory_action == "retire":
-                repository.update_project_memory_entry(memory_id, status="retired")
-            elif memory_action == "pin":
-                repository.update_project_memory_entry(memory_id, pinned=True)
-            elif memory_action == "unpin":
-                repository.update_project_memory_entry(memory_id, pinned=False)
-            elif memory_action == "reactivate":
-                repository.update_project_memory_entry(memory_id, status="active")
-            else:
-                raise ValueError(f"Unsupported memory action: {memory_action}")
-        except (ValueError, sqlite3.IntegrityError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return RedirectResponse(f"/projects/{project_id}#project-memory", status_code=303)
-
-    @app.get("/projects/{project_id}/codex-execution.md")
-    def project_codex_execution_markdown(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        package = codex_execution_package(repository, project_id)
-        return PlainTextResponse(codex_execution_markdown(package))
-
-    @app.post("/projects/{project_id}/codex-execution-approval")
-    def request_project_codex_execution_approval(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        project = repository.get_project(project_id)
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        package = codex_execution_package(repository, project_id)
-        if package["execution"]["approval_request_allowed"]:
-            source_artifacts = ", ".join(
-                f"{artifact['stage_id']}={artifact['id']}@v{artifact['version']}"
-                for artifact in package["source_artifacts"]
-            )
-            command_preview = "; ".join(
-                command["command"] for command in package["command_preview"]
-            )
-            acceptance_artifact = next(
-                (
-                    artifact
-                    for artifact in package["source_artifacts"]
-                    if artifact["stage_id"] == CODEX_EXECUTION_STAGE_ID
-                ),
-                {},
-            )
-            repository.create_founder_decision(
-                title=f"Approve Codex execution for {project['name']}",
-                urgency="urgent",
-                decision_type=CODEX_EXECUTION_DECISION_TYPE,
-                source=CODEX_EXECUTION_DECISION_SOURCE,
-                owner_agent_id="chief-of-staff",
-                project_id=project_id,
-                stage_id=CODEX_EXECUTION_STAGE_ID,
-                artifact_id=acceptance_artifact.get("id") or None,
-                slack_channel="#founder-command",
-                telegram_policy="Telegram only if Codex execution blocks launch.",
-                context=(
-                    f"Approve Codex implementation start for {project['name']}. "
-                    "This dashboard action does not create branches, create "
-                    "worktrees, spawn chats, or run commands."
-                ),
-                evidence=(
-                    f"Source artifacts: {source_artifacts}. Branch preview: "
-                    f"{package['branch_plan']['branch_name']}. Commands previewed: "
-                    f"{command_preview}."
-                ),
-                requires_founder_approval=True,
-            )
-        return RedirectResponse(
-            f"/projects/{project_id}#codex-execution",
-            status_code=303,
-        )
-
-    @app.post("/projects/{project_id}/codex-execution-run")
-    def queue_project_codex_execution_run(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        try:
-            queue_codex_execution_run(repository, project_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return RedirectResponse(
-            f"/projects/{project_id}#codex-execution",
-            status_code=303,
-        )
-
-    @app.post("/projects/{project_id}/codex-execution-real-run")
-    def start_project_codex_execution_real_run(request: Request, project_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        settings: Settings = request.app.state.settings
-        try:
-            start_codex_execution_git_worktree(
-                repository,
-                project_id,
-                enabled=settings.codex_execution_enabled,
-                workspace_root=settings.codex_workspace_root,
-                worktree_root=settings.codex_worktree_root,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return RedirectResponse(
-            f"/projects/{project_id}#codex-execution",
-            status_code=303,
-        )
-
     @app.post("/projects/{project_id}/stages/{stage_id}/generate")
     def generate_project_stage(
         request: Request,
@@ -5801,6 +5557,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse("/", status_code=303)
 
     register_external_dispatch_routes(app)
+    register_multi_agent_review_routes(app)
+    register_project_memory_routes(app)
+    register_codex_execution_routes(app)
 
     return app
 
