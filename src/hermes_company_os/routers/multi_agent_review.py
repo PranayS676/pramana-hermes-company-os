@@ -5,10 +5,12 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from hermes_company_os.multi_agent_review import (
     generate_multi_agent_review,
+    generate_stage_reviews,
     multi_agent_review_markdown,
     multi_agent_review_package,
 )
 from hermes_company_os.repository_protocol import RepositoryProtocol
+from hermes_company_os.review_policy import stage_review_requirements
 
 
 def register_multi_agent_review_routes(app: FastAPI) -> None:
@@ -20,6 +22,56 @@ def register_multi_agent_review_routes(app: FastAPI) -> None:
         if repository.get_project(project_id) is None:
             raise HTTPException(status_code=404, detail="Project not found")
         return multi_agent_review_package(repository, project_id)
+
+    @app.get("/projects/{project_id}/stages/{stage_id}/review-requirements.json")
+    def project_stage_review_requirements_json(
+        request: Request, project_id: str, stage_id: str
+    ) -> dict:
+        repository: RepositoryProtocol = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return stage_review_requirements(repository, project_id, stage_id)
+
+    @app.post("/projects/{project_id}/stages/{stage_id}/reviews")
+    def generate_project_stage_reviews(
+        request: Request, project_id: str, stage_id: str
+    ) -> dict:
+        repository: RepositoryProtocol = request.app.state.repository
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            package = generate_stage_reviews(repository, project_id, stage_id)
+        except ValueError as exc:
+            repository.create_audit_event(
+                project_id=project_id,
+                event_type="stage_reviews_blocked",
+                status="blocked",
+                actor_agent_id="qa-critic",
+                source_table="product_wizard_project_stages",
+                source_id=f"{project_id}:{stage_id}",
+                summary=f"Stage review generation blocked: {exc}",
+                payload={"stage_id": stage_id, "blocker": str(exc)},
+            )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        repository.create_audit_event(
+            project_id=project_id,
+            event_type="stage_reviews_generated",
+            status="completed",
+            actor_agent_id="qa-critic",
+            source_table="project_review_records",
+            source_id=package["review_batch_id"],
+            summary=(
+                f"Generated {len(package['created_review_ids'])} pre-approval "
+                f"reviews for stage '{stage_id}'."
+            ),
+            payload={
+                "stage_id": stage_id,
+                "review_batch_id": package["review_batch_id"],
+                "created_review_ids": package["created_review_ids"],
+                "approval_allowed": package["requirements"]["approval_allowed"],
+            },
+        )
+        return package
 
     @app.get("/projects/{project_id}/multi-agent-review.md")
     def project_multi_agent_review_markdown(request: Request, project_id: str):
