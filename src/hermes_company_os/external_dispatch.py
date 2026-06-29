@@ -44,7 +44,10 @@ def command_boundary_summary(*, enabled: bool, runner_label: str = "") -> dict[s
         "status": "enabled" if enabled else "disabled",
         "runner_label": runner_label,
         "contract_schema": EXTERNAL_DISPATCH_COMMAND_CONTRACT_SCHEMA,
-        "dry_run_contracts_only": True,
+        # When disabled, only dry-run contracts are produced (no real `hermes` call).
+        # When enabled AND founder-approved, the runner may execute a real send.
+        "dry_run_contracts_only": not enabled,
+        "real_send_via": "hermes send / hermes kanban create",
     }
 
 
@@ -169,44 +172,43 @@ class HermesExternalDispatchCommandAdapter:
 
 def _slack_contract(item: Mapping[str, Any]) -> dict[str, Any]:
     target_input_key = str(item["target_input_key"])
+    channel_ref = _target_value(item)
     return _base_contract(
         item,
         adapter="slack",
         command_kind="slack.chat.postMessage",
         target_input_key=target_input_key,
+        target_value=channel_ref,
+        # Real Hermes interface: `hermes send --to slack:<channel_ref> "<text>"`.
+        # ``hermes send`` reuses Hermes's own creds (~/.hermes/.env); no token here.
         argv=[
             "hermes",
-            "dispatch",
-            "slack",
-            "post-message",
-            "--channel-ref",
-            target_input_key,
-            "--text",
+            "send",
+            "--to",
+            f"slack:{channel_ref}",
             str(item["message_preview"]),
-            "--dry-run",
         ],
     )
 
 
 def _telegram_contract(item: Mapping[str, Any]) -> dict[str, Any]:
     target_input_key = str(item["target_input_key"])
+    chat_id = _target_value(item)
     return _base_contract(
         item,
         adapter="telegram",
         command_kind="telegram.sendMessage",
         target_input_key=target_input_key,
+        target_value=chat_id,
+        # Urgent-only policy preserved as contract metadata; the real interface is
+        # `hermes send --to telegram:<chat_id> "<text>"`.
         urgent_only=True,
         argv=[
             "hermes",
-            "dispatch",
-            "telegram",
-            "send-message",
-            "--recipient-ref",
-            target_input_key,
-            "--text",
+            "send",
+            "--to",
+            f"telegram:{chat_id}",
             str(item["message_preview"]),
-            "--urgent-only",
-            "--dry-run",
         ],
     )
 
@@ -217,6 +219,7 @@ def _kanban_contract(item: Mapping[str, Any]) -> dict[str, Any]:
         adapter="hermes-kanban",
         command_kind="hermes kanban create",
         idempotency_key=str(item["idempotency_key"]),
+        # Real Hermes interface: native idempotency via --idempotency-key.
         argv=[
             "hermes",
             "kanban",
@@ -226,10 +229,20 @@ def _kanban_contract(item: Mapping[str, Any]) -> dict[str, Any]:
             str(item["owner_agent_id"]),
             "--idempotency-key",
             str(item["idempotency_key"]),
-            "--dry-run",
             "--json",
         ],
     )
+
+
+def _target_value(item: Mapping[str, Any]) -> str:
+    """Resolve the recipient VALUE (channel id / chat id) for the real argv.
+
+    The preview item carries the resolved setup-input VALUE in ``target_value``
+    (e.g. ``C012STANDUP``); fall back to the ``target_input_key`` only when no
+    value was resolved so the contract still renders a stable, non-secret argv.
+    """
+    value = str(item.get("target_value", "")).strip()
+    return value or str(item["target_input_key"])
 
 
 def _base_contract(
@@ -239,6 +252,7 @@ def _base_contract(
     command_kind: str,
     argv: Sequence[str],
     target_input_key: str = "",
+    target_value: str = "",
     idempotency_key: str = "",
     urgent_only: bool = False,
 ) -> dict[str, Any]:
@@ -251,6 +265,7 @@ def _base_contract(
         "adapter": adapter,
         "command_kind": command_kind,
         "target_input_key": target_input_key,
+        "target_value": target_value,
         "idempotency_key": idempotency_key,
         "urgent_only": urgent_only,
         "enabled": False,
