@@ -269,6 +269,9 @@ from hermes_company_os.routers.external_dispatch import (
 from hermes_company_os.routers.multi_agent_review import (
     register_multi_agent_review_routes,
 )
+from hermes_company_os.routers.observability import (
+    register_observability_routes,
+)
 from hermes_company_os.routers.project_memory import (
     register_project_memory_routes,
 )
@@ -5558,6 +5561,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_external_dispatch_routes(app)
     register_multi_agent_review_routes(app)
+    register_observability_routes(app)
     register_project_memory_routes(app)
     register_codex_execution_routes(app)
 
