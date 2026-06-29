@@ -20,7 +20,8 @@ from hermes_company_os.seeds import (
 
 # Current schema version, stamped into the SQLite ``PRAGMA user_version``.
 # Bump this whenever a new idempotent migration step is added to ``ensure_schema``.
-SCHEMA_VERSION = 1
+# v2: add external_dispatch_deliveries (M7 live external dispatch delivery records).
+SCHEMA_VERSION = 2
 
 AGENT_WORK_ITEMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent_work_items (
@@ -154,6 +155,28 @@ ON project_memory_entries(category);
 
 CREATE INDEX IF NOT EXISTS idx_project_memory_entries_updated
 ON project_memory_entries(updated_at DESC);
+"""
+
+EXTERNAL_DISPATCH_DELIVERIES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS external_dispatch_deliveries (
+    id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL REFERENCES company_projects(id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    action TEXT NOT NULL,
+    command_boundary TEXT NOT NULL,
+    contract_sha256 TEXT NOT NULL,
+    argv_sha256 TEXT NOT NULL,
+    runner_label TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    external_id TEXT NOT NULL DEFAULT '',
+    result_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_external_dispatch_deliveries_project_created
+ON external_dispatch_deliveries(project_id, created_at DESC);
 """
 
 AUDIT_EVENTS_SCHEMA = """
@@ -486,6 +509,7 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
         connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
         connection.executescript(AUDIT_EVENTS_SCHEMA)
+        connection.executescript(EXTERNAL_DISPATCH_DELIVERIES_SCHEMA)
         ensure_schema(connection)
         seed_defaults(connection)
 
@@ -514,6 +538,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
     connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
     connection.executescript(AUDIT_EVENTS_SCHEMA)
+    connection.executescript(EXTERNAL_DISPATCH_DELIVERIES_SCHEMA)
     task_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

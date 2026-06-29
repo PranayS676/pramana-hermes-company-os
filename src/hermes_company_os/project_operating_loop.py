@@ -89,13 +89,14 @@ def project_external_dispatch_preview_package(
 ) -> dict:
     operating_loop = project_operating_loop_package(repository, project_id)
     workflow_items = repository.list_project_workflow_items(project_id)
+    setup_values = repository.setup_input_map()
     operating_loop_ready = bool(operating_loop["aggregate"]["ready"])
     approval = external_dispatch_approval(repository, project_id)
     latest_audit = latest_external_dispatch_audit(repository, project_id)
     latest_runner = latest_external_dispatch_runner_audit(repository, project_id)
     items = [
-        _slack_dispatch_preview(operating_loop),
-        _telegram_dispatch_preview(operating_loop),
+        _slack_dispatch_preview(operating_loop, setup_values),
+        _telegram_dispatch_preview(operating_loop, setup_values),
         *_kanban_dispatch_previews(operating_loop, workflow_items),
     ]
     ready_items = [item for item in items if item["status"] == "ready_for_review"]
@@ -327,7 +328,9 @@ def run_external_dispatch_runner(
 
     results = []
     for item in package["items"]:
-        results.append(_dispatch_item(runner, item))
+        results.append(
+            _dispatch_item(runner, item, repository=repository, project_id=project_id)
+        )
     status = (
         "succeeded"
         if all(result.get("status") == "succeeded" for result in results)
@@ -539,9 +542,10 @@ def _next_actions(lanes: Sequence[Mapping]) -> list[dict[str, str]]:
     return actions
 
 
-def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
+def _slack_dispatch_preview(operating_loop: Mapping, setup_values: Mapping[str, str]) -> dict:
     project = operating_loop["project"]
     lane = _lane_by_id(operating_loop, "slack")
+    target_input_key = "slack_channel_agent_standup"
     item = {
         "id": "slack-standup-preview",
         "platform": "slack",
@@ -550,7 +554,8 @@ def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
         "status": _preview_status(lane),
         "action": "post_message_preview",
         "owner_agent_id": "chief-of-staff",
-        "target_input_key": "slack_channel_agent_standup",
+        "target_input_key": target_input_key,
+        "target_value": str(setup_values.get(target_input_key, "")).strip(),
         "target_label": "agent standup channel",
         "message_preview": (
             f"Project {project['name']}: founder-reviewed workflow handoff is ready "
@@ -569,9 +574,12 @@ def _slack_dispatch_preview(operating_loop: Mapping) -> dict:
     return _with_adapter_contract(item)
 
 
-def _telegram_dispatch_preview(operating_loop: Mapping) -> dict:
+def _telegram_dispatch_preview(
+    operating_loop: Mapping, setup_values: Mapping[str, str]
+) -> dict:
     project = operating_loop["project"]
     lane = _lane_by_id(operating_loop, "telegram")
+    target_input_key = "founder_telegram_user_id"
     item = {
         "id": "telegram-urgent-alert-preview",
         "platform": "telegram",
@@ -580,7 +588,8 @@ def _telegram_dispatch_preview(operating_loop: Mapping) -> dict:
         "status": _preview_status(lane),
         "action": "send_urgent_alert_preview",
         "owner_agent_id": "chief-of-staff",
-        "target_input_key": "founder_telegram_user_id",
+        "target_input_key": target_input_key,
+        "target_value": str(setup_values.get(target_input_key, "")).strip(),
         "target_label": "founder urgent recipient",
         "urgent_only": True,
         "requires_urgent_condition": True,
@@ -943,7 +952,36 @@ def _runner_event_summary(status: str, dispatch_attempted: bool, blocker: str) -
     return f"External dispatch runner blocked: {blocker}"
 
 
-def _dispatch_item(runner, item: Mapping) -> dict:
+def _dispatch_item(runner, item: Mapping, *, repository, project_id: str) -> dict:
+    """Dispatch one preview item through the enabled adapter, idempotently.
+
+    Safety: before invoking the runner we check for an existing delivery row
+    keyed by the item's stable idempotency key. If one exists we short-circuit
+    with status ``skipped_duplicate`` and DO NOT call the runner again, so the
+    same item is never sent twice. Only on a genuinely new key do we attempt the
+    real send and then record an idempotent delivery row.
+    """
+    contract = item["adapter_contract"]
+    idempotency_key = _delivery_idempotency_key(item)
+    existing = repository.get_external_dispatch_delivery(idempotency_key)
+    if existing is not None:
+        skipped = {
+            "status": "skipped_duplicate",
+            "external_id": existing.get("external_id", ""),
+            "detail": "Existing delivery found for idempotency key; no re-send.",
+            "command_boundary": contract["command_boundary"],
+            "command_sha256": contract["argv_sha256"],
+            "contract_sha256": contract["contract_sha256"],
+            "dry_run": contract["dry_run"],
+            "idempotency_key": idempotency_key,
+            "item_id": item["id"],
+            "platform": item["platform"],
+            "action": item["action"],
+            "delivery_id": existing.get("id", ""),
+        }
+        assert_no_secret_values({"external_dispatch_result": json.dumps(skipped)})
+        return skipped
+
     raw_result = (
         runner.dispatch(dict(item)) if hasattr(runner, "dispatch") else runner(dict(item))
     )
@@ -954,15 +992,61 @@ def _dispatch_item(runner, item: Mapping) -> dict:
     normalized.setdefault("status", "succeeded")
     normalized.setdefault("external_id", "")
     normalized.setdefault("detail", "")
-    normalized.setdefault("command_boundary", item["adapter_contract"]["command_boundary"])
-    normalized.setdefault("command_sha256", item["adapter_contract"]["argv_sha256"])
-    normalized.setdefault("contract_sha256", item["adapter_contract"]["contract_sha256"])
-    normalized.setdefault("dry_run", item["adapter_contract"]["dry_run"])
+    normalized.setdefault("command_boundary", contract["command_boundary"])
+    normalized.setdefault("command_sha256", contract["argv_sha256"])
+    normalized.setdefault("contract_sha256", contract["contract_sha256"])
+    normalized.setdefault("dry_run", contract["dry_run"])
+    normalized["idempotency_key"] = idempotency_key
     normalized["item_id"] = item["id"]
     normalized["platform"] = item["platform"]
     normalized["action"] = item["action"]
     assert_no_secret_values({"external_dispatch_result": json.dumps(normalized)})
+    delivery = repository.record_external_dispatch_delivery(
+        idempotency_key=idempotency_key,
+        project_id=project_id,
+        item_id=str(item["id"]),
+        platform=str(item["platform"]),
+        action=str(item["action"]),
+        command_boundary=str(contract["command_boundary"]),
+        contract_sha256=str(contract["contract_sha256"]),
+        argv_sha256=str(contract["argv_sha256"]),
+        status=str(normalized["status"]),
+        runner_label=str(normalized.get("runner_label", "")),
+        external_id=str(normalized.get("external_id", "")),
+        result=_delivery_result_snapshot(normalized),
+    )
+    normalized["delivery_id"] = delivery["id"]
+    assert_no_secret_values({"external_dispatch_result": json.dumps(normalized)})
     return normalized
+
+
+def _delivery_idempotency_key(item: Mapping) -> str:
+    """Build a stable per-item idempotency key.
+
+    Kanban items carry a native ``idempotency_key`` (the task id); reuse it so the
+    dashboard key matches the native ``hermes kanban create --idempotency-key``.
+    Slack/Telegram items have no native key, so derive a deterministic one from
+    the contract argv fingerprint, which changes only if the command itself does.
+    """
+    native = str(item.get("idempotency_key", "")).strip()
+    if native:
+        return f"{item['platform']}:{native}"
+    contract = item["adapter_contract"]
+    return f"{item['platform']}:{item['id']}:{contract['argv_sha256']}"
+
+
+def _delivery_result_snapshot(normalized: Mapping) -> dict:
+    """Project the runner result down to non-secret, stored delivery fields."""
+    return {
+        "status": normalized.get("status", ""),
+        "external_id": normalized.get("external_id", ""),
+        "command_boundary": normalized.get("command_boundary", ""),
+        "command_sha256": normalized.get("command_sha256", ""),
+        "contract_sha256": normalized.get("contract_sha256", ""),
+        "dry_run": bool(normalized.get("dry_run", True)),
+        "returncode": normalized.get("returncode"),
+        "timed_out": bool(normalized.get("timed_out", False)),
+    }
 
 
 def _command_fingerprints(items: Sequence[Mapping]) -> list[dict]:

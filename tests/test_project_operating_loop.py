@@ -609,12 +609,20 @@ def test_external_dispatch_preview_builds_ready_no_send_handoff_queue(tmp_path):
     assert slack_contract["adapter"] == "slack"
     assert slack_contract["command_kind"] == "slack.chat.postMessage"
     assert slack_contract["target_input_key"] == "slack_channel_agent_standup"
-    assert "--channel-ref" in slack_contract["argv"]
+    # Real Hermes interface: `hermes send --to slack:<channel_ref> "<text>"`.
+    assert slack_contract["argv"][:3] == ["hermes", "send", "--to"]
+    assert slack_contract["argv"][3] == "slack:C012STANDUP"
+    assert slack_contract["target_value"] == "C012STANDUP"
+    assert "--dry-run" not in slack_contract["argv"]
     assert telegram_contract["adapter"] == "telegram"
     assert telegram_contract["command_kind"] == "telegram.sendMessage"
     assert telegram_contract["target_input_key"] == "founder_telegram_user_id"
     assert telegram_contract["urgent_only"] is True
-    assert "--urgent-only" in telegram_contract["argv"]
+    # Real Hermes interface: `hermes send --to telegram:<chat_id> "<text>"`.
+    assert telegram_contract["argv"][:3] == ["hermes", "send", "--to"]
+    assert telegram_contract["argv"][3] == "telegram:123456789"
+    assert telegram_contract["target_value"] == "123456789"
+    assert "--dry-run" not in telegram_contract["argv"]
     assert len(kanban_contracts) == workflow_count
     assert all(contract["adapter"] == "hermes-kanban" for contract in kanban_contracts)
     assert all(
@@ -622,6 +630,12 @@ def test_external_dispatch_preview_builds_ready_no_send_handoff_queue(tmp_path):
         for contract in kanban_contracts
     )
     assert all("--idempotency-key" in contract["argv"] for contract in kanban_contracts)
+    # Real Hermes interface: native idempotency, no synthetic --dry-run flag.
+    assert all(
+        contract["argv"][:3] == ["hermes", "kanban", "create"]
+        for contract in kanban_contracts
+    )
+    assert all("--dry-run" not in contract["argv"] for contract in kanban_contracts)
     assert project_page.status_code == 200
     assert "Ready for founder review" in project_page.text
     assert "Slack standup preview" in project_page.text

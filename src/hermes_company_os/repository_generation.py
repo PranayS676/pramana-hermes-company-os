@@ -12,6 +12,7 @@ from hermes_company_os.project_memory import (
 )
 from hermes_company_os.repository_support import (
     decode_codex_execution_run,
+    decode_external_dispatch_delivery,
     decode_generation_run,
     decode_project_memory_entry,
     decode_project_review_record,
@@ -499,6 +500,121 @@ class GenerationExecutionMixin:
                     "external_execution_enabled": external_execution_enabled,
                 },
             )
+
+    def record_external_dispatch_delivery(
+        self,
+        *,
+        idempotency_key: str,
+        project_id: str,
+        item_id: str,
+        platform: str,
+        action: str,
+        command_boundary: str,
+        contract_sha256: str,
+        argv_sha256: str,
+        status: str,
+        runner_label: str = "",
+        external_id: str = "",
+        result: dict | None = None,
+    ) -> dict:
+        """Record an idempotent external-dispatch delivery and return the stored row.
+
+        Mirrors the ``INSERT OR IGNORE … WHERE idempotency_key=?`` + re-SELECT
+        pattern: re-recording the same ``idempotency_key`` is a no-op and returns
+        the original row, so the gated runner never double-sends.
+        """
+        normalized_key = idempotency_key.strip()
+        if not normalized_key:
+            raise ValueError("External dispatch delivery requires an idempotency key.")
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        result_json = json.dumps(result or {}, sort_keys=True)
+        assert_no_secret_values(
+            {
+                "external_dispatch_delivery_idempotency_key": normalized_key,
+                "external_dispatch_delivery_item_id": item_id,
+                "external_dispatch_delivery_platform": platform,
+                "external_dispatch_delivery_action": action,
+                "external_dispatch_delivery_command_boundary": command_boundary,
+                "external_dispatch_delivery_contract_sha256": contract_sha256,
+                "external_dispatch_delivery_argv_sha256": argv_sha256,
+                "external_dispatch_delivery_runner_label": runner_label,
+                "external_dispatch_delivery_status": status,
+                "external_dispatch_delivery_external_id": external_id,
+                "external_dispatch_delivery_result": result_json,
+            }
+        )
+        delivery_id = f"dispatch-delivery-{uuid4().hex[:10]}"
+        now = utc_now()
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO external_dispatch_deliveries (
+                    id, idempotency_key, project_id, item_id, platform, action,
+                    command_boundary, contract_sha256, argv_sha256, runner_label,
+                    status, external_id, result_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    delivery_id,
+                    normalized_key,
+                    project_id,
+                    item_id.strip(),
+                    platform.strip(),
+                    action.strip(),
+                    command_boundary.strip(),
+                    contract_sha256.strip(),
+                    argv_sha256.strip(),
+                    runner_label.strip(),
+                    status.strip(),
+                    external_id.strip(),
+                    result_json,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM external_dispatch_deliveries WHERE idempotency_key = ?",
+                (normalized_key,),
+            ).fetchone()
+        if row is None:
+            raise sqlite3.IntegrityError(
+                "External dispatch delivery was not persisted."
+            )
+        return decode_external_dispatch_delivery(row)
+
+    def get_external_dispatch_delivery(self, idempotency_key: str) -> dict | None:
+        normalized_key = idempotency_key.strip()
+        if not normalized_key:
+            return None
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM external_dispatch_deliveries WHERE idempotency_key = ?",
+                (normalized_key,),
+            ).fetchone()
+        return decode_external_dispatch_delivery(row) if row else None
+
+    def list_external_dispatch_deliveries(
+        self,
+        project_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[dict]:
+        if self.get_project(project_id) is None:
+            raise sqlite3.IntegrityError(f"Unknown project: {project_id}")
+        bounded_limit = max(1, min(limit, 200))
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM external_dispatch_deliveries
+                WHERE project_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (project_id, bounded_limit),
+            ).fetchall()
+        return [decode_external_dispatch_delivery(row) for row in rows]
 
     def create_project_review_record(
         self,

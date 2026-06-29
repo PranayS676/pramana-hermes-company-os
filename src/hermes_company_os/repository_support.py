@@ -78,6 +78,13 @@ def decode_project_memory_entry(row: sqlite3.Row) -> dict:
     return enrich_memory_entry(dict(row))
 
 
+def decode_external_dispatch_delivery(row: sqlite3.Row) -> dict:
+    delivery = dict(row)
+    raw_result = delivery.get("result_json", "").strip()
+    delivery["result"] = json.loads(raw_result) if raw_result else {}
+    return delivery
+
+
 def decode_audit_event(row: sqlite3.Row) -> dict:
     event = dict(row)
     raw_payload = event["payload_json"].strip()
