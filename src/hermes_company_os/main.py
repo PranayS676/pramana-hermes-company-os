@@ -269,6 +269,9 @@ from hermes_company_os.routers.external_dispatch import (
 from hermes_company_os.routers.generation import (
     register_generation_routes,
 )
+from hermes_company_os.routers.launch import (
+    register_launch_routes,
+)
 from hermes_company_os.routers.multi_agent_review import (
     register_multi_agent_review_routes,
 )
@@ -5567,6 +5570,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_external_dispatch_routes(app)
     register_generation_routes(app)
+    register_launch_routes(app)
     register_multi_agent_review_routes(app)
     register_observability_routes(app)
     register_project_memory_routes(app)
