@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Operating loop - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      .operating-loop-page .delivery-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      .operating-loop-page .delivery-table th,
+      .operating-loop-page .delivery-table td {
+        text-align: left;
+        padding: 0.55rem 0.65rem;
+        border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.25));
+        vertical-align: top;
+      }
+      .operating-loop-page .delivery-table th {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.7;
+      }
+      .operating-loop-page .delivery-table code {
+        word-break: break-all;
+      }
+      .operating-loop-page .delivery-detail {
+        opacity: 0.85;
+      }
+      .operating-loop-page .table-scroll {
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    {% set scope = package.scope %}
+    {% set summary = package.summary %}
+    {% set deliveries = package.deliveries %}
+    {% set scope_label = "Company-wide" if scope.company_wide else scope.project_name %}
+    <main class="agent-page operating-loop-page">
+      {% if scope.company_wide %}
+      <a class="back-link" href="/"><i data-lucide="arrow-left"></i> Dashboard</a>
+      {% else %}
+      <a class="back-link" href="/projects/{{ scope.project_id }}"><i data-lucide="arrow-left"></i> {{ scope.project_name }}</a>
+      {% endif %}
+
+      <section class="project-titlebar">
+        <div>
+          <p class="eyebrow">Operating loop - read-only external dispatch</p>
+          <h1>{{ scope_label }} operating loop</h1>
+          <p class="page-subtitle">
+            Live external-dispatch delivery records (Slack, Telegram, Hermes Kanban).
+            Read-only: no sends, no live calls. Default demo state has no deliveries.
+          </p>
+        </div>
+        <div class="project-title-actions">
+          <span class="status-pill {% if scope.company_wide %}ready{% else %}current{% endif %}">
+            {% if scope.company_wide %}Company-wide{% else %}Project scope{% endif %}
+          </span>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="External dispatch delivery metrics">
+        <div class="metric">
+          <span>{{ summary.total }}</span>
+          <small>Total deliveries</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.by_status.get("succeeded", 0) }}</span>
+          <small>Succeeded</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.by_status.get("failed", 0) }}</span>
+          <small>Failed</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.by_status.get("blocked", 0) }}</span>
+          <small>Blocked</small>
+        </div>
+        <div class="metric">
+          <span>{{ summary.by_status.get("skipped_duplicate", 0) }}</span>
+          <small>Skipped (duplicate)</small>
+        </div>
+      </section>
+
+      <section class="observability-layout">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Deliveries by platform</h2>
+              <p class="panel-kicker">Counts across recorded delivery rows.</p>
+            </div>
+            <i data-lucide="share-2"></i>
+          </div>
+          <div class="readiness-stack">
+            {% for platform, count in summary.by_platform.items() %}
+            <div class="readiness-line">
+              <span><code>{{ platform }}</code></span>
+              <strong>{{ count }}</strong>
+            </div>
+            {% else %}
+            <p class="empty-state">No deliveries recorded yet.</p>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Deliveries by status</h2>
+              <p class="panel-kicker">sent / failed / blocked / dry-run / skipped.</p>
+            </div>
+            <i data-lucide="activity"></i>
+          </div>
+          <div class="readiness-stack">
+            {% for status, count in summary.by_status.items() %}
+            <div class="readiness-line">
+              <span><span class="status-pill {{ status }}">{{ status }}</span></span>
+              <strong>{{ count }}</strong>
+            </div>
+            {% else %}
+            <p class="empty-state">No deliveries recorded yet.</p>
+            {% endfor %}
+          </div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Delivery records</h2>
+            <p class="panel-kicker">
+              Idempotent external-dispatch deliveries, newest first.
+            </p>
+          </div>
+          <span class="status-pill ready">{{ deliveries|length }} shown</span>
+        </div>
+        {% if deliveries %}
+        <div class="table-scroll">
+          <table class="delivery-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Platform</th>
+                <th>Action</th>
+                {% if scope.company_wide %}<th>Project</th>{% endif %}
+                <th>Target / item</th>
+                <th>Idempotency key</th>
+                <th>External id</th>
+                <th>Recorded at</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for delivery in deliveries %}
+              <tr>
+                <td><span class="status-pill {{ delivery.status }}">{{ delivery.status }}</span></td>
+                <td><code>{{ delivery.platform }}</code></td>
+                <td>{{ delivery.action }}</td>
+                {% if scope.company_wide %}<td>{{ delivery.project_name }}</td>{% endif %}
+                <td><code>{{ delivery.item_id }}</code></td>
+                <td><code>{{ delivery.idempotency_key }}</code></td>
+                <td>{% if delivery.external_id %}<code>{{ delivery.external_id }}</code>{% else %}<span class="delivery-detail">-</span>{% endif %}</td>
+                <td><code>{{ delivery.created_at }}</code></td>
+                <td class="delivery-detail">{{ delivery.detail or "-" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="readiness-stack">
+          <p class="empty-state">
+            No external-dispatch activity yet. Delivery records appear here once the
+            founder-approved, flag-gated live loop sends a Slack, Telegram, or Kanban
+            command.
+          </p>
+        </div>
+        {% endif %}
+      </section>
+
+      {% if scope.company_wide and projects %}
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Per-project operating loop</h2>
+            <p class="panel-kicker">Scoped delivery records for each company project.</p>
+          </div>
+          <span class="status-pill ready">{{ projects|length }} projects</span>
+        </div>
+        <div class="readiness-stack">
+          {% for project in projects %}
+          <a class="readiness-line linked-readiness-line" href="/projects/{{ project.id }}/operating-loop">
+            <span>{{ project.name }}</span>
+            <strong><i data-lucide="chevron-right"></i></strong>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="queue-policy-callout">
+        <strong>Read-only operating loop</strong>
+        <p>
+          This view only displays existing delivery records. It performs no sends,
+          makes no live calls, and changes no state. Live external dispatch stays
+          behind the founder approval gate and the default-off environment flag.
+        </p>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>
