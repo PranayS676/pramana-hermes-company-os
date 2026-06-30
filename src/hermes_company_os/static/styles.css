@@ -1,20 +1,25 @@
 :root {
-  color-scheme: light;
-  --ink: #172126;
-  --muted: #5f6d75;
-  --line: #d9e0e3;
-  --panel: #ffffff;
-  --panel-muted: #f8faf9;
-  --canvas: #f3f5f6;
-  --accent: #23675f;
-  --accent-strong: #173f3b;
-  --blue: #2e5f94;
-  --blue-soft: #e7eff8;
-  --amber: #9a6a1d;
-  --amber-soft: #f8edd1;
-  --red: #9f3a38;
-  --nav: #182321;
-  --shadow: 0 14px 40px rgba(27, 40, 46, 0.08);
+  color-scheme: dark;
+  /* Linear-inspired dark design system. Token names are preserved so the
+     entire stylesheet reskins through these values; the dark-theme layer at
+     the end of this file handles the rules that hardcode literal colors. */
+  --ink: #f7f8f8;          /* primary text — near-white */
+  --muted: #969aa3;        /* secondary text — cool gray */
+  --line: #23252c;         /* hairline borders / dividers */
+  --panel: #16171b;        /* elevated surfaces (cards, panels) */
+  --panel-muted: #121317;  /* recessed surfaces (rows, inputs, wells) */
+  --canvas: #0c0d0f;       /* app background */
+  --accent: #5e6ad2;       /* Linear indigo — primary action */
+  --accent-strong: #a8aef5;/* light indigo for text/icons on dark */
+  --blue: #5b9bf5;
+  --blue-soft: #18243d;
+  --amber: #e0a458;
+  --amber-soft: #2b2114;
+  --red: #eb5757;
+  --nav: #090a0c;          /* sidebar — slightly darker than canvas */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.32);
+  --radius: 8px;
+  --radius-sm: 6px;
 }
 
 * {
@@ -2393,4 +2398,595 @@ summary {
   .wizard-step-trigger {
     min-height: 44px;
   }
+}
+
+/* =====================================================================
+   Linear dark theme layer
+   Reskins rules that hardcode literal (light) colors. Placed last so it
+   wins on equal specificity. Layout/spacing is untouched — this only
+   changes surfaces, accents, typography, and corner radii.
+   ===================================================================== */
+
+/* --- base + typography ------------------------------------------------ */
+body {
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  font-size: 1.7rem;
+  font-weight: 760;
+  letter-spacing: -0.021em;
+}
+
+h2 {
+  letter-spacing: -0.013em;
+}
+
+.eyebrow {
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+::selection {
+  background: rgba(94, 106, 210, 0.38);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2c33;
+  border: 3px solid var(--canvas);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3d45;
+}
+
+* {
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    color 0.12s ease, filter 0.12s ease;
+}
+
+/* --- focus rings → indigo -------------------------------------------- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(94, 106, 210, 0.25);
+}
+.sidebar a:focus-visible {
+  outline-color: var(--accent-strong);
+  box-shadow: 0 0 0 4px rgba(168, 174, 245, 0.22);
+}
+
+/* --- rounded corners on the older square cards ----------------------- */
+.panel,
+.metric,
+.activation-overview,
+.activation-stats span,
+.readiness-card,
+.agent-row,
+.schedule-item,
+.list-row,
+.run-row,
+.project-row,
+.setup-input,
+.timeline-row,
+.command-row,
+.integration-row,
+.queue-row,
+.queue-meta-grid span,
+.queue-strip-row,
+.queue-blocker,
+.agent-hero,
+.notice-band,
+.status-strip span,
+.agent-meta span,
+.chip-list span {
+  border-radius: var(--radius);
+}
+
+/* --- sidebar ---------------------------------------------------------- */
+.sidebar {
+  background: var(--nav);
+  color: #e6e8ec;
+  border-right: 1px solid var(--line);
+}
+.brand-mark {
+  background: var(--accent);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+.brand small,
+.sidebar a {
+  color: #8b909a;
+}
+.sidebar a:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+}
+.sidebar a.active {
+  background: rgba(94, 106, 210, 0.16);
+  color: #ffffff;
+}
+
+/* --- elevated nested surfaces (were #ffffff) ------------------------- */
+.status-strip span,
+.agent-meta span,
+.chip-list span,
+.activation-overview,
+.readiness-card,
+.queue-meta-grid span,
+.agent-hero,
+.polished-project-row,
+.wizard-step-trigger,
+.activity-event-icon,
+.stage-icon,
+.quality-check-row,
+.memory-policy-card,
+.memory-entry-row,
+.artifact-section,
+.artifact-version-chip {
+  background: #1b1c22;
+}
+
+/* --- recessed wells (were #fbfcfb) ----------------------------------- */
+.activation-stats span,
+.agent-row,
+.schedule-item,
+.list-row,
+.run-row,
+.project-row,
+.setup-input,
+.timeline-row,
+.command-row,
+.integration-row,
+.queue-row,
+.queue-strip-row {
+  background: var(--panel-muted);
+}
+
+/* --- inputs + code ---------------------------------------------------- */
+input,
+select,
+textarea {
+  background: var(--panel-muted);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+}
+input::placeholder,
+textarea::placeholder {
+  color: #5d626b;
+}
+code {
+  background: #08090b;
+  color: #c7ccd8;
+  border-color: var(--line);
+}
+
+/* --- buttons ---------------------------------------------------------- */
+.primary-button {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 650;
+}
+.primary-button:hover {
+  filter: none;
+  background: #6c77dd;
+}
+.secondary-button {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 600;
+}
+.secondary-button:hover {
+  filter: none;
+  background: #1f2127;
+}
+.icon-button {
+  background: var(--panel-muted);
+  color: var(--accent-strong);
+  border-color: var(--line);
+}
+.icon-button:hover {
+  filter: none;
+  background: #1f2127;
+}
+.success-button {
+  background: rgba(45, 193, 138, 0.14);
+  border-color: rgba(45, 193, 138, 0.32);
+  color: #4cd6a0;
+  font-weight: 600;
+}
+.warning-button {
+  background: rgba(224, 164, 88, 0.14);
+  border-color: rgba(224, 164, 88, 0.32);
+  color: #f0b66a;
+  font-weight: 600;
+}
+.link-button-muted {
+  color: var(--ink);
+}
+
+/* --- status pills → dark semantic tints ------------------------------ */
+.status-pill {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+.status-pill.ready,
+.status-pill.completed,
+.status-pill.approved,
+.status-pill.done,
+.status-pill.verified,
+.status-pill.linked,
+.status-pill.ready_for_review,
+.status-pill.consumed,
+.status-pill.succeeded,
+.status-pill.configured,
+.readiness-card.ready .status-pill,
+.readiness-card.configured .status-pill {
+  background: rgba(45, 193, 138, 0.15);
+  color: #4cd6a0;
+}
+.status-pill.needs_input,
+.status-pill.failed,
+.status-pill.blocked,
+.status-pill.rejected,
+.readiness-card.needs_input .status-pill,
+.readiness-card.missing .status-pill {
+  background: rgba(235, 87, 87, 0.16);
+  color: #ff8d8d;
+}
+.status-pill.needed,
+.status-pill.loaded,
+.status-pill.needs_setup,
+.status-pill.ready_after_messaging,
+.status-pill.manual,
+.status-pill.routine,
+.status-pill.urgent,
+.status-pill.high,
+.status-pill.current,
+.status-pill.running,
+.status-pill.needs_review,
+.status-pill.deferred,
+.readiness-card.deferred .status-pill {
+  background: rgba(224, 164, 88, 0.16);
+  color: #f0b66a;
+}
+.status-pill.medium,
+.status-pill.planned,
+.status-pill.assigned,
+.status-pill.draft,
+.status-pill.planning {
+  background: rgba(91, 155, 245, 0.16);
+  color: #8fbcff;
+}
+
+/* --- warm notice / callout surfaces ---------------------------------- */
+.notice-band,
+.warning-summary,
+.operator-warning-enabled,
+.workspace-notice,
+.project-decision-strip {
+  background: rgba(224, 164, 88, 0.1) !important;
+  border-color: rgba(224, 164, 88, 0.28) !important;
+}
+.notice-band span,
+.project-decision-strip small {
+  color: var(--muted);
+}
+.operator-warning {
+  background: var(--panel-muted);
+  border-color: var(--line);
+}
+.queue-policy-callout {
+  background: rgba(94, 106, 210, 0.1);
+  border-color: rgba(94, 106, 210, 0.3);
+  color: var(--accent-strong);
+}
+.queue-policy-callout p {
+  color: #c3c8e8;
+}
+.setup-input em {
+  background: rgba(224, 164, 88, 0.16);
+  color: #f0b66a;
+}
+
+/* --- error surfaces --------------------------------------------------- */
+.queue-row.blocked,
+.activity-event-row.failed,
+.activity-event-row.blocked {
+  background: rgba(235, 87, 87, 0.08);
+  border-color: rgba(235, 87, 87, 0.3);
+}
+.queue-blocker {
+  background: rgba(235, 87, 87, 0.1);
+  border-color: rgba(235, 87, 87, 0.3);
+}
+.queue-blocker span,
+.queue-blocker small {
+  color: #ff9a9a;
+}
+.run-row.failed {
+  border-color: rgba(235, 87, 87, 0.3);
+}
+
+/* --- positive / active surfaces -------------------------------------- */
+.activity-event-row.succeeded,
+.activity-event-row.approved {
+  background: rgba(45, 193, 138, 0.08);
+  border-color: rgba(45, 193, 138, 0.28);
+}
+.run-row.completed {
+  border-color: rgba(45, 193, 138, 0.28);
+}
+.queue-row.needs_review {
+  background: rgba(224, 164, 88, 0.08);
+  border-color: rgba(224, 164, 88, 0.3);
+}
+.audit-chip {
+  background: rgba(94, 106, 210, 0.14);
+  border-color: rgba(94, 106, 210, 0.32);
+  color: var(--accent-strong);
+}
+
+/* --- indigo-tinted "active/selected" states (were teal) -------------- */
+.wizard-step-trigger.active,
+.wizard-step-trigger[aria-selected="true"],
+.stage-node.active,
+.artifact-version-chip.active {
+  background: rgba(94, 106, 210, 0.16);
+  border-color: rgba(94, 106, 210, 0.4);
+  color: var(--accent-strong);
+}
+.activity-event-icon,
+.stage-icon {
+  color: var(--accent-strong);
+}
+
+/* --- founder-action-card (already dark — retune to new palette) ------ */
+.founder-action-card {
+  background: linear-gradient(180deg, #1a1b22 0%, #141519 100%);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.founder-action-card.needed {
+  background: rgba(224, 164, 88, 0.1);
+  border-color: rgba(224, 164, 88, 0.3);
+}
+.founder-action-card.blocked {
+  background: rgba(235, 87, 87, 0.1);
+  border-color: rgba(235, 87, 87, 0.32);
+}
+.founder-action-card p {
+  color: #c4c8d0;
+}
+.founder-action-card .primary-button {
+  border-color: transparent;
+}
+
+/* --- left-accent rails ----------------------------------------------- */
+.founder-signal,
+.memory-entry-row {
+  border-left-color: #3a3d45;
+}
+.founder-signal:hover {
+  border-color: var(--accent);
+}
+.memory-entry-row.retired {
+  background: #131418;
+  border-left-color: #3a3d45;
+}
+.empty-workspace > svg {
+  color: var(--accent-strong);
+}
+
+/* --- density + weight polish (Linear cadence) ------------------------ */
+/* Linear leans on lighter weights (~500–600) and tighter, denser controls
+   than the original 800-weight / 42px-tall styling. */
+
+.eyebrow,
+label,
+summary,
+.review-label {
+  font-weight: 560;
+}
+
+.metric {
+  min-height: 84px;
+  padding: 16px;
+}
+.metric span {
+  font-size: 1.55rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.panel-header h2,
+.workspace-summary span {
+  font-weight: 600;
+}
+
+/* soften the many heavy small-caps labels */
+.workspace-summary small,
+.intake-grid span,
+.stage-decision-summary span,
+.review-contract-grid span,
+.operator-command-grid span,
+.memory-summary-strip span,
+.memory-policy-card span,
+.readiness-line span,
+.artifact-list-row small,
+.queue-meta-grid strong,
+.founder-control-heading span,
+.founder-action-card > span,
+.founder-signal span,
+.activation-stats small,
+.decision-meta-grid span,
+.stage-node small {
+  font-weight: 600;
+}
+
+/* compact buttons */
+.icon-button,
+.primary-button,
+.secondary-button,
+.success-button,
+.warning-button {
+  min-height: 34px;
+  padding: 7px 13px;
+  font-size: 0.86rem;
+}
+.icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.compact-button {
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+/* compact inputs */
+input,
+select,
+textarea {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.9rem;
+}
+
+/* denser, tighter sidebar */
+.brand-mark {
+  width: 34px;
+  height: 34px;
+}
+.sidebar nav {
+  gap: 2px;
+  margin-top: 26px;
+}
+.sidebar a {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+.sidebar svg,
+.content svg,
+.agent-page svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* subtle interactive lift on clickable rows/cards */
+.agent-row:hover,
+.project-row:hover,
+.queue-strip-row:hover,
+.linked-readiness-line:hover,
+.founder-signal:hover,
+.polished-project-row:hover {
+  background: #1c1d23;
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+/* --- links ------------------------------------------------------------ */
+/* Plain anchors fell back to the UA periwinkle on dark; route them through
+   the indigo accent. Classed links (buttons, sidebar, full-card rows) keep
+   their own higher-specificity colors. */
+a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- crisper status pills (faint tinted border) ---------------------- */
+.status-pill {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.status-pill.ready,
+.status-pill.completed,
+.status-pill.approved,
+.status-pill.done,
+.status-pill.verified,
+.status-pill.linked,
+.status-pill.ready_for_review,
+.status-pill.consumed,
+.status-pill.succeeded,
+.status-pill.configured {
+  border-color: rgba(45, 193, 138, 0.3);
+}
+.status-pill.needs_input,
+.status-pill.failed,
+.status-pill.blocked,
+.status-pill.rejected {
+  border-color: rgba(235, 87, 87, 0.32);
+}
+.status-pill.needed,
+.status-pill.loaded,
+.status-pill.needs_setup,
+.status-pill.ready_after_messaging,
+.status-pill.manual,
+.status-pill.routine,
+.status-pill.urgent,
+.status-pill.high,
+.status-pill.current,
+.status-pill.running,
+.status-pill.needs_review,
+.status-pill.deferred {
+  border-color: rgba(224, 164, 88, 0.32);
+}
+.status-pill.medium,
+.status-pill.planned,
+.status-pill.assigned,
+.status-pill.draft,
+.status-pill.planning {
+  border-color: rgba(91, 155, 245, 0.32);
+}
+
+/* --- tighter list rows ----------------------------------------------- */
+.agent-row,
+.list-row,
+.run-row,
+.project-row,
+.queue-strip-row,
+.schedule-item {
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+/* --- input affordance ------------------------------------------------- */
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #34373f;
+}
+
+/* --- flatter stat cards (border-first, like Linear) ------------------ */
+.metric,
+.readiness-card,
+.workspace-summary > div,
+.activation-stats span {
+  box-shadow: none;
+}
+
+/* --- tighter panel headers ------------------------------------------- */
+.panel-header {
+  padding-bottom: 12px;
+  margin-bottom: 12px;
 }

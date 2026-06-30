@@ -11,3 +11,6 @@ logs/
 .env
 *.sqlite
 *.db
+
+# Local Claude Code tooling (worktrees, launch config)
+.claude/
