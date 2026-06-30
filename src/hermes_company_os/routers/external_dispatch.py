@@ -3,7 +3,10 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from hermes_company_os.external_dispatch import HermesExternalDispatchCommandAdapter
+from hermes_company_os.external_dispatch import (
+    HermesExternalDispatchCommandAdapter,
+    operating_loop_package,
+)
 from hermes_company_os.project_operating_loop import (
     consume_external_dispatch_preview_approval,
     project_external_dispatch_preview_package,
@@ -21,6 +24,36 @@ def register_external_dispatch_routes(app: FastAPI) -> None:
     rest of the dashboard. Behaviour is unchanged from the previous inline
     definitions in ``main.py``; this only moves them into a focused module.
     """
+
+    @app.get("/operating-loop")
+    def company_operating_loop_html(request: Request):
+        repository: RepositoryProtocol = request.app.state.repository
+        templates = request.app.state.templates
+        package = operating_loop_package(repository)
+        return templates.TemplateResponse(
+            request,
+            "operating_loop.html",
+            {
+                "package": package,
+                "projects": repository.list_projects(),
+            },
+        )
+
+    @app.get("/projects/{project_id}/operating-loop")
+    def project_operating_loop_html(request: Request, project_id: str):
+        repository: RepositoryProtocol = request.app.state.repository
+        templates = request.app.state.templates
+        if repository.get_project(project_id) is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        package = operating_loop_package(repository, project_id)
+        return templates.TemplateResponse(
+            request,
+            "operating_loop.html",
+            {
+                "package": package,
+                "projects": [],
+            },
+        )
 
     @app.get("/projects/{project_id}/external-dispatch-preview.json")
     def project_external_dispatch_preview_json(
