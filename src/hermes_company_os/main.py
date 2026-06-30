@@ -281,6 +281,9 @@ from hermes_company_os.routers.observability import (
 from hermes_company_os.routers.project_memory import (
     register_project_memory_routes,
 )
+from hermes_company_os.routers.research import (
+    register_research_routes,
+)
 from hermes_company_os.runtime_preflight import (
     runtime_preflight_checks,
     runtime_preflight_json,
@@ -5575,6 +5578,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_observability_routes(app)
     register_project_memory_routes(app)
     register_codex_execution_routes(app)
+    register_research_routes(app)
 
     return app
 

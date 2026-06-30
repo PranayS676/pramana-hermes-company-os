@@ -78,6 +78,18 @@ def decode_project_memory_entry(row: sqlite3.Row) -> dict:
     return enrich_memory_entry(dict(row))
 
 
+def decode_research_package(row: sqlite3.Row) -> dict:
+    record = dict(row)
+    for column, target, fallback in (
+        ("findings_json", "findings", []),
+        ("recommendations_json", "recommendations", []),
+        ("founder_decisions_json", "founder_decisions_needed", []),
+    ):
+        raw_json = record.get(column, "").strip()
+        record[target] = json.loads(raw_json) if raw_json else fallback
+    return record
+
+
 def decode_external_dispatch_delivery(row: sqlite3.Row) -> dict:
     delivery = dict(row)
     raw_result = delivery.get("result_json", "").strip()
