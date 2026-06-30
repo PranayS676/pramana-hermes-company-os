@@ -21,7 +21,8 @@ from hermes_company_os.seeds import (
 # Current schema version, stamped into the SQLite ``PRAGMA user_version``.
 # Bump this whenever a new idempotent migration step is added to ``ensure_schema``.
 # v2: add external_dispatch_deliveries (M7 live external dispatch delivery records).
-SCHEMA_VERSION = 2
+# v3: add research_packages (M1A UI/UX research packages).
+SCHEMA_VERSION = 3
 
 AGENT_WORK_ITEMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS agent_work_items (
@@ -177,6 +178,33 @@ CREATE TABLE IF NOT EXISTS external_dispatch_deliveries (
 
 CREATE INDEX IF NOT EXISTS idx_external_dispatch_deliveries_project_created
 ON external_dispatch_deliveries(project_id, created_at DESC);
+"""
+
+RESEARCH_PACKAGES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS research_packages (
+    id TEXT PRIMARY KEY,
+    source_key TEXT NOT NULL UNIQUE,
+    project_id TEXT REFERENCES company_projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    research_thread TEXT NOT NULL,
+    research_question TEXT NOT NULL,
+    method TEXT NOT NULL,
+    owner_agent_id TEXT NOT NULL,
+    target_workflow TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'retired')),
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    recommendations_json TEXT NOT NULL DEFAULT '[]',
+    founder_decisions_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_packages_project_status
+ON research_packages(project_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_research_packages_updated
+ON research_packages(updated_at DESC);
 """
 
 AUDIT_EVENTS_SCHEMA = """
@@ -508,6 +536,7 @@ def initialize_database(database_path: Path) -> None:
         connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
         connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
         connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+        connection.executescript(RESEARCH_PACKAGES_SCHEMA)
         connection.executescript(AUDIT_EVENTS_SCHEMA)
         connection.executescript(EXTERNAL_DISPATCH_DELIVERIES_SCHEMA)
         ensure_schema(connection)
@@ -537,6 +566,7 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(CODEX_EXECUTION_RUNS_SCHEMA)
     connection.executescript(PROJECT_REVIEW_RECORDS_SCHEMA)
     connection.executescript(PROJECT_MEMORY_ENTRIES_SCHEMA)
+    connection.executescript(RESEARCH_PACKAGES_SCHEMA)
     connection.executescript(AUDIT_EVENTS_SCHEMA)
     connection.executescript(EXTERNAL_DISPATCH_DELIVERIES_SCHEMA)
     task_columns = {
