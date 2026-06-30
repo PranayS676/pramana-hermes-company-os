@@ -266,6 +266,21 @@
         </a>
       </section>
 
+      <section class="project-decision-strip project-research-strip" aria-label="Project UI/UX research">
+        <div>
+          <span class="status-pill ready">UI/UX research</span>
+          <strong>Research packages</strong>
+          <small>
+            Founder-visible UI/UX research findings, recommendations, and
+            decisions captured against this project.
+          </small>
+        </div>
+        <a class="secondary-button link-button-muted" href="/projects/{{ project.id }}/research">
+          <i data-lucide="microscope"></i>
+          Open UI/UX research
+        </a>
+      </section>
+
       <section class="project-activity-panel" id="project-activity" aria-label="Project agent activity">
         <div class="panel-header inline-panel-header">
           <div>
@@ -1107,6 +1122,20 @@
             >
               <i data-lucide="file-text"></i>
               Review package MD
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/rollback-plan.json"
+            >
+              <i data-lucide="braces"></i>
+              Rollback plan JSON
+            </a>
+            <a
+              class="secondary-button link-button-muted full-width-button"
+              href="/projects/{{ project.id }}/rollback-plan.md"
+            >
+              <i data-lucide="undo-2"></i>
+              Rollback plan MD
             </a>
             {% if review_package.ready and review_aggregate.status != "approved" %}
             <form method="post" action="/projects/{{ project.id }}/multi-agent-review">
