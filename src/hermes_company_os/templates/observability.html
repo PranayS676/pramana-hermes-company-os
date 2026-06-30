@@ -6,8 +6,11 @@
     <title>Observability - Hermes Company OS</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
     <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
   </head>
-  <body>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
     {% set scope = package.scope %}
     {% set runs = package.runs %}
     {% set blocked = package.blocked_work %}
