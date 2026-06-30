@@ -7,7 +7,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -4842,10 +4842,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            resolved_generation_mode = normalize_generation_mode(generation_mode)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resolved_generation_mode = normalize_generation_mode(generation_mode)
         source_artifacts = approved_source_artifacts(repository, project_id)
         memory_context = product_wizard_memory_context(repository, project_id)
         generation_request = StageGenerationRequest(
@@ -4962,10 +4959,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            resolved_generation_mode = normalize_generation_mode(generation_mode)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resolved_generation_mode = normalize_generation_mode(generation_mode)
         latest_artifact = repository.latest_project_stage_artifact(
             project_id,
             resolved_stage_id,
@@ -5205,23 +5199,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         repository: CompanyRepository = request.app.state.repository
         get_project_or_404(repository, project_id)
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            repository.approve_stage(project_id, resolved_stage_id)
-            repository.resolve_project_stage_decisions(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                status="approved",
-                decision=(
-                    f"Founder approved the {resolved_stage_id} artifact from the "
-                    "project review workspace."
-                ),
-                decision_types={"artifact_approval", "final_artifact_approval"},
-            )
-            if resolved_stage_id == "tasks":
-                repository.ensure_project_workflow_items(project_id)
-            repository.sync_project_wizard_work_items(project_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        repository.approve_stage(project_id, resolved_stage_id)
+        repository.resolve_project_stage_decisions(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            status="approved",
+            decision=(
+                f"Founder approved the {resolved_stage_id} artifact from the "
+                "project review workspace."
+            ),
+            decision_types={"artifact_approval", "final_artifact_approval"},
+        )
+        if resolved_stage_id == "tasks":
+            repository.ensure_project_workflow_items(project_id)
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/stages/{stage_id}/revision")
@@ -5245,58 +5236,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "revision_request": revision_request,
             }
         )
-        try:
-            latest_artifact = repository.latest_project_stage_artifact(
-                project_id,
-                resolved_stage_id,
+        latest_artifact = repository.latest_project_stage_artifact(
+            project_id,
+            resolved_stage_id,
+        )
+        revision_reason_label = REVISION_REASON_LABELS[revision_reason]
+        revision_note = (
+            f"{revision_reason_label}: {revision_request.strip()}"
+            if revision_request.strip()
+            else (
+                f"{revision_reason_label}: Founder requested a revision before "
+                "approving this stage."
             )
-            revision_reason_label = REVISION_REASON_LABELS[revision_reason]
-            revision_note = (
-                f"{revision_reason_label}: {revision_request.strip()}"
-                if revision_request.strip()
-                else (
-                    f"{revision_reason_label}: Founder requested a revision before "
-                    "approving this stage."
-                )
-            )
-            repository.request_stage_revision(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                notes=revision_note,
-                reason=revision_reason,
-            )
-            repository.resolve_project_stage_decisions(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                status="rejected",
-                decision=revision_note,
-                decision_types={"artifact_approval", "final_artifact_approval"},
-            )
-            revision_decision_id = repository.create_founder_decision(
-                title=f"Revision requested for {resolved_stage_id} in {project['name']}",
-                urgency="routine",
-                decision_type="revision_request",
-                source="product_wizard",
-                owner_agent_id="product-manager",
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                artifact_id=latest_artifact["id"] if latest_artifact else None,
-                slack_channel="#decisions",
-                telegram_policy="Slack first; Telegram only if this blocks launch.",
-                context=(
-                    "Founder requested a revision in the project review workspace."
-                ),
-                evidence=revision_note,
-            )
-            repository.update_founder_decision(
-                revision_decision_id,
-                status="approved",
-                decision=revision_note,
-                founder_confirmed=True,
-            )
-            repository.sync_project_wizard_work_items(project_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        )
+        repository.request_stage_revision(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            notes=revision_note,
+            reason=revision_reason,
+        )
+        repository.resolve_project_stage_decisions(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            status="rejected",
+            decision=revision_note,
+            decision_types={"artifact_approval", "final_artifact_approval"},
+        )
+        revision_decision_id = repository.create_founder_decision(
+            title=f"Revision requested for {resolved_stage_id} in {project['name']}",
+            urgency="routine",
+            decision_type="revision_request",
+            source="product_wizard",
+            owner_agent_id="product-manager",
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            artifact_id=latest_artifact["id"] if latest_artifact else None,
+            slack_channel="#decisions",
+            telegram_policy="Slack first; Telegram only if this blocks launch.",
+            context=(
+                "Founder requested a revision in the project review workspace."
+            ),
+            evidence=revision_note,
+        )
+        repository.update_founder_decision(
+            revision_decision_id,
+            status="approved",
+            decision=revision_note,
+            founder_confirmed=True,
+        )
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/kanban")
@@ -5571,6 +5559,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = request.app.state.hermes_client.run_prompt(agent, prompt)
         repository.complete_run(run_id, output=result.output, error=result.error)
         return RedirectResponse("/", status_code=303)
+
+    @app.exception_handler(ValueError)
+    def _handle_value_error(request: Request, exc: ValueError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(sqlite3.IntegrityError)
+    def _handle_integrity_error(
+        request: Request, exc: sqlite3.IntegrityError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     register_external_dispatch_routes(app)
     register_generation_routes(app)
