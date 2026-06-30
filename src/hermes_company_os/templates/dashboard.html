@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hermes Company OS</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
   </head>
-  <body>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -108,13 +111,13 @@
             <a class="primary-button link-button" href="/setup#inputs">
               <i data-lucide="clipboard-list"></i> Inputs
             </a>
-            <a class="primary-button link-button" href="/setup/input-ledger.md">
-              <i data-lucide="clipboard-question"></i> Input ledger
+            <a class="secondary-button link-button-muted" href="/setup/input-ledger.md">
+              <i data-lucide="file-text"></i> Input ledger
             </a>
-            <a class="primary-button link-button" href="/setup/founder-next-actions.md">
+            <a class="secondary-button link-button-muted" href="/setup/founder-next-actions.md">
               <i data-lucide="list-todo"></i> Next actions
             </a>
-            <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
+            <a class="secondary-button link-button-muted" href="/setup/kickoff-readiness.md">
               <i data-lucide="rocket"></i> Kickoff gate
             </a>
           </div>

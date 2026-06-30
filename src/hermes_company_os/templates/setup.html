@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Setup - Hermes Company OS</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
   </head>
-  <body>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
@@ -31,73 +34,73 @@
             <p class="eyebrow">Before idea phase</p>
             <h1>Company infrastructure readiness</h1>
           </div>
-          <a class="primary-button link-button" href="/setup/bootstrap.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/bootstrap.ps1">
             <i data-lucide="download"></i> Bootstrap script
           </a>
-          <a class="primary-button link-button" href="/setup/profile-artifacts.md">
+          <a class="secondary-button link-button-muted" href="/setup/profile-artifacts.md">
             <i data-lucide="file-text"></i> Profile artifacts
           </a>
-          <a class="primary-button link-button" href="/setup/profile-live-assets.md">
+          <a class="secondary-button link-button-muted" href="/setup/profile-live-assets.md">
             <i data-lucide="file-cog"></i> Live starter assets
           </a>
-          <a class="primary-button link-button" href="/setup/team-topology.md">
+          <a class="secondary-button link-button-muted" href="/setup/team-topology.md">
             <i data-lucide="network"></i> Team topology
           </a>
-          <a class="primary-button link-button" href="/setup/profile-acceptance.md">
+          <a class="secondary-button link-button-muted" href="/setup/profile-acceptance.md">
             <i data-lucide="clipboard-check"></i> Profile acceptance
           </a>
-          <a class="primary-button link-button" href="/setup/inputs-needed.md">
+          <a class="secondary-button link-button-muted" href="/setup/inputs-needed.md">
             <i data-lucide="clipboard-list"></i> Inputs needed
           </a>
-          <a class="primary-button link-button" href="/setup/founder-input-request.md">
+          <a class="secondary-button link-button-muted" href="/setup/founder-input-request.md">
             <i data-lucide="messages-square"></i> Founder input request
           </a>
-          <a class="primary-button link-button" href="/setup/founder-inputs.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/founder-inputs.ps1">
             <i data-lucide="square-terminal"></i> Input collector
           </a>
-          <a class="primary-button link-button" href="/setup/first-run.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/first-run.ps1">
             <i data-lucide="play"></i> First run helper
           </a>
-          <a class="primary-button link-button" href="/setup/progress-board.md">
+          <a class="secondary-button link-button-muted" href="/setup/progress-board.md">
             <i data-lucide="columns-3"></i> Progress board
           </a>
-          <a class="primary-button link-button" href="/setup/founder-next-actions.md">
+          <a class="secondary-button link-button-muted" href="/setup/founder-next-actions.md">
             <i data-lucide="list-todo"></i> Founder next actions
           </a>
-          <a class="primary-button link-button" href="/setup/readiness-report.md">
+          <a class="secondary-button link-button-muted" href="/setup/readiness-report.md">
             <i data-lucide="shield-check"></i> Readiness report
           </a>
-          <a class="primary-button link-button" href="/setup/company-manifest.md">
+          <a class="secondary-button link-button-muted" href="/setup/company-manifest.md">
             <i data-lucide="package-check"></i> Company manifest
           </a>
-          <a class="primary-button link-button" href="/setup/company-launch-drill.md">
+          <a class="secondary-button link-button-muted" href="/setup/company-launch-drill.md">
             <i data-lucide="clipboard-check"></i> Launch drill
           </a>
-          <a class="primary-button link-button" href="/setup/kickoff-readiness.md">
+          <a class="secondary-button link-button-muted" href="/setup/kickoff-readiness.md">
             <i data-lucide="rocket"></i> Kickoff readiness
           </a>
-          <a class="primary-button link-button" href="/setup/runtime-preflight.md">
+          <a class="secondary-button link-button-muted" href="/setup/runtime-preflight.md">
             <i data-lucide="terminal"></i> Runtime preflight
           </a>
-          <a class="primary-button link-button" href="/setup/hermes-runtime.md">
+          <a class="secondary-button link-button-muted" href="/setup/hermes-runtime.md">
             <i data-lucide="plug-zap"></i> Hermes runtime
           </a>
-          <a class="primary-button link-button" href="/setup/hermes-install.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/hermes-install.ps1">
             <i data-lucide="download"></i> Hermes install helper
           </a>
-          <a class="primary-button link-button" href="/setup/secret-audit.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/secret-audit.ps1">
             <i data-lucide="key-round"></i> Secret audit
           </a>
-          <a class="primary-button link-button" href="/setup/activation-checklist.md">
+          <a class="secondary-button link-button-muted" href="/setup/activation-checklist.md">
             <i data-lucide="list-checks"></i> Activation checklist
           </a>
-          <a class="primary-button link-button" href="/setup/activation-sequence.md">
+          <a class="secondary-button link-button-muted" href="/setup/activation-sequence.md">
             <i data-lucide="route"></i> Activation sequence
           </a>
-          <a class="primary-button link-button" href="/setup/activation-runner.ps1">
+          <a class="secondary-button link-button-muted" href="/setup/activation-runner.ps1">
             <i data-lucide="square-terminal"></i> Activation runner
           </a>
-          <a class="primary-button link-button" href="/setup/live-verification.md">
+          <a class="secondary-button link-button-muted" href="/setup/live-verification.md">
             <i data-lucide="badge-check"></i> Live verification
           </a>
         </section>

@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Operating loop - Hermes Company OS</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
     <style>
       .operating-loop-page .delivery-table {
         width: 100%;
@@ -36,7 +38,8 @@
       }
     </style>
   </head>
-  <body>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
     {% set scope = package.scope %}
     {% set summary = package.summary %}
     {% set deliveries = package.deliveries %}

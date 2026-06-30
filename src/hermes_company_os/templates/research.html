@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>UI/UX Research - {{ project.name }} - Hermes Company OS</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
     <style>
       .research-package { margin-bottom: 1rem; }
       .research-finding-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
@@ -15,7 +17,8 @@
       .severity-critical, .severity-high { font-weight: 600; }
     </style>
   </head>
-  <body>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
     <main class="agent-page queue-page">
       <a class="back-link" href="/projects/{{ project.id }}"><i data-lucide="arrow-left"></i> {{ project.name }}</a>
 

@@ -7,7 +7,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -26,12 +26,6 @@ from hermes_company_os.activation_runner import (
     activation_runner_powershell,
 )
 from hermes_company_os.activation_sequence import activation_sequence_markdown
-from hermes_company_os.agent_work_queue import (
-    QUEUE_PRIORITIES,
-    QUEUE_PRIORITY_LABELS,
-    QUEUE_STATE_LABELS,
-    QUEUE_STATES,
-)
 from hermes_company_os.bootstrap import powershell_bootstrap, profile_setup_commands
 from hermes_company_os.codex_execution import (
     codex_execution_package,
@@ -71,11 +65,8 @@ from hermes_company_os.first_run import (
 )
 from hermes_company_os.founder_control import project_founder_control_summary
 from hermes_company_os.founder_decisions import (
-    DECISION_TYPE_LABELS,
-    RESOLVED_DECISION_STATUSES,
     founder_decisions_json,
     founder_decisions_markdown,
-    founder_decisions_payload,
 )
 from hermes_company_os.founder_handoff import (
     founder_handoff_json,
@@ -211,10 +202,6 @@ from hermes_company_os.profile_artifacts import (
     profile_manifest_json,
     profile_soul_markdown,
 )
-from hermes_company_os.profile_handoff_contracts import (
-    profile_handoff_contract,
-    profile_handoff_contract_markdown,
-)
 from hermes_company_os.profile_installation import (
     profile_installation_json,
     profile_installation_markdown,
@@ -257,11 +244,22 @@ from hermes_company_os.project_workflow_artifacts import (
     project_workflow_json,
     project_workflow_markdown,
 )
-from hermes_company_os.prompts import build_agent_prompt, build_standup_prompt
+from hermes_company_os.prompts import build_standup_prompt
 from hermes_company_os.readiness import ReadinessService
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.routers._helpers import (
+    get_agent_or_404,
+    get_project_or_404,
+    reject_secret_values,
+)
+from hermes_company_os.routers.agents import (
+    register_agents_routes,
+)
 from hermes_company_os.routers.codex_execution import (
     register_codex_execution_routes,
+)
+from hermes_company_os.routers.decisions import (
+    register_decisions_routes,
 )
 from hermes_company_os.routers.external_dispatch import (
     register_external_dispatch_routes,
@@ -280,6 +278,9 @@ from hermes_company_os.routers.observability import (
 )
 from hermes_company_os.routers.project_memory import (
     register_project_memory_routes,
+)
+from hermes_company_os.routers.queue import (
+    register_queue_routes,
 )
 from hermes_company_os.routers.research import (
     register_research_routes,
@@ -384,7 +385,6 @@ LIVE_HERMES_PILOT_CONFIRMATION_PHRASE = "RUN LIVE HERMES"
 LIVE_HERMES_PILOT_CONFIRMATION_ERROR = (
     "Live Hermes manual pilot blocked: type RUN LIVE HERMES before real execution."
 )
-DECISION_STATUS_OPTIONS = ("needed", "blocked", "approved", "rejected", "deferred")
 REVISION_REASON_LABELS = {
     "evidence_gap": "Evidence gap",
     "scope_issue": "Scope issue",
@@ -393,23 +393,6 @@ REVISION_REASON_LABELS = {
     "owner_mismatch": "Owner mismatch",
     "acceptance_concern": "Acceptance concern",
 }
-
-
-def reject_secret_values(values: dict[str, str]) -> None:
-    try:
-        assert_no_secret_values(values)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-def safe_return_path(return_to: str, fallback: str) -> str:
-    if return_to.startswith("/") and not return_to.startswith("//"):
-        return return_to
-    return fallback
-
-
-def form_checkbox_checked(value: str) -> bool:
-    return value.lower() in {"1", "true", "yes", "on", "confirmed"}
 
 
 def kanban_project_push_blocker(repository: CompanyRepository) -> str:
@@ -3925,8 +3908,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         notes: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_agent(agent_id) is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
+        get_agent_or_404(repository, agent_id)
         allowed_statuses = {"planned", "needs_secret", "ready_for_verification", "verified"}
         if status not in allowed_statuses:
             raise HTTPException(status_code=400, detail="Invalid model preference status")
@@ -4226,326 +4208,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 repository.update_integration_status("llm-provider", "configured")
         return RedirectResponse("/setup#profile-smoke", status_code=303)
 
-    @app.get("/queue")
-    def agent_work_queue(
-        request: Request,
-        status: str = "",
-        project_id: str = "",
-        owner_agent_id: str = "",
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        try:
-            items = repository.list_agent_work_items(
-                project_id=project_id,
-                owner_agent_id=owner_agent_id,
-                status=status,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return templates.TemplateResponse(
-            request,
-            "queue.html",
-            {
-                "items": items,
-                "summary": repository.agent_work_queue_summary(),
-                "agents": repository.list_agents(),
-                "projects": repository.list_projects(),
-                "states": QUEUE_STATES,
-                "state_labels": QUEUE_STATE_LABELS,
-                "priorities": QUEUE_PRIORITIES,
-                "priority_labels": QUEUE_PRIORITY_LABELS,
-                "filters": {
-                    "status": status,
-                    "project_id": project_id,
-                    "owner_agent_id": owner_agent_id,
-                },
-            },
-        )
-
-    @app.post("/queue")
-    def create_agent_work_item(
-        request: Request,
-        title: str = Form(...),
-        owner_agent_id: str = Form("chief-of-staff"),
-        status: str = Form("planned"),
-        priority: str = Form("medium"),
-        project_id: str = Form(""),
-        summary: str = Form(""),
-        blocked_reason: str = Form(""),
-        blocked_owner: str = Form(""),
-        founder_action_required: str = Form(""),
-        return_to: str = Form("/queue"),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        reject_secret_values(
-            {
-                "title": title,
-                "owner_agent_id": owner_agent_id,
-                "status": status,
-                "priority": priority,
-                "project_id": project_id,
-                "summary": summary,
-                "blocked_reason": blocked_reason,
-                "blocked_owner": blocked_owner,
-            }
-        )
-        try:
-            repository.create_agent_work_item(
-                title=title,
-                owner_agent_id=owner_agent_id,
-                summary=summary,
-                status=status,
-                priority=priority,
-                project_id=project_id or None,
-                blocked_reason=blocked_reason,
-                blocked_owner=blocked_owner,
-                founder_action_required=form_checkbox_checked(founder_action_required),
-                source="manual",
-                external_handoff_status="dashboard_source_of_truth",
-                slack_channel="#decisions",
-                telegram_policy="Telegram only if this blocks founder progress.",
-            )
-        except (sqlite3.IntegrityError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
-
-    @app.post("/queue/{work_item_id}")
-    def update_agent_work_item(
-        request: Request,
-        work_item_id: str,
-        status: str = Form(...),
-        priority: str = Form(""),
-        owner_agent_id: str = Form(""),
-        blocked_reason: str = Form(""),
-        blocked_owner: str = Form(""),
-        founder_action_required: str = Form(""),
-        founder_confirmed: str = Form(""),
-        return_to: str = Form("/queue"),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_agent_work_item(work_item_id) is None:
-            raise HTTPException(status_code=404, detail="Agent work item not found")
-        reject_secret_values(
-            {
-                "status": status,
-                "priority": priority,
-                "owner_agent_id": owner_agent_id,
-                "blocked_reason": blocked_reason,
-                "blocked_owner": blocked_owner,
-            }
-        )
-        try:
-            repository.update_agent_work_item(
-                work_item_id,
-                status=status,
-                priority=priority or None,
-                owner_agent_id=owner_agent_id or None,
-                blocked_reason=blocked_reason,
-                blocked_owner=blocked_owner,
-                founder_action_required=form_checkbox_checked(founder_action_required),
-                founder_confirmed=form_checkbox_checked(founder_confirmed),
-            )
-        except (sqlite3.IntegrityError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(safe_return_path(return_to, "/queue"), status_code=303)
-
-    @app.get("/queue/{work_item_id}/handoff.json")
-    def agent_work_item_handoff_json(request: Request, work_item_id: str) -> dict:
-        repository: CompanyRepository = request.app.state.repository
-        work_item = repository.get_agent_work_item(work_item_id)
-        if work_item is None:
-            raise HTTPException(status_code=404, detail="Agent work item not found")
-        return profile_handoff_contract(repository, work_item)
-
-    @app.get("/queue/{work_item_id}/handoff.md")
-    def agent_work_item_handoff_markdown(request: Request, work_item_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        work_item = repository.get_agent_work_item(work_item_id)
-        if work_item is None:
-            raise HTTPException(status_code=404, detail="Agent work item not found")
-        contract = profile_handoff_contract(repository, work_item)
-        return PlainTextResponse(profile_handoff_contract_markdown(contract))
-
-    @app.get("/decisions")
-    def founder_decision_inbox(
-        request: Request,
-        status: str = "",
-        urgency: str = "",
-        decision_type: str = "",
-        project_id: str = "",
-        stage_id: str = "",
-        owner_agent_id: str = "",
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        try:
-            decisions = repository.list_founder_decisions(
-                status=status,
-                urgency=urgency,
-                decision_type=decision_type,
-                project_id=project_id,
-                stage_id=stage_id,
-                owner_agent_id=owner_agent_id,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        all_decisions = repository.list_founder_decisions()
-        return templates.TemplateResponse(
-            request,
-            "decisions.html",
-            {
-                "decisions": decisions,
-                "selected_decision": decisions[0] if len(decisions) == 1 else None,
-                "summary": founder_decisions_payload(all_decisions)["summary"],
-                "agents": repository.list_agents(),
-                "projects": repository.list_projects(),
-                "decision_types": DECISION_TYPE_LABELS,
-                "statuses": DECISION_STATUS_OPTIONS,
-                "filters": {
-                    "status": status,
-                    "urgency": urgency,
-                    "decision_type": decision_type,
-                    "project_id": project_id,
-                    "stage_id": stage_id,
-                    "owner_agent_id": owner_agent_id,
-                },
-            },
-        )
-
-    @app.get("/decisions/{decision_id}")
-    def founder_decision_detail(request: Request, decision_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        selected_decision = repository.get_founder_decision(decision_id)
-        if selected_decision is None:
-            raise HTTPException(status_code=404, detail="Founder decision not found")
-        all_decisions = repository.list_founder_decisions()
-        return templates.TemplateResponse(
-            request,
-            "decisions.html",
-            {
-                "decisions": [selected_decision],
-                "selected_decision": selected_decision,
-                "summary": founder_decisions_payload(all_decisions)["summary"],
-                "agents": repository.list_agents(),
-                "projects": repository.list_projects(),
-                "decision_types": DECISION_TYPE_LABELS,
-                "statuses": DECISION_STATUS_OPTIONS,
-                "filters": {
-                    "status": "",
-                    "urgency": "",
-                    "decision_type": "",
-                    "project_id": selected_decision.get("project_id") or "",
-                    "stage_id": selected_decision.get("stage_id") or "",
-                    "owner_agent_id": selected_decision.get("owner_agent_id") or "",
-                },
-            },
-        )
-
-    @app.post("/decisions")
-    def create_founder_decision(
-        request: Request,
-        title: str = Form(...),
-        urgency: str = Form("routine"),
-        decision_type: str = Form("operating_decision"),
-        source: str = Form("manual"),
-        owner_agent_id: str = Form("chief-of-staff"),
-        project_id: str = Form(""),
-        stage_id: str = Form(""),
-        artifact_id: str = Form(""),
-        slack_channel: str = Form("#decisions"),
-        telegram_policy: str = Form("Telegram only if this blocks founder progress."),
-        context: str = Form(""),
-        evidence: str = Form(""),
-        requires_founder_approval: str = Form(""),
-        return_to: str = Form("/decisions"),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        allowed_urgencies = {"routine", "urgent"}
-        if urgency not in allowed_urgencies:
-            raise HTTPException(status_code=400, detail="Invalid decision urgency")
-        if repository.get_agent(owner_agent_id) is None:
-            raise HTTPException(status_code=404, detail="Decision owner profile not found")
-        if not title.strip() or not context.strip() or not slack_channel.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Title, context, and Slack channel are required",
-            )
-        reject_secret_values(
-            {
-                "title": title,
-                "urgency": urgency,
-                "decision_type": decision_type,
-                "source": source,
-                "owner_agent_id": owner_agent_id,
-                "project_id": project_id,
-                "stage_id": stage_id,
-                "artifact_id": artifact_id,
-                "slack_channel": slack_channel,
-                "telegram_policy": telegram_policy,
-                "context": context,
-                "evidence": evidence,
-            }
-        )
-        try:
-            repository.create_founder_decision(
-                title=title,
-                urgency=urgency,
-                decision_type=decision_type,
-                source=source,
-                owner_agent_id=owner_agent_id,
-                project_id=project_id or None,
-                stage_id=stage_id or None,
-                artifact_id=artifact_id or None,
-                slack_channel=slack_channel,
-                telegram_policy=telegram_policy,
-                context=context,
-                evidence=evidence,
-                requires_founder_approval=(
-                    True if form_checkbox_checked(requires_founder_approval) else None
-                ),
-            )
-        except (sqlite3.IntegrityError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(
-            safe_return_path(return_to, "/decisions"),
-            status_code=303,
-        )
-
-    @app.post("/decisions/{decision_id}")
-    def update_founder_decision(
-        request: Request,
-        decision_id: str,
-        status: str = Form(...),
-        decision: str = Form(""),
-        founder_confirmed: str = Form(""),
-        return_to: str = Form("/decisions"),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        current = repository.get_founder_decision(decision_id)
-        if current is None:
-            raise HTTPException(status_code=404, detail="Founder decision not found")
-        allowed_statuses = set(DECISION_STATUS_OPTIONS)
-        if status not in allowed_statuses:
-            raise HTTPException(status_code=400, detail="Invalid founder decision status")
-        if status in RESOLVED_DECISION_STATUSES and not decision.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="A decision note is required before resolving a founder decision",
-            )
-        reject_secret_values({"status": status, "decision": decision})
-        try:
-            repository.update_founder_decision(
-                decision_id=decision_id,
-                status=status,
-                decision=decision,
-                founder_confirmed=form_checkbox_checked(founder_confirmed),
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return RedirectResponse(
-            safe_return_path(return_to, "/decisions"),
-            status_code=303,
-        )
-
     @app.get("/projects")
     def projects(request: Request):
         repository: CompanyRepository = request.app.state.repository
@@ -4823,8 +4485,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/projects/{project_id}/operating-loop.json")
     def project_operating_loop_json(request: Request, project_id: str) -> dict:
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+        get_project_or_404(repository, project_id)
         return project_operating_loop_package(repository, project_id)
 
     @app.post("/projects/{project_id}/stages/{stage_id}/generate")
@@ -4840,10 +4501,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            resolved_generation_mode = normalize_generation_mode(generation_mode)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resolved_generation_mode = normalize_generation_mode(generation_mode)
         source_artifacts = approved_source_artifacts(repository, project_id)
         memory_context = product_wizard_memory_context(repository, project_id)
         generation_request = StageGenerationRequest(
@@ -4960,10 +4618,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            resolved_generation_mode = normalize_generation_mode(generation_mode)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resolved_generation_mode = normalize_generation_mode(generation_mode)
         latest_artifact = repository.latest_project_stage_artifact(
             project_id,
             resolved_stage_id,
@@ -5201,26 +4856,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/projects/{project_id}/stages/{stage_id}/approve")
     def approve_project_stage(request: Request, project_id: str, stage_id: str):
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+        get_project_or_404(repository, project_id)
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
-        try:
-            repository.approve_stage(project_id, resolved_stage_id)
-            repository.resolve_project_stage_decisions(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                status="approved",
-                decision=(
-                    f"Founder approved the {resolved_stage_id} artifact from the "
-                    "project review workspace."
-                ),
-                decision_types={"artifact_approval", "final_artifact_approval"},
-            )
-            if resolved_stage_id == "tasks":
-                repository.ensure_project_workflow_items(project_id)
-            repository.sync_project_wizard_work_items(project_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        repository.approve_stage(project_id, resolved_stage_id)
+        repository.resolve_project_stage_decisions(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            status="approved",
+            decision=(
+                f"Founder approved the {resolved_stage_id} artifact from the "
+                "project review workspace."
+            ),
+            decision_types={"artifact_approval", "final_artifact_approval"},
+        )
+        if resolved_stage_id == "tasks":
+            repository.ensure_project_workflow_items(project_id)
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/stages/{stage_id}/revision")
@@ -5244,58 +4895,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "revision_request": revision_request,
             }
         )
-        try:
-            latest_artifact = repository.latest_project_stage_artifact(
-                project_id,
-                resolved_stage_id,
+        latest_artifact = repository.latest_project_stage_artifact(
+            project_id,
+            resolved_stage_id,
+        )
+        revision_reason_label = REVISION_REASON_LABELS[revision_reason]
+        revision_note = (
+            f"{revision_reason_label}: {revision_request.strip()}"
+            if revision_request.strip()
+            else (
+                f"{revision_reason_label}: Founder requested a revision before "
+                "approving this stage."
             )
-            revision_reason_label = REVISION_REASON_LABELS[revision_reason]
-            revision_note = (
-                f"{revision_reason_label}: {revision_request.strip()}"
-                if revision_request.strip()
-                else (
-                    f"{revision_reason_label}: Founder requested a revision before "
-                    "approving this stage."
-                )
-            )
-            repository.request_stage_revision(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                notes=revision_note,
-                reason=revision_reason,
-            )
-            repository.resolve_project_stage_decisions(
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                status="rejected",
-                decision=revision_note,
-                decision_types={"artifact_approval", "final_artifact_approval"},
-            )
-            revision_decision_id = repository.create_founder_decision(
-                title=f"Revision requested for {resolved_stage_id} in {project['name']}",
-                urgency="routine",
-                decision_type="revision_request",
-                source="product_wizard",
-                owner_agent_id="product-manager",
-                project_id=project_id,
-                stage_id=resolved_stage_id,
-                artifact_id=latest_artifact["id"] if latest_artifact else None,
-                slack_channel="#decisions",
-                telegram_policy="Slack first; Telegram only if this blocks launch.",
-                context=(
-                    "Founder requested a revision in the project review workspace."
-                ),
-                evidence=revision_note,
-            )
-            repository.update_founder_decision(
-                revision_decision_id,
-                status="approved",
-                decision=revision_note,
-                founder_confirmed=True,
-            )
-            repository.sync_project_wizard_work_items(project_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        )
+        repository.request_stage_revision(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            notes=revision_note,
+            reason=revision_reason,
+        )
+        repository.resolve_project_stage_decisions(
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            status="rejected",
+            decision=revision_note,
+            decision_types={"artifact_approval", "final_artifact_approval"},
+        )
+        revision_decision_id = repository.create_founder_decision(
+            title=f"Revision requested for {resolved_stage_id} in {project['name']}",
+            urgency="routine",
+            decision_type="revision_request",
+            source="product_wizard",
+            owner_agent_id="product-manager",
+            project_id=project_id,
+            stage_id=resolved_stage_id,
+            artifact_id=latest_artifact["id"] if latest_artifact else None,
+            slack_channel="#decisions",
+            telegram_policy="Slack first; Telegram only if this blocks launch.",
+            context=(
+                "Founder requested a revision in the project review workspace."
+            ),
+            evidence=revision_note,
+        )
+        repository.update_founder_decision(
+            revision_decision_id,
+            status="approved",
+            decision=revision_note,
+            founder_confirmed=True,
+        )
+        repository.sync_project_wizard_work_items(project_id)
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
     @app.post("/projects/{project_id}/kanban")
@@ -5372,94 +5020,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     repository.update_integration_status("hermes-kanban", "configured")
         return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
-    @app.get("/agents/{agent_id}")
-    def agent_detail(request: Request, agent_id: str):
-        repository: CompanyRepository = request.app.state.repository
-        agent = repository.get_agent(agent_id)
-        if agent is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        return templates.TemplateResponse(
-            request,
-            "agent.html",
-            {
-                "agent": agent,
-                "live_run_blocker": profile_live_run_blocker(repository, agent_id),
-                "agent_work_items": repository.list_agent_work_items(
-                    owner_agent_id=agent_id,
-                    limit=8,
-                    include_done=False,
-                ),
-                "settings": request.app.state.settings,
-            },
-        )
-
-    @app.post("/agents/{agent_id}/profile")
-    def update_agent_profile(
-        request: Request,
-        agent_id: str,
-        description: str = Form(...),
-        soul: str = Form(...),
-        capabilities: str = Form(...),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_agent(agent_id) is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        parsed_capabilities = [
-            line.strip()
-            for line in capabilities.replace(",", "\n").splitlines()
-            if line.strip()
-        ]
-        if not description.strip() or not soul.strip() or not parsed_capabilities:
-            raise HTTPException(
-                status_code=400,
-                detail="Description, soul, and at least one capability are required",
-            )
-        reject_secret_values(
-            {
-                "description": description,
-                "soul": soul,
-                "capabilities": "\n".join(parsed_capabilities),
-            }
-        )
-        repository.update_agent_profile(
-            agent_id=agent_id,
-            description=description,
-            soul=soul,
-            capabilities=parsed_capabilities,
-        )
-        return RedirectResponse(f"/agents/{agent_id}", status_code=303)
-
-    @app.post("/agents/{agent_id}/routing")
-    def update_agent_routing(
-        request: Request,
-        agent_id: str,
-        slack_channel: str = Form(...),
-        telegram_policy: str = Form(...),
-        hermes_command: str = Form(...),
-    ):
-        repository: CompanyRepository = request.app.state.repository
-        if repository.get_agent(agent_id) is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        if not slack_channel.strip() or not telegram_policy.strip() or not hermes_command.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Slack channel, Telegram policy, and Hermes command are required",
-            )
-        reject_secret_values(
-            {
-                "slack_channel": slack_channel,
-                "telegram_policy": telegram_policy,
-                "hermes_command": hermes_command,
-            }
-        )
-        repository.update_agent_routing(
-            agent_id=agent_id,
-            slack_channel=slack_channel,
-            telegram_policy=telegram_policy,
-            hermes_command=hermes_command,
-        )
-        return RedirectResponse(f"/agents/{agent_id}", status_code=303)
-
     @app.post("/tasks")
     def create_task(
         request: Request,
@@ -5528,22 +5088,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return RedirectResponse("/", status_code=303)
 
-    @app.post("/agents/{agent_id}/run")
-    def run_agent(request: Request, agent_id: str, founder_request: str = Form(...)):
-        reject_secret_values({"founder_request": founder_request})
-        repository: CompanyRepository = request.app.state.repository
-        agent = repository.get_agent(agent_id)
-        if agent is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        live_run_blocker = profile_live_run_blocker(repository, agent_id)
-        if live_run_blocker:
-            raise HTTPException(status_code=409, detail=live_run_blocker)
-        prompt = build_agent_prompt(agent, founder_request.strip())
-        run_id = repository.create_run(agent_id=agent_id, run_type="agent", prompt=prompt)
-        result = request.app.state.hermes_client.run_prompt(agent, prompt)
-        repository.complete_run(run_id, output=result.output, error=result.error)
-        return RedirectResponse("/", status_code=303)
-
     @app.post("/standups/{schedule_id}/run")
     def run_standup(request: Request, schedule_id: str):
         repository: CompanyRepository = request.app.state.repository
@@ -5571,9 +5115,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         repository.complete_run(run_id, output=result.output, error=result.error)
         return RedirectResponse("/", status_code=303)
 
+    @app.exception_handler(ValueError)
+    def _handle_value_error(request: Request, exc: ValueError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(sqlite3.IntegrityError)
+    def _handle_integrity_error(
+        request: Request, exc: sqlite3.IntegrityError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    register_agents_routes(app)
+    register_decisions_routes(app)
     register_external_dispatch_routes(app)
     register_generation_routes(app)
     register_launch_routes(app)
+    register_queue_routes(app)
     register_multi_agent_review_routes(app)
     register_observability_routes(app)
     register_project_memory_routes(app)
