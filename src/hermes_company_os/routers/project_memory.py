@@ -6,6 +6,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from hermes_company_os.project_memory import (
+    company_memory_search_package,
     project_memory_markdown,
     project_memory_package,
 )
@@ -14,6 +15,46 @@ from hermes_company_os.repository_protocol import RepositoryProtocol
 
 def register_project_memory_routes(app: FastAPI) -> None:
     """Register the project-memory routes (read, create, and entry actions)."""
+
+    @app.get("/memory/search.json")
+    def company_memory_search_json(
+        request: Request,
+        q: str = "",
+        category: str = "",
+        status: str = "active",
+        confidence: str = "",
+    ) -> dict:
+        repository: RepositoryProtocol = request.app.state.repository
+        return company_memory_search_package(
+            repository,
+            query=q,
+            category=category,
+            status=status,
+            confidence=confidence,
+        )
+
+    @app.get("/memory/search")
+    def company_memory_search_html(
+        request: Request,
+        q: str = "",
+        category: str = "",
+        status: str = "active",
+        confidence: str = "",
+    ):
+        repository: RepositoryProtocol = request.app.state.repository
+        templates = request.app.state.templates
+        package = company_memory_search_package(
+            repository,
+            query=q,
+            category=category,
+            status=status,
+            confidence=confidence,
+        )
+        return templates.TemplateResponse(
+            request,
+            "memory_search.html",
+            {"package": package},
+        )
 
     @app.get("/projects/{project_id}/memory.json")
     def project_memory_json(request: Request, project_id: str) -> dict:

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UI/UX Research - {{ project.name }} - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      .research-package { margin-bottom: 1rem; }
+      .research-finding-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+      .research-finding-list li { margin-bottom: 0.5rem; }
+      .research-severity-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0; }
+      .research-meta-grid { display: grid; gap: 0.4rem 1.5rem; margin-top: 0.5rem; }
+      .severity-critical, .severity-high { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main class="agent-page queue-page">
+      <a class="back-link" href="/projects/{{ project.id }}"><i data-lucide="arrow-left"></i> {{ project.name }}</a>
+
+      <section class="project-titlebar">
+        <div>
+          <p class="eyebrow">UI/UX Research Agent</p>
+          <h1>UI/UX research packages</h1>
+          <p class="page-subtitle">
+            Research packages capture findings (with severity and evidence),
+            implementation recommendations, and the founder decisions needed
+            before any UI change ships. This agent recommends; the founder decides.
+          </p>
+        </div>
+      </section>
+
+      <section class="research-layout">
+        <aside class="panel research-controls">
+          <div class="panel-header">
+            <div>
+              <h2>New research package</h2>
+              <p class="panel-kicker">One focused thread per package. No credentials.</p>
+            </div>
+            <i data-lucide="microscope"></i>
+          </div>
+          <form class="stacked-form" method="post" action="/projects/{{ project.id }}/research">
+            <label>
+              Title
+              <input name="title" required placeholder="Founder decision inbox clarity">
+            </label>
+            <label>
+              Research thread
+              <input name="research_thread" required placeholder="Founder Control Plane UX">
+            </label>
+            <label>
+              Method
+              <select name="method">
+                {% for method in method_options %}
+                <option value="{{ method.id }}">{{ method.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Research question
+              <textarea name="research_question" rows="3" required placeholder="What exact question does this package answer?"></textarea>
+            </label>
+            <label>
+              Target workflow
+              <textarea name="target_workflow" rows="2" placeholder="Founder/agent/reviewer workflow being improved."></textarea>
+            </label>
+            <label>
+              Summary
+              <textarea name="summary" rows="2" placeholder="One-paragraph summary."></textarea>
+            </label>
+
+            <div class="panel-header compact-panel-header">
+              <h2>Primary finding (optional)</h2>
+            </div>
+            <label>
+              Finding title
+              <input name="finding_title" placeholder="Blocked state is hidden">
+            </label>
+            <label>
+              Severity
+              <select name="finding_severity">
+                {% for severity in severity_options %}
+                <option value="{{ severity.id }}" {% if severity.id == "medium" %}selected{% endif %}>{{ severity.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Surface
+              <input name="finding_surface" placeholder="/queue, project page, etc.">
+            </label>
+            <label>
+              Detail
+              <textarea name="finding_detail" rows="2" placeholder="What is the problem?"></textarea>
+            </label>
+            <label>
+              Evidence
+              <textarea name="finding_evidence" rows="2" placeholder="Route behavior, screenshot note, test gap."></textarea>
+            </label>
+
+            <div class="panel-header compact-panel-header">
+              <h2>Primary recommendation (optional)</h2>
+            </div>
+            <label>
+              Recommended behavior
+              <textarea name="recommendation_behavior" rows="2" placeholder="Surface blocked reason inline."></textarea>
+            </label>
+            <label>
+              Affected surface
+              <input name="recommendation_surface" placeholder="Queue row component">
+            </label>
+            <label>
+              Acceptance signal
+              <input name="recommendation_acceptance" placeholder="Blocked items show reason + owner">
+            </label>
+
+            <div class="panel-header compact-panel-header">
+              <h2>Founder decision needed (optional)</h2>
+            </div>
+            <label>
+              Decision question
+              <textarea name="founder_decision" rows="2" placeholder="Should blocked state default to expanded?"></textarea>
+            </label>
+            <label>
+              Default recommendation
+              <input name="founder_decision_default" placeholder="Default: expanded for blocked">
+            </label>
+
+            <button class="primary-button full-width-button" type="submit">
+              <i data-lucide="plus"></i> Create research package
+            </button>
+          </form>
+        </aside>
+
+        <section class="panel research-list-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Research packages</h2>
+              <p class="panel-kicker">Recommendations only. UI changes require implementation-plan approval.</p>
+            </div>
+            <span class="status-pill planned">{{ packages|length }} shown</span>
+          </div>
+
+          {% for package in packages %}
+          <article class="panel research-package {{ package.status }}">
+            <div class="queue-title-line">
+              <span class="status-pill {{ package.status }}">{{ package.status|title }}</span>
+              <strong>{{ package.title }}</strong>
+            </div>
+            <p>{{ package.summary or package.research_question }}</p>
+            <div class="research-severity-row">
+              {% for severity in severity_options %}
+              {% if package.severity_counts[severity.id] %}
+              <span class="status-pill" aria-label="{{ severity.label }} findings">
+                {{ severity.label }}: {{ package.severity_counts[severity.id] }}
+              </span>
+              {% endif %}
+              {% endfor %}
+            </div>
+            <div class="research-meta-grid queue-meta-grid">
+              <span><strong>Thread</strong>{{ package.research_thread }}</span>
+              <span><strong>Method</strong>{{ package.method }}</span>
+              <span><strong>Owner</strong>{{ package.owner_agent_id }}</span>
+              <span><strong>Updated</strong>{{ package.updated_at }}</span>
+              <span>
+                <strong>Export</strong>
+                <a href="/research/packages/{{ package.id }}.json">JSON</a>
+                <a href="/research/packages/{{ package.id }}.md">Markdown</a>
+              </span>
+            </div>
+
+            {% if package.findings %}
+            <ul class="research-finding-list">
+              {% for finding in package.findings %}
+              <li class="severity-{{ finding.severity }}">
+                <strong>[{{ finding.severity|title }}]</strong> {{ finding.title }}
+                {% if finding.evidence %}<small> — {{ finding.evidence }}</small>{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if package.founder_decisions_needed %}
+            <div class="queue-policy-callout">
+              <strong>Founder decisions needed</strong>
+              <ul class="research-finding-list">
+                {% for decision in package.founder_decisions_needed %}
+                <li>{{ decision.decision }}{% if decision.default_recommendation %} <small>(default: {{ decision.default_recommendation }})</small>{% endif %}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            <form class="queue-update-form" method="post" action="/projects/{{ project.id }}/research/{{ package.id }}">
+              {% if package.status == "retired" %}
+              <input type="hidden" name="research_action" value="reactivate">
+              <button class="secondary-button" type="submit"><i data-lucide="rotate-ccw"></i> Reactivate</button>
+              {% else %}
+              <input type="hidden" name="research_action" value="retire">
+              <button class="secondary-button" type="submit"><i data-lucide="archive"></i> Retire</button>
+              {% endif %}
+            </form>
+          </article>
+          {% else %}
+          <p class="empty-state">
+            No research packages yet. Create one to capture UI/UX findings,
+            recommendations, and founder decisions for this project.
+          </p>
+          {% endfor %}
+        </section>
+      </section>
+    </main>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

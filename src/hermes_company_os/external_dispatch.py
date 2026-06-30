@@ -37,6 +37,92 @@ def external_dispatch_command_contract(item: Mapping[str, Any]) -> dict[str, Any
     return contract
 
 
+def operating_loop_package(
+    repository: Any,
+    project_id: str | None = None,
+    *,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Build a READ-ONLY operating-loop view of external-dispatch deliveries.
+
+    This makes the live coordination loop observable (roadmap M7, slice 5) without
+    making any send, live call, or state change. It only reads existing
+    ``external_dispatch_deliveries`` rows via the repository.
+
+    When ``project_id`` is ``None`` the package is company-wide: deliveries are
+    gathered across every project (each delivery annotated with its project name)
+    and sorted newest-first. When a ``project_id`` is given the package is scoped
+    to that project. Callers must 404 on an unknown project before calling.
+
+    The returned ``summary`` carries simple counts (total, by-platform, by-status)
+    for the dashboard's metric grid. Each delivery row is annotated with a
+    non-secret ``detail`` derived from its stored result for failure context.
+    """
+    if project_id is None:
+        scope = {"company_wide": True, "project_id": "", "project_name": "Company-wide"}
+        deliveries: list[dict[str, Any]] = []
+        for project in repository.list_projects():
+            project_deliveries = repository.list_external_dispatch_deliveries(
+                project["id"], limit=limit
+            )
+            project_name = str(project.get("name", "")) or project["id"]
+            for delivery in project_deliveries:
+                deliveries.append(_annotate_delivery(delivery, project_name))
+        deliveries.sort(
+            key=lambda row: (row.get("created_at", ""), row.get("id", "")),
+            reverse=True,
+        )
+        deliveries = deliveries[:limit]
+    else:
+        project = repository.get_project(project_id)
+        project_name = (
+            str(project.get("name", "")) if project else ""
+        ) or project_id
+        scope = {
+            "company_wide": False,
+            "project_id": project_id,
+            "project_name": project_name,
+        }
+        deliveries = [
+            _annotate_delivery(delivery, project_name)
+            for delivery in repository.list_external_dispatch_deliveries(
+                project_id, limit=limit
+            )
+        ]
+
+    return {
+        "scope": scope,
+        "deliveries": deliveries,
+        "summary": _operating_loop_summary(deliveries),
+    }
+
+
+def _annotate_delivery(delivery: Mapping[str, Any], project_name: str) -> dict[str, Any]:
+    annotated = dict(delivery)
+    annotated["project_name"] = project_name
+    result = annotated.get("result") or {}
+    detail = ""
+    if isinstance(result, Mapping):
+        detail = str(result.get("blocker") or result.get("detail") or "")
+    annotated["detail"] = detail
+    return annotated
+
+
+def _operating_loop_summary(deliveries: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    by_platform: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    for delivery in deliveries:
+        platform = str(delivery.get("platform", "")) or "unknown"
+        status = str(delivery.get("status", "")) or "unknown"
+        by_platform[platform] = by_platform.get(platform, 0) + 1
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "total": len(deliveries),
+        "by_platform": dict(sorted(by_platform.items())),
+        "by_status": dict(sorted(by_status.items())),
+    }
+
+
 def command_boundary_summary(*, enabled: bool, runner_label: str = "") -> dict[str, Any]:
     return {
         "name": EXTERNAL_DISPATCH_COMMAND_BOUNDARY_LABEL,

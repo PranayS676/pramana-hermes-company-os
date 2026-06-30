@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from hermes_company_os.database import connect
 from hermes_company_os.project_memory import (
+    enrich_memory_entry,
     normalize_memory_category,
     normalize_memory_confidence,
     normalize_memory_status,
@@ -930,6 +931,74 @@ class GenerationExecutionMixin:
             category=category,
             limit=limit,
         )
+
+    def search_company_memory(
+        self,
+        *,
+        query: str = "",
+        category: str = "",
+        status: str = "active",
+        confidence: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        """Search memory entries across every project (read-only, founder-facing).
+
+        Free-text ``query`` matches title/summary/body. ``status`` defaults to
+        ``active`` so retired entries are excluded unless explicitly requested.
+        Each result carries its owning project's id and name for linkage; an
+        empty ``project_id`` denotes a company-wide entry.
+        """
+        filters: list[str] = []
+        parameters: list[str | int] = []
+        normalized_query = query.strip()
+        if normalized_query:
+            like = f"%{normalized_query}%"
+            filters.append(
+                "(project_memory_entries.title LIKE ? "
+                "OR project_memory_entries.summary LIKE ? "
+                "OR project_memory_entries.body LIKE ?)"
+            )
+            parameters.extend([like, like, like])
+        if category:
+            filters.append("project_memory_entries.category = ?")
+            parameters.append(normalize_memory_category(category))
+        normalized_status = status.strip()
+        if normalized_status:
+            filters.append("project_memory_entries.status = ?")
+            parameters.append(normalize_memory_status(normalized_status))
+        if confidence:
+            filters.append("project_memory_entries.confidence = ?")
+            parameters.append(normalize_memory_confidence(confidence))
+        parameters.append(max(1, min(limit, 200)))
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT project_memory_entries.*,
+                       agents.name AS owner_name,
+                       company_projects.name AS project_name
+                FROM project_memory_entries
+                JOIN agents ON agents.id = project_memory_entries.owner_agent_id
+                LEFT JOIN company_projects
+                    ON company_projects.id = project_memory_entries.project_id
+                {where_clause}
+                ORDER BY
+                    CASE WHEN project_memory_entries.project_id IS NULL THEN 1 ELSE 0 END,
+                    project_memory_entries.pinned DESC,
+                    project_memory_entries.updated_at DESC,
+                    project_memory_entries.title
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        entries = []
+        for row in rows:
+            data = dict(row)
+            project_name = data.pop("project_name", None)
+            entry = enrich_memory_entry(data)
+            entry["project_name"] = project_name or ""
+            entries.append(entry)
+        return entries
 
     def update_project_memory_entry(
         self,
