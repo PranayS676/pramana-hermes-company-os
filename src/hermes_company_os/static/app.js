@@ -46,6 +46,46 @@
     }
   });
 
+  // Toasts. hx-boost replaces <body> content on each action, so we record a
+  // pending message on a successful POST and render it in afterSettle (after
+  // the swap), where the toast element survives until the next navigation.
+  function showToast(message) {
+    var c = document.getElementById("toast-container");
+    if (!c) {
+      c = document.createElement("div");
+      c.id = "toast-container";
+      document.body.appendChild(c);
+    }
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.setAttribute("role", "status");
+    t.textContent = message;
+    c.appendChild(t);
+    requestAnimationFrame(function () {
+      t.classList.add("is-visible");
+    });
+    setTimeout(function () {
+      t.classList.remove("is-visible");
+      setTimeout(function () {
+        t.remove();
+      }, 250);
+    }, 2600);
+  }
+
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    var cfg = evt.detail && evt.detail.requestConfig;
+    if (cfg && cfg.verb === "post" && evt.detail.successful) {
+      window.__toastPending = "Saved";
+    }
+  });
+  document.body.addEventListener("htmx:afterSettle", function () {
+    if (window.__toastPending) {
+      var msg = window.__toastPending;
+      window.__toastPending = null;
+      showToast(msg);
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", renderIcons);
   document.body.addEventListener("htmx:load", renderIcons);
   document.body.addEventListener("htmx:afterSwap", renderIcons);

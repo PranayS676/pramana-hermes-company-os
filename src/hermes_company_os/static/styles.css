@@ -3022,6 +3022,33 @@ button.htmx-request,
   pointer-events: none;
 }
 
+/* --- toasts ----------------------------------------------------------- */
+#toast-container {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1100;
+  display: grid;
+  gap: 8px;
+}
+.toast {
+  padding: 10px 14px;
+  background: #1b1c22;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 0.86rem;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* --- destructive action button --------------------------------------- */
 .danger-button {
   display: inline-flex;
