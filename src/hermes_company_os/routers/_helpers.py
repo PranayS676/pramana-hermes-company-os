@@ -2,6 +2,25 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from hermes_company_os.secret_guard import assert_no_secret_values
+
+
+def reject_secret_values(values: dict[str, str]) -> None:
+    try:
+        assert_no_secret_values(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def safe_return_path(return_to: str, fallback: str) -> str:
+    if return_to.startswith("/") and not return_to.startswith("//"):
+        return return_to
+    return fallback
+
+
+def form_checkbox_checked(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes", "on", "confirmed"}
+
 
 def get_project_or_404(repository, project_id):
     """Return the project for ``project_id`` or raise a 404 HTTPException."""
