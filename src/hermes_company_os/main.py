@@ -260,6 +260,10 @@ from hermes_company_os.project_workflow_artifacts import (
 from hermes_company_os.prompts import build_agent_prompt, build_standup_prompt
 from hermes_company_os.readiness import ReadinessService
 from hermes_company_os.repository import CompanyRepository
+from hermes_company_os.routers._helpers import (
+    get_agent_or_404,
+    get_project_or_404,
+)
 from hermes_company_os.routers.codex_execution import (
     register_codex_execution_routes,
 )
@@ -3925,8 +3929,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         notes: str = Form(""),
     ):
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_agent(agent_id) is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
+        get_agent_or_404(repository, agent_id)
         allowed_statuses = {"planned", "needs_secret", "ready_for_verification", "verified"}
         if status not in allowed_statuses:
             raise HTTPException(status_code=400, detail="Invalid model preference status")
@@ -4823,8 +4826,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/projects/{project_id}/operating-loop.json")
     def project_operating_loop_json(request: Request, project_id: str) -> dict:
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+        get_project_or_404(repository, project_id)
         return project_operating_loop_package(repository, project_id)
 
     @app.post("/projects/{project_id}/stages/{stage_id}/generate")
@@ -5201,8 +5203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/projects/{project_id}/stages/{stage_id}/approve")
     def approve_project_stage(request: Request, project_id: str, stage_id: str):
         repository: CompanyRepository = request.app.state.repository
-        if repository.get_project(project_id) is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+        get_project_or_404(repository, project_id)
         resolved_stage_id = resolve_stage_id(repository, project_id, stage_id)
         try:
             repository.approve_stage(project_id, resolved_stage_id)
