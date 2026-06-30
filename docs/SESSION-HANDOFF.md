@@ -1,84 +1,91 @@
-# Session Handoff — 2026-06-29
+# Session Handoff — 2026-06-30
 
-A running pointer for the next Claude Code session. Pair this with
-[CLAUDE.md](../CLAUDE.md), which holds the durable operating rules.
+A running pointer for the next Claude Code session. Pair with [CLAUDE.md](../CLAUDE.md)
+(durable operating rules) and the approved plan at
+`C:\Users\masadis\.claude\plans\scalable-knitting-acorn.md`.
 
-The repo has been **moved off OneDrive** to the non-synced clone `C:\dev\hermes-company-os`
-(git worktrees and the SQLite DB are reliable there). Work from that path.
+Repo lives at **`C:\dev\hermes-company-os`** (non-OneDrive clone). Windows + PowerShell;
+Python 3.11 via Poetry.
 
-## In flight — batch `hermes/batch-m3-m6-m8` (not yet on `main`)
+## First thing: confirm what's on `main`
 
-Three milestones were built in parallel (isolated worktree lanes, disjoint file
-ownership) and integrated on branch **`hermes/batch-m3-m6-m8`**. Full suite
-**541 passing**, `ruff` clean, no-secret scan clean, all live flags default-off.
-Awaiting founder-approved PR into `main`.
+This session's work (Phases 0–3 below) was finished on branch
+**`hermes/dashboard-htmx-declutter`** and pushed, pending a founder merge.
 
-- **M6 — Cross-agent review enforcement** (`review_policy.py`, `repository_stage_lifecycle.py`):
-  gated stages can't be approved until required reviews exist and pass. Policy is
-  data-driven (`STAGE_REVIEW_POLICIES`: `acceptance` → `qa-critic` + `test-automation-agent`).
-  Gated behind `HERMES_REVIEW_ENFORCEMENT_ENABLED` (**default off**); wired in `create_app`
-  via `configure_review_enforcement(...)`. Requirements API:
-  `/projects/{id}/stages/{stage}/review-requirements.json`.
-  - **Follow-up shipped:** `generate_stage_reviews(...)` + `POST /projects/{id}/stages/{stage}/reviews`
-    record the required reviews against a stage's *draft* artifact, resolving the
-    chicken-and-egg (the post-acceptance review batch still requires acceptance approved).
-- **M3 — Live Hermes generation** (`generation_service.py`, `routers/generation.py`):
-  three founder-facing modes (`local_demo` / `live_hermes_draft` / `live_hermes_with_review`),
-  stage→profile routing, mode-switch route. Live modes fail closed behind
-  `HERMES_LIVE_EXECUTION_ENABLED` (**default off**) + readiness; fake runner in tests,
-  real `hermes` never required by the suite.
-- **M8 UI — Observability dashboard** (`templates/observability.html`,
-  `routers/observability.py`): renders the existing run/audit metrics company-wide and
-  per-project; links from dashboard + project pages. Read-only.
+```bash
+git -C C:/dev/hermes-company-os log --oneline -3
+```
+- If you see `feat(ui): button hierarchy …` / `HTMX progressive-enhancement` / `Linear-style dark redesign`, it's **already merged** → skip to "Remaining work".
+- If not, the founder still needs to merge the PR for `hermes/dashboard-htmx-declutter`
+  into `main` (base `main` ← compare that branch; it's a clean merge, contains everything).
+  Note: `gh pr create` is **blocked** for this Enterprise-Managed-User CLI account —
+  PRs are opened/merged via the GitHub web UI by PranayS676. After merge:
+  `git checkout main && git pull --ff-only origin main`, then prune merged branches +
+  the stale `.claude/worktrees/*`.
 
-## Where things stand on `main`
+## What shipped this session (Phases 0–3)
 
-`main` is the demo-safe trunk. It contains, on top of the original
-Product Wizard baseline:
+A UI redesign + interaction-feel + backend refactor, built on the approved plan. All on
+`hermes/dashboard-htmx-declutter` (which stacks the two subset branches
+`hermes/ui-linear-redesign` and `hermes/backend-refine` — close those PRs unmerged).
 
-- **Phase 0 (structural)** — `CLAUDE.md` shared agent context; repository split into
-  domain mixins (`repository_*`), `RepositoryProtocol`, shared `fingerprints` and
-  `setup_import_parsing` helpers, and route groups extracted into
-  `hermes_company_os/routers/` via the `register_<name>_routes(app)` pattern.
-- **M8 — Observability** (`observability.py` + `routers/observability.py`): read-only
-  run/audit metrics. Routes: `/observability.json`, `/projects/{id}/observability.json|.md`.
-- **M2 — Queue autonomy** (`agent_work_pickup.py`): founder-gated auto-pickup of work
-  items (`planned→assigned→running` + audit only). Flag `HERMES_AUTO_PICKUP_ENABLED`
-  (**default off**).
-- **M7 — Live external dispatch** (Option 1, Hermes command boundary): real sends go
-  through `hermes send` / `hermes kanban create` (credentials stay in Hermes, never the
-  dashboard) + idempotent `external_dispatch_deliveries` records. Flag
-  `HERMES_EXTERNAL_DISPATCH_ENABLED` (**default off**).
+- **Phase 0 — Linear dark reskin** (`static/styles.css`): rewrote `:root` tokens (near-black
+  canvas, indigo `#5e6ad2` accent, subtle shadows) + a dark-theme layer converting hardcoded
+  light surfaces, status pills (semantic tints), buttons, sidebar, active states; lighter type
+  weights, denser controls, rounded cards, indigo links, hover lifts. **Vendored lucide**
+  locally (`static/lucide.min.js`) — all 12 templates point at it, not the CDN. `.claude/`
+  gitignored.
+- **Phase 1 — Backend refactor** (`hermes/backend-refine`): `routers/_helpers.py`
+  (`get_project_or_404`/`get_agent_or_404`); global exception handlers in `create_app`
+  (`ValueError→409`, `sqlite3.IntegrityError→400`); extracted `/decisions`, `/queue`,
+  `/agents/*` from `main.py` into `routers/{decisions,queue,agents}.py` via the standard
+  `register_<name>_routes(app)` pattern. **`main.py` 5586 → 5143 lines.** Protocol verified
+  already in sync.
+- **Phase 2 — HTMX feel** (`static/htmx.min.js` vendored, `static/app.js` new): `hx-boost="true"`
+  on every `<body>` → links/forms AJAX-swap (no full-page-reload flash). `app.js` re-renders
+  lucide icons after swaps, drives a top progress bar (`#app-progress`), shows "Saved" toasts
+  after successful boosted POSTs (in `htmx:afterSettle`), and routes raw-document links
+  (`.md/.json/.ps1/…`) to native navigation so they aren't swapped into the body. Button
+  loading state via `.htmx-request`. **Progressive enhancement — works with JS off.**
+- **Phase 3 (partial) — button hierarchy**: setup topbar 23 primary link-buttons → subtle
+  secondaries (19 real form actions stay primary); dashboard activation gate → 1 primary + 3
+  secondary.
 
-Full suite: **491 tests passing**. All live paths default-off and founder-gated.
+**Verification:** full suite **594 passing**, `ruff check .` clean, no-secret scan clean,
+app builds. Live flags still default-off.
 
-## Verified environment facts
+## Two audit claims that were WRONG (don't re-act on them)
+- All 8 routers were already registered in `create_app` (the audit said unregistered).
+- `setup.html` nav anchors `#profiles`/`#integrations` have real targets (`id="profiles"` ~L1017,
+  `id="integrations"` ~L1220) — nav is not broken.
 
-- **Hermes is installed locally** (`hermes` v0.17.0). The real send interface is
-  `hermes send --to slack:<id>|telegram:<id> "<text>"` and `hermes kanban create … --idempotency-key … --json`.
-  There is **no `hermes dispatch`** command (older contracts referencing it were corrected).
-- Starlette 1.3.1 quirk: use the `register(app)` direct-decorator pattern, not
-  `APIRouter`/`include_router` (see CLAUDE.md).
+## Remaining work — Phase 3 tail (plan task #7)
+1. **Jinja macros** — add `templates/_macros.html` (`status_pill`, `panel_header`, `list_row`)
+   and replace the copy-pasted markup (status-pill repeated ~50×, panel-header ~85×).
+2. **Dashboard form declutter** (`templates/dashboard.html`) — move the inline create forms
+   (decision / planning-task / document) behind "New…" disclosures so the dashboard reads as
+   list-views; dedupe the task form (it appears twice).
 
-## Workflow we're using (parallel build)
+### Deferred (noted in the plan, not started)
+- Extract the 70+ `/setup` routes into routers (high surface; own batch).
+- `project.html` (20+ sections) tabbing / progressive disclosure.
+- Command palette (Cmd-K) + global keyboard shortcuts — explicitly out of the approved round.
+- Richer per-fragment HTMX swaps (current approach is `hx-boost`, deliberately lighter).
+- Live enablement (flip `HERMES_LIVE_EXECUTION_ENABLED` / `_EXTERNAL_DISPATCH_ENABLED` /
+  `_REVIEW_ENFORCEMENT_ENABLED` per stage after validating against real Hermes); wire the
+  UI/UX Research Agent as a live profile; M7 live inbound polling.
 
-1. Contract-first / shared brief in `CLAUDE.md`, then keep feature work in small,
-   isolated files so lanes don't collide.
-2. Fan out lanes with disjoint file ownership; integrate on a per-batch branch.
-3. One integration gate (full suite + `ruff` + no-secret scan), then promote to `main`
-   via a **founder-approved PR**. Slices never merge straight to `main`.
+## Environment facts (will bite you)
+- **Run the app:** `py -3.11 -m poetry run uvicorn hermes_company_os.main:app --host 127.0.0.1 --port 8002`
+  (open http://127.0.0.1:8002). Background servers do NOT survive a session/process exit.
+- **Templates are cached** by Jinja — restart uvicorn to see template edits; `static/*` (CSS/JS)
+  is served fresh on reload.
+- **Preview screenshots time out** on these tall pages (renderer limit) — verify UI via
+  `preview_inspect` (computed styles) or `curl` of the served HTML, not screenshots. Client-side
+  JS (htmx behavior) can't be fully driven here — ask the founder to click through in a browser.
+- Full suite ≈ 4–5 min: `py -3.11 -m poetry run pytest -q` (expect ~594). Lint: `ruff check .`.
+- Don't commit/push to `main` directly; short-lived branches + founder-approved web PRs.
 
-## Recommended next milestones (founder's choice)
-
-With M3/M6/M8 in flight (above), the remaining roadmap milestones are:
-
-- **M4** — Company Memory Layer (reusable founder preferences, standards, accepted risks).
-- **M5** — Codex Project Execution Mode (approved code plan → real workstreams).
-- **M9** — Launch & Release Management (launch-tier gates, release memo, QA signoff).
-
-Smaller follow-ups worth noting:
-
-- **M6 live review mode** — replace the fake `generate_stage_reviews` records with live
-  Hermes-backed reviews once M3 live generation is trusted.
-- **M3 live enablement** — founder turns on `HERMES_LIVE_EXECUTION_ENABLED` per stage after
-  confirming readiness; currently exercised only via the fake runner.
+## How to start the next session
+Say: **"Read CLAUDE.md and docs/SESSION-HANDOFF.md, then do the Phase 3 tail (Jinja macros +
+dashboard form declutter) on a branch off main."**
