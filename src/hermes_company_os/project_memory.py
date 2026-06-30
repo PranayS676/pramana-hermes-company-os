@@ -12,6 +12,7 @@ from hermes_company_os.product_wizard import (
 from hermes_company_os.secret_guard import assert_no_secret_values
 
 PROJECT_MEMORY_SCHEMA = "project_memory_package_v1"
+COMPANY_MEMORY_SEARCH_SCHEMA = "company_memory_search_package_v1"
 
 MEMORY_CATEGORIES: tuple[str, ...] = (
     "founder_preference",
@@ -140,6 +141,74 @@ def project_memory_package(repository, project_id: str) -> dict[str, Any]:
         "reusable_entries": [_memory_payload(entry) for entry in reusable],
     }
     assert_no_secret_values({"project_memory_package": json.dumps(payload, sort_keys=True)})
+    return payload
+
+
+def company_memory_search_package(
+    repository,
+    *,
+    query: str = "",
+    category: str = "",
+    status: str = "active",
+    confidence: str = "",
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Build a no-secret, read-only cross-project memory search package.
+
+    Aggregates matching memory entries across every project (and company-wide
+    scope) with project linkage. ``status`` defaults to ``active`` so retired
+    memory is excluded unless the founder explicitly asks for it.
+    """
+    normalized_query = query.strip()
+    normalized_category = category.strip()
+    normalized_status = status.strip()
+    normalized_confidence = confidence.strip()
+    entries = repository.search_company_memory(
+        query=normalized_query,
+        category=normalized_category,
+        status=normalized_status,
+        confidence=normalized_confidence,
+        limit=limit,
+    )
+    results = [_memory_search_payload(entry) for entry in entries]
+    company_wide = [entry for entry in results if not entry["project_id"]]
+    project_scoped = [entry for entry in results if entry["project_id"]]
+    by_category: dict[str, int] = {}
+    by_project: dict[str, int] = {}
+    for entry in results:
+        by_category[entry["category"]] = by_category.get(entry["category"], 0) + 1
+        scope_key = entry["project_id"] or "company-wide"
+        by_project[scope_key] = by_project.get(scope_key, 0) + 1
+    payload = {
+        "schema": COMPANY_MEMORY_SEARCH_SCHEMA,
+        "filters": {
+            "query": normalized_query,
+            "category": normalized_category,
+            "status": normalized_status,
+            "confidence": normalized_confidence,
+            "limit": max(1, min(limit, 200)),
+        },
+        "aggregate": {
+            "result_count": len(results),
+            "company_wide_count": len(company_wide),
+            "project_scoped_count": len(project_scoped),
+            "by_category": by_category,
+            "by_project": by_project,
+        },
+        "category_options": memory_category_options(),
+        "status_options": memory_status_options(),
+        "confidence_options": memory_confidence_options(),
+        "results": results,
+    }
+    assert_no_secret_values(
+        {"company_memory_search_package": json.dumps(payload, sort_keys=True)}
+    )
+    return payload
+
+
+def _memory_search_payload(entry: Mapping[str, Any]) -> dict[str, Any]:
+    payload = _memory_payload(entry)
+    payload["project_name"] = entry.get("project_name", "") or ""
     return payload
 
 
