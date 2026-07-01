@@ -341,11 +341,78 @@ h2 {
   margin-top: 20px;
 }
 
+/* Dashboard triage strip: actionable count cards that link to where work is resolved */
+.control-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.stat-card:hover {
+  border-color: var(--accent);
+}
+
+.stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.stat-card .stat-label i {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+.stat-card .stat-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stat-card.alert .stat-value {
+  color: var(--amber);
+}
+
+.stat-card.warn .stat-value {
+  color: var(--red);
+}
+
 /* Dashboard: full-width bands on top, two independent aligned columns below */
 .dashboard-grid {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Decision rows on the dashboard are read-only links into the inbox */
+a.decision-row {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.decision-row:hover {
+  border-color: var(--accent);
 }
 
 .dash-two-col {

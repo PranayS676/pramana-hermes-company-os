@@ -30,17 +30,14 @@
           <a href="/observability"><i data-lucide="activity"></i> Observability</a>
           <a href="/operating-loop"><i data-lucide="radio-tower"></i> Operating loop</a>
           <a href="/memory/search"><i data-lucide="search"></i> Memory search</a>
-          <a href="#agents"><i data-lucide="users-round"></i> Agents</a>
-          <a href="#standups"><i data-lucide="calendar-clock"></i> Standups</a>
-          <a href="#runs"><i data-lucide="activity"></i> Runs</a>
         </nav>
       </aside>
 
       <main class="content">
         <section class="topbar">
           <div>
-            <p class="eyebrow">Slack primary. Telegram urgent.</p>
-            <h1>AI company operating board</h1>
+            <p class="eyebrow">Founder control plane · Slack primary, Telegram urgent</p>
+            <h1>What needs you today</h1>
           </div>
           <div class="status-strip">
             <span><i data-lucide="message-square"></i> {{ settings.slack_standup }}</span>
@@ -48,37 +45,36 @@
           </div>
         </section>
 
-        <section class="metric-grid" aria-label="Operating summary">
-          <div class="metric">
-            <span>{{ agents|length }}</span>
-            <small>Hermes profiles</small>
-          </div>
-          <div class="metric">
-            <span>{{ schedules|length }}</span>
-            <small>daily standups</small>
-          </div>
-          <div class="metric">
-            <span>{{ tasks|length }}</span>
-            <small>planning tasks</small>
-          </div>
-          <div class="metric">
-            <span>{{ documents|length }}</span>
-            <small>documents</small>
-          </div>
-          <div class="metric">
-            <span>{{ projects|length }}</span>
-            <small>company projects</small>
-          </div>
-          <div class="metric">
-            <span>{{ founder_actions.founder_decisions.open }}</span>
-            <small>open decisions</small>
-          </div>
-          <div class="metric">
-            <span>{{ agent_work_summary.open }}</span>
-            <small>open queue items</small>
-          </div>
+        <!-- Triage: the highest-signal counts, each links to where it is resolved. -->
+        <section class="control-strip" aria-label="What needs you now">
+          <a class="stat-card {% if founder_actions.founder_decisions.open %}alert{% endif %}" href="/decisions">
+            <span class="stat-value">{{ founder_actions.founder_decisions.open }}</span>
+            <span class="stat-label"><i data-lucide="gavel"></i> Decisions need you</span>
+            <span class="stat-meta">{{ founder_actions.founder_decisions.urgent_open }} urgent</span>
+          </a>
+          <a class="stat-card {% if agent_work_summary.blocked %}warn{% endif %}" href="/queue">
+            <span class="stat-value">{{ agent_work_summary.blocked }}</span>
+            <span class="stat-label"><i data-lucide="octagon-alert"></i> Blocked work</span>
+            <span class="stat-meta">{{ agent_work_summary.needs_review }} need review</span>
+          </a>
+          <a class="stat-card" href="/queue">
+            <span class="stat-value">{{ agent_work_summary.founder_required }}</span>
+            <span class="stat-label"><i data-lucide="user-check"></i> Awaiting founder</span>
+            <span class="stat-meta">in the agent queue</span>
+          </a>
+          <a class="stat-card" href="/projects">
+            <span class="stat-value">{{ projects|length }}</span>
+            <span class="stat-label"><i data-lucide="rocket"></i> Projects in flight</span>
+            <span class="stat-meta">{{ agents|length }} agent profiles</span>
+          </a>
+          <a class="stat-card" href="/setup">
+            <span class="stat-value">{{ founder_actions.activation_summary.ready_checks }}/{{ founder_actions.activation_summary.total }}</span>
+            <span class="stat-label"><i data-lucide="shield-check"></i> Activation checks</span>
+            <span class="stat-meta">{{ founder_actions.activation_summary.blocking }} blocking</span>
+          </a>
         </section>
 
+        <!-- Activation gate: the one status banner the founder acts on before running products. -->
         <section
           class="activation-overview {% if founder_actions.activation_summary.ready %}ready{% else %}not-ready{% endif %}"
           aria-label="Activation readiness"
@@ -87,24 +83,6 @@
             {{ ui.status_pill("live ready" if founder_actions.activation_summary.ready else "setup needed", "ready" if founder_actions.activation_summary.ready else "needs_setup") }}
             <strong>Activation gate</strong>
             <p>{{ founder_actions.next_best_action }}</p>
-          </div>
-          <div class="activation-stats" aria-label="Activation check summary">
-            <span>
-              <strong>{{ founder_actions.activation_summary.blocking }}</strong>
-              <small>blocking</small>
-            </span>
-            <span>
-              <strong>{{ founder_actions.activation_summary.needs_setup }}</strong>
-              <small>needs setup</small>
-            </span>
-            <span>
-              <strong>{{ founder_actions.activation_summary.deferred }}</strong>
-              <small>deferred</small>
-            </span>
-            <span>
-              <strong>{{ founder_actions.activation_summary.ready_checks }}/{{ founder_actions.activation_summary.total }}</strong>
-              <small>ready checks</small>
-            </span>
           </div>
           <div class="activation-links">
             <a class="primary-button link-button" href="/setup#inputs">
@@ -123,10 +101,11 @@
         </section>
 
         <section class="dashboard-grid">
+          <!-- Needs you now: read-only triage of open decisions; resolve in the inbox. -->
           <div class="panel full" id="founder-decisions">
-            {% call ui.panel_header("Founder Decision Queue") %}
+            {% call ui.panel_header("Founder Decision Queue", "Open calls that need a founder — resolve, revise, or reject in the inbox.") %}
               <span class="panel-header-actions">
-                <a href="/decisions">Inbox</a>
+                <a class="primary-button link-button" href="/decisions"><i data-lucide="gavel"></i> Open inbox</a>
                 <a href="/setup/founder-decisions.md">Export</a>
               </span>
             {% endcall %}
@@ -137,134 +116,52 @@
                 Slack is primary; Telegram is urgent-only after credentials exist.
               </span>
             </section>
-            <details class="new-form">
-              <summary>New decision…</summary>
-              <form class="stacked-form" method="post" action="/decisions">
-                <input type="hidden" name="return_to" value="/#founder-decisions">
-                <input type="hidden" name="decision_type" value="operating_decision">
-                <label>
-                  Title
-                  <input name="title" required placeholder="Approve first idea go/no-go">
-                </label>
-                <label>
-                  Owner
-                  <select name="owner_agent_id">
-                    {% for agent in agents %}
-                    <option value="{{ agent.id }}" {% if agent.id == "chief-of-staff" %}selected{% endif %}>{{ agent.name }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>
-                  Urgency
-                  <select name="urgency">
-                    <option value="routine">Routine</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </label>
-                <label>
-                  Source
-                  <input name="source" value="manual">
-                </label>
-                <label>
-                  Slack channel
-                  <input name="slack_channel" value="#decisions">
-                </label>
-                <label>
-                  Telegram policy
-                  <input name="telegram_policy" value="Telegram only if this blocks founder progress.">
-                </label>
-                <label class="form-span">
-                  Context
-                  <textarea name="context" rows="4" required placeholder="What decision is needed and what work is blocked?"></textarea>
-                </label>
-                <button class="primary-button" type="submit">
-                  <i data-lucide="plus"></i> Add decision
-                </button>
-              </form>
-            </details>
-
             <div class="item-list">
-              {% for decision in founder_decisions %}
-                <div class="decision-row list-row {{ decision.status }}">
+              {% for decision in founder_decisions if decision.status not in ["approved", "rejected", "deferred"] %}
+                {% if loop.index <= 6 %}
+                <a class="decision-row list-row {{ decision.status }}" href="/decisions#decision-{{ decision.id }}">
                   <div class="decision-title-line">
                     {{ ui.status_pill(decision.status, decision.status, "Decision status: " ~ (decision.status)) }}
                     {{ ui.status_pill(decision.urgency, decision.urgency, "Decision urgency: " ~ (decision.urgency)) }}
                     <strong>{{ decision.title }}</strong>
                   </div>
                   <small>
-                    {{ decision.owner_name }} - {{ decision.slack_channel }} -
-                    {{ decision.telegram_policy }}
+                    {{ decision.owner_name }}
+                    {% if decision.project_id %} · {{ decision.project_name }}{% endif %}
+                    {% if decision.stage_id %} · {{ decision.stage_id }}{% endif %}
                   </small>
                   <p>{{ decision.context }}</p>
-                  {% if decision.decision %}
-                  <p><strong>Decision:</strong> {{ decision.decision }}</p>
-                  {% endif %}
-                  {% if decision.project_id %}
-                  <p>
-                    <strong>Project:</strong>
-                    <a href="/projects/{{ decision.project_id }}">{{ decision.project_name }}</a>
-                    {% if decision.stage_id %} - {{ decision.stage_id }}{% endif %}
-                  </p>
-                  {% endif %}
-                  <form class="decision-update-form" method="post" action="/decisions/{{ decision.id }}">
-                    <input type="hidden" name="return_to" value="/#founder-decisions">
-                    <select name="status" aria-label="Status for {{ decision.title }}">
-                      {% for status in ["needed", "approved", "rejected", "blocked", "deferred"] %}
-                      <option value="{{ status }}" {% if decision.status == status %}selected{% endif %}>{{ status }}</option>
-                      {% endfor %}
-                    </select>
-                    <input
-                      name="decision"
-                      value="{{ decision.decision }}"
-                      aria-label="Decision note for {{ decision.title }}"
-                      placeholder="Record approval, rejection, deferral, or blocker note"
-                    >
-                    <button class="icon-button" type="submit" aria-label="Save {{ decision.title }}">
-                      <i data-lucide="save"></i>
-                    </button>
-                    {% if decision.requires_founder_approval %}
-                    <label class="checkbox-label decision-confirmation">
-                      <input type="checkbox" name="founder_confirmed" value="confirmed">
-                      Founder confirmed
-                    </label>
-                    {% endif %}
-                  </form>
-                </div>
-                {% else %}
-                <p class="empty-state">No founder decisions yet.</p>
-                {% endfor %}
-              </div>
-          </div>
-          <div class="panel full" id="agent-work-queue">
-            {% call ui.panel_header("Agent Work Queue", "Chief of Staff triage. Dashboard state is the source of truth.") %}
-              <span class="panel-header-actions">
-                <a href="/queue">Open queue</a>
-              </span>
-            {% endcall %}
-            <section class="notice-band compact">
-              <strong>{{ agent_work_summary.blocked }} blocked</strong>
-              <span>
-                {{ agent_work_summary.needs_review }} needs review.
-                {{ agent_work_summary.founder_required }} waiting on founder action.
-              </span>
-            </section>
-            <div class="queue-strip">
-              {% for item in agent_work_items %}
-              <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
-                {{ ui.status_pill(item.status, item.status, "Queue state: " ~ (item.status)) }}
-                {% call ui.list_row(item.title) %}{{ item.owner_name }}{% if item.project_id %} - {{ item.project_name }}{% endif %}{% if item.stage_id %} - {{ item.stage_id }}{% endif %}{% endcall %}
-                {% if item.founder_action_required %}
-                {{ ui.status_pill("founder", "urgent") }}
+                </a>
                 {% endif %}
-              </a>
               {% else %}
-              <p class="empty-state">No agent work items yet. Product Wizard projects will sync read-first queue items after creation.</p>
+                <p class="empty-state">No open founder decisions. <a href="/decisions">View resolved →</a></p>
               {% endfor %}
             </div>
           </div>
+
+          <!-- Projects in flight: each product's position in the wizard pipeline. -->
+          <div class="panel full" id="projects">
+            {% call ui.panel_header("Projects in flight", "Research → PRD → architecture → tasks → code plan → acceptance. One stage approved at a time.") %}
+              <span class="panel-header-actions">
+                <a class="primary-button link-button" href="/projects/new"><i data-lucide="plus"></i> New project</a>
+                <a href="/projects">All projects</a>
+              </span>
+            {% endcall %}
+            <div class="item-list">
+              {% for project in projects %}
+              <a class="project-row" href="/projects/{{ project.id }}">
+                {% call ui.list_row(project.name) %}{{ project.status }} · {{ project.workflow_count }} workflow items{% endcall %}
+                <i data-lucide="chevron-right"></i>
+              </a>
+              {% else %}
+              <p class="empty-state">No products yet. <a href="/projects/new">Start your first project →</a></p>
+              {% endfor %}
+            </div>
+          </div>
+
           <div class="dash-two-col">
             <div class="dash-col">
-              <div class="panel wide" id="agents">
+              <div class="panel" id="agents">
                 {{ ui.panel_header("Agent Profiles", "Each profile is a Hermes AI agent — its SOUL, capabilities, Slack home, and command.") }}
                 <div class="agent-table">
                   {% for agent in agents %}
@@ -281,34 +178,8 @@
                   {% endfor %}
                 </div>
               </div>
-              <div class="panel" id="standups">
-                {{ ui.panel_header("Standups") }}
-                {% if standup_run_blocker %}
-                <p class="empty-state" id="standup-run-blocker">
-                  {{ standup_run_blocker }} Manual standup runs stay locked until the
-                  Chief of Staff profile passes final LLM verification.
-                </p>
-                {% endif %}
-                <div class="schedule-list">
-                  {% for schedule in schedules %}
-                  <form class="schedule-item" method="post" action="/standups/{{ schedule.id }}/run">
-                    {% call ui.list_row("%02d:%02d"|format(schedule.hour, schedule.minute)) %}{{ schedule.name }} - {{ schedule.timezone }}{% endcall %}
-                    <button
-                      title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
-                      type="submit"
-                      class="icon-button"
-                      {% if standup_run_blocker %}aria-describedby="standup-run-blocker"{% endif %}
-                      {% if standup_run_blocker %}disabled{% endif %}
-                    >
-                      <i data-lucide="play"></i>
-                    </button>
-                  </form>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            <div class="dash-col">
-              <div class="panel wide">
+
+              <div class="panel">
                 {{ ui.panel_header("Tasks") }}
                 <details class="new-form">
                   <summary>New planning task…</summary>
@@ -367,6 +238,65 @@
                   {% endfor %}
                 </div>
               </div>
+            </div>
+
+            <div class="dash-col">
+              <div class="panel" id="standups">
+                {{ ui.panel_header("Standups") }}
+                {% if standup_run_blocker %}
+                <p class="empty-state" id="standup-run-blocker">
+                  {{ standup_run_blocker }} Manual standup runs stay locked until the
+                  Chief of Staff profile passes final LLM verification.
+                </p>
+                {% endif %}
+                <div class="schedule-list">
+                  {% for schedule in schedules %}
+                  <form class="schedule-item" method="post" action="/standups/{{ schedule.id }}/run">
+                    {% call ui.list_row("%02d:%02d"|format(schedule.hour, schedule.minute)) %}{{ schedule.name }} - {{ schedule.timezone }}{% endcall %}
+                    <button
+                      title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
+                      type="submit"
+                      class="icon-button"
+                      {% if standup_run_blocker %}aria-describedby="standup-run-blocker"{% endif %}
+                      {% if standup_run_blocker %}disabled{% endif %}
+                    >
+                      <i data-lucide="play"></i>
+                    </button>
+                  </form>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="panel" id="agent-work-queue">
+                {% call ui.panel_header("Agent Work Queue", "Read-first operating queue linked to wizard stages.") %}
+                  <span class="panel-header-actions">
+                    <a href="/queue">Open queue</a>
+                  </span>
+                {% endcall %}
+                <section class="notice-band compact">
+                  <strong>{{ agent_work_summary.blocked }} blocked</strong>
+                  <span>
+                    {{ agent_work_summary.needs_review }} need review ·
+                    {{ agent_work_summary.founder_required }} awaiting founder
+                  </span>
+                </section>
+                <div class="queue-strip">
+                  {% for item in agent_work_items %}
+                    {% if loop.index <= 4 %}
+                    <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
+                      {{ ui.status_pill(item.status, item.status, "Queue state: " ~ (item.status)) }}
+                      {% call ui.list_row(item.title) %}{{ item.owner_name }}{% if item.project_id %} · {{ item.project_name }}{% endif %}{% endcall %}
+                      {% if item.founder_action_required %}
+                      {{ ui.status_pill("founder", "urgent") }}
+                      {% endif %}
+                    </a>
+                    {% endif %}
+                  {% else %}
+                  <p class="empty-state">No agent work items yet.</p>
+                  {% endfor %}
+                </div>
+              </div>
+
               <div class="panel">
                 {{ ui.panel_header("Documents") }}
                 <details class="new-form">
@@ -415,8 +345,13 @@
                   {% endfor %}
                 </div>
               </div>
+
               <div class="panel" id="runs">
-                {{ ui.panel_header("Recent Hermes Runs") }}
+                {% call ui.panel_header("Recent Hermes Runs") %}
+                  <span class="panel-header-actions">
+                    <a href="/observability">Observability</a>
+                  </span>
+                {% endcall %}
                 <div class="item-list compact">
                   {% for run in runs %}
                   <div class="run-row {{ run.status }}">
