@@ -44,7 +44,7 @@ def test_messaging_verification_template_exports_no_secret_reply_format():
         "needed",
         "verified",
     ]
-    assert payload["entry_points"]["bulk_import"] == "/setup#messaging-verification"
+    assert payload["entry_points"]["bulk_import"] == "/setup/messaging#messaging-verification"
     assert "xoxb-" not in raw
     assert "xapp-" not in raw
     assert "sk-" not in raw
@@ -83,6 +83,6 @@ def test_messaging_verification_import_redirect_targets_messaging_panel():
     }
 
     assert messaging_verification_import_redirect(summary) == (
-        "/setup?messaging_imported=2&messaging_unknown=1&messaging_invalid=0"
+        "/setup/messaging?messaging_imported=2&messaging_unknown=1&messaging_invalid=0"
         "&messaging_ignored=1#messaging-verification"
     )

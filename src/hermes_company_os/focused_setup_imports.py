@@ -9,7 +9,7 @@ FOCUSED_SETUP_IMPORTS = [
         "template": "/setup/founder-input-request.md",
         "json_template": "/setup/founder-input-request.json",
         "collector_script": "/setup/founder-inputs.ps1",
-        "dashboard_anchor": "/setup#input-import",
+        "dashboard_anchor": "/setup/inputs#input-import",
         "reply_post": "/setup/founder-input-reply",
     },
     {
@@ -22,7 +22,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/slack-channel-template.md",
         "json_template": "/setup/slack-channel-template.json",
-        "dashboard_anchor": "/setup#slack-channel-import",
+        "dashboard_anchor": "/setup/inputs#slack-channel-import",
         "reply_post": "/setup/slack-channel-reply",
     },
     {
@@ -35,7 +35,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/slack-bot-user-map-template.md",
         "json_template": "/setup/slack-bot-user-map-template.json",
-        "dashboard_anchor": "/setup#slack-bot-user-import",
+        "dashboard_anchor": "/setup/inputs#slack-bot-user-import",
         "reply_post": "/setup/slack-bot-user-map-reply",
     },
     {
@@ -48,7 +48,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/telegram-recipient-template.md",
         "json_template": "/setup/telegram-recipient-template.json",
-        "dashboard_anchor": "/setup#telegram-recipient-import",
+        "dashboard_anchor": "/setup/inputs#telegram-recipient-import",
         "reply_post": "/setup/telegram-recipient-reply",
     },
     {
@@ -61,7 +61,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/schedule-config-template.md",
         "json_template": "/setup/schedule-config-template.json",
-        "dashboard_anchor": "/setup#schedule-config-import",
+        "dashboard_anchor": "/setup/schedules#schedule-config-import",
         "reply_post": "/setup/schedule-config-reply",
     },
     {
@@ -74,7 +74,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/profile-personalization-template.md",
         "json_template": "/setup/profile-personalization-template.json",
-        "dashboard_anchor": "/setup#profile-personalization-import",
+        "dashboard_anchor": "/setup/inputs#profile-personalization-import",
         "reply_post": "/setup/profile-personalization-reply",
     },
     {
@@ -84,7 +84,7 @@ FOCUSED_SETUP_IMPORTS = [
         "collects": "Status-only updates after credentials are loaded outside the dashboard.",
         "template": "/setup/credential-status-template.md",
         "json_template": "/setup/credential-status-template.json",
-        "dashboard_anchor": "/setup#credential-status-import",
+        "dashboard_anchor": "/setup/messaging#credential-status-import",
         "reply_post": "/setup/credential-status-reply",
     },
     {
@@ -97,7 +97,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/messaging-verification-template.md",
         "json_template": "/setup/messaging-verification-template.json",
-        "dashboard_anchor": "/setup#messaging-verification",
+        "dashboard_anchor": "/setup/messaging#messaging-verification",
         "reply_post": "/setup/messaging-verification-reply",
     },
     {
@@ -107,7 +107,7 @@ FOCUSED_SETUP_IMPORTS = [
         "collects": "Status and no-secret notes from Kanban board/list/card diagnostics.",
         "template": "/setup/kanban-verification-template.md",
         "json_template": "/setup/kanban-verification-template.json",
-        "dashboard_anchor": "/setup#kanban-verification",
+        "dashboard_anchor": "/setup/verification#kanban-verification",
         "reply_post": "/setup/kanban-verification-reply",
     },
     {
@@ -117,7 +117,7 @@ FOCUSED_SETUP_IMPORTS = [
         "collects": "Status and no-secret notes after standup jobs are provisioned and tested.",
         "template": "/setup/schedule-verification-template.md",
         "json_template": "/setup/schedule-verification-template.json",
-        "dashboard_anchor": "/setup#schedule-verification",
+        "dashboard_anchor": "/setup/verification#schedule-verification",
         "reply_post": "/setup/schedule-verification-reply",
     },
     {
@@ -130,7 +130,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/llm-preference-template.md",
         "json_template": "/setup/llm-preference-template.json",
-        "dashboard_anchor": "/setup#llm-preference-import",
+        "dashboard_anchor": "/setup/models#llm-preference-import",
         "reply_post": "/setup/llm-preference-reply",
     },
     {
@@ -143,7 +143,7 @@ FOCUSED_SETUP_IMPORTS = [
         ),
         "template": "/setup/profile-acceptance-template.md",
         "json_template": "/setup/profile-acceptance-template.json",
-        "dashboard_anchor": "/setup#profile-acceptance-tracking",
+        "dashboard_anchor": "/setup/profiles#profile-acceptance-tracking",
         "reply_post": "/setup/profile-acceptance-reply",
     },
 ]

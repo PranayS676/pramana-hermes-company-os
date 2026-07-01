@@ -14,7 +14,6 @@ from fastapi.templating import Jinja2Templates
 from hermes_company_os.activation import (
     activation_commands,
     cron_commands,
-    missing_required_inputs,
 )
 from hermes_company_os.activation_report import (
     activation_checks,
@@ -1292,180 +1291,179 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
-    @app.get("/setup")
-    def setup(request: Request):
+    def _setup_summary(request: Request, prefix: str, keys: tuple[str, ...]) -> dict:
+        return {key: request.query_params.get(f"{prefix}_{key}") for key in keys}
+
+    def _setup_section_context(request: Request, section: str) -> dict:
         repository: CompanyRepository = request.app.state.repository
-        agents = repository.list_agents()
-        integrations = repository.list_integrations()
-        setup_inputs = repository.list_setup_inputs()
-        setup_values = repository.setup_input_map()
-        model_preferences = repository.list_model_preferences()
-        messaging_checks = repository.list_messaging_checks()
-        schedules = repository.list_schedules()
-        secret_requirements = repository.list_secret_requirements()
-        schedule_checks = repository.list_schedule_checks()
-        kanban_checks = repository.list_kanban_checks()
-        profile_acceptance_checks = repository.list_profile_acceptance_checks()
-        profile_installation_checks = repository.list_profile_installation_checks()
-        checks = activation_checks(
-            setup_inputs,
-            schedules,
-            model_preferences,
-            integrations,
-            secret_requirements,
-            messaging_checks,
-            schedule_checks,
-            kanban_checks,
-            profile_acceptance_checks,
-            profile_installation_checks,
-        )
-        readiness_service: ReadinessService = request.app.state.readiness_service
-        return templates.TemplateResponse(
-            request,
-            "setup.html",
-            {
-                "agents": agents,
-                "integrations": integrations,
+        if section == "inputs":
+            return {
+                "setup_inputs": repository.list_setup_inputs(),
+                "input_import_summary": _setup_summary(
+                    request, "input", ("imported", "unknown", "deferred", "ignored")
+                ),
+                "profile_personalization_import_summary": _setup_summary(
+                    request,
+                    "profile_personalization",
+                    ("imported", "unknown", "invalid", "ignored"),
+                ),
+                "slack_channel_import_summary": _setup_summary(
+                    request, "slack_channel", ("imported", "unknown", "invalid", "ignored")
+                ),
+                "slack_bot_user_import_summary": _setup_summary(
+                    request, "slack_bot_user", ("imported", "unknown", "invalid", "ignored")
+                ),
+                "telegram_recipient_import_summary": _setup_summary(
+                    request,
+                    "telegram_recipient",
+                    ("imported", "unknown", "invalid", "ignored"),
+                ),
+            }
+        if section == "schedules":
+            return {
                 "setup_steps": repository.list_setup_steps(),
-                "setup_inputs": setup_inputs,
-                "schedules": schedules,
+                "schedules": repository.list_schedules(),
+                "schedule_config_import_summary": _setup_summary(
+                    request, "schedule_config", ("imported", "unknown", "invalid", "ignored")
+                ),
+            }
+        if section == "models":
+            agents = repository.list_agents()
+            model_preferences = repository.list_model_preferences()
+            return {
                 "model_preferences": model_preferences,
                 "llm_presets": llm_provider_presets_payload(
-                    agents=agents,
-                    model_preferences=model_preferences,
+                    agents=agents, model_preferences=model_preferences
                 )["presets"],
-                "secret_requirements": secret_requirements,
+                "llm_preference_import_summary": _setup_summary(
+                    request, "llm_preference", ("imported", "unknown", "invalid", "ignored")
+                ),
+            }
+        if section == "profiles":
+            model_preferences = repository.list_model_preferences()
+            profile_acceptance_checks = repository.list_profile_acceptance_checks()
+            return {
+                "model_preferences": model_preferences,
+                "profile_installation_checks": repository.list_profile_installation_checks(),
+                "profile_acceptance_checks": profile_acceptance_checks,
+                "profile_acceptance_blockers": {
+                    check["id"]: profile_acceptance_prerequisite_blocker(repository, check)
+                    for check in profile_acceptance_checks
+                },
+                "profile_smoke_blockers": {
+                    preference["agent_id"]: profile_installation_prerequisite_blocker(
+                        repository, preference["agent_id"]
+                    )
+                    for preference in model_preferences
+                },
+                "profile_smoke_runs": repository.latest_runs_by_type("profile-smoke"),
+                "profile_installation_import_summary": _setup_summary(
+                    request,
+                    "profile_installation",
+                    ("imported", "unknown", "incomplete", "ignored"),
+                ),
+                "profile_acceptance_import_summary": _setup_summary(
+                    request,
+                    "profile_acceptance",
+                    ("imported", "unknown", "invalid", "ignored"),
+                ),
+            }
+        if section == "messaging":
+            messaging_checks = repository.list_messaging_checks()
+            return {
                 "messaging_checks": messaging_checks,
                 "messaging_credential_blockers": {
                     check["id"]: messaging_check_credential_blocker(repository, check)
                     for check in messaging_checks
                 },
+                "secret_requirements": repository.list_secret_requirements(),
+                "messaging_import_summary": _setup_summary(
+                    request, "messaging", ("imported", "unknown", "invalid", "ignored")
+                ),
+                "credential_import_summary": _setup_summary(
+                    request, "credential", ("imported", "unknown", "invalid", "ignored")
+                ),
+            }
+        if section == "commands":
+            agents = repository.list_agents()
+            setup_values = repository.setup_input_map()
+            return {
+                "profile_commands": profile_setup_commands(agents),
+                "activation_commands": activation_commands(agents, setup_values),
+                "cron_commands": cron_commands(setup_values, repository.list_schedules()),
+            }
+        if section == "verification":
+            schedule_checks = repository.list_schedule_checks()
+            return {
                 "schedule_checks": schedule_checks,
                 "schedule_prerequisite_blockers": {
                     check["id"]: schedule_check_prerequisite_blocker(repository, check)
                     for check in schedule_checks
                 },
-                "kanban_checks": kanban_checks,
-                "profile_installation_checks": profile_installation_checks,
-                "profile_acceptance_checks": profile_acceptance_checks,
-                "profile_acceptance_blockers": {
-                    check["id"]: profile_acceptance_prerequisite_blocker(
-                        repository,
-                        check,
-                    )
-                    for check in profile_acceptance_checks
-                },
-                "profile_smoke_blockers": {
-                    preference["agent_id"]: profile_installation_prerequisite_blocker(
-                        repository,
-                        preference["agent_id"],
-                    )
-                    for preference in model_preferences
-                },
-                "profile_smoke_runs": repository.latest_runs_by_type("profile-smoke"),
-                "activation_summary": activation_summary(checks),
-                "input_completion": repository.setup_input_completion(),
-                "missing_inputs": missing_required_inputs(setup_inputs),
+                "kanban_checks": repository.list_kanban_checks(),
+                "schedule_import_summary": _setup_summary(
+                    request, "schedule", ("imported", "unknown", "invalid", "ignored")
+                ),
+                "kanban_import_summary": _setup_summary(
+                    request, "kanban", ("imported", "unknown", "invalid", "ignored")
+                ),
+            }
+        if section == "integrations":
+            return {"integrations": repository.list_integrations()}
+        raise HTTPException(status_code=404, detail="Unknown setup section")
+
+    @app.get("/setup")
+    def setup(request: Request):
+        repository: CompanyRepository = request.app.state.repository
+        readiness_service: ReadinessService = request.app.state.readiness_service
+        agents = repository.list_agents()
+        integrations = repository.list_integrations()
+        checks = activation_checks(
+            repository.list_setup_inputs(),
+            repository.list_schedules(),
+            repository.list_model_preferences(),
+            integrations,
+            repository.list_secret_requirements(),
+            repository.list_messaging_checks(),
+            repository.list_schedule_checks(),
+            repository.list_kanban_checks(),
+            repository.list_profile_acceptance_checks(),
+            repository.list_profile_installation_checks(),
+        )
+        return templates.TemplateResponse(
+            request,
+            "setup/hub.html",
+            {
+                "section": "hub",
                 "readiness": readiness_service.check(agents, integrations),
                 "hermes_version": readiness_service.hermes_version(),
-                "profile_commands": profile_setup_commands(agents),
-                "activation_commands": activation_commands(agents, setup_values),
-                "cron_commands": cron_commands(setup_values, schedules),
-                "input_import_summary": {
-                    "imported": request.query_params.get("input_imported"),
-                    "unknown": request.query_params.get("input_unknown"),
-                    "deferred": request.query_params.get("input_deferred"),
-                    "ignored": request.query_params.get("input_ignored"),
-                },
-                "credential_import_summary": {
-                    "imported": request.query_params.get("credential_imported"),
-                    "unknown": request.query_params.get("credential_unknown"),
-                    "invalid": request.query_params.get("credential_invalid"),
-                    "ignored": request.query_params.get("credential_ignored"),
-                },
-                "messaging_import_summary": {
-                    "imported": request.query_params.get("messaging_imported"),
-                    "unknown": request.query_params.get("messaging_unknown"),
-                    "invalid": request.query_params.get("messaging_invalid"),
-                    "ignored": request.query_params.get("messaging_ignored"),
-                },
-                "slack_channel_import_summary": {
-                    "imported": request.query_params.get("slack_channel_imported"),
-                    "unknown": request.query_params.get("slack_channel_unknown"),
-                    "invalid": request.query_params.get("slack_channel_invalid"),
-                    "ignored": request.query_params.get("slack_channel_ignored"),
-                },
-                "slack_bot_user_import_summary": {
-                    "imported": request.query_params.get("slack_bot_user_imported"),
-                    "unknown": request.query_params.get("slack_bot_user_unknown"),
-                    "invalid": request.query_params.get("slack_bot_user_invalid"),
-                    "ignored": request.query_params.get("slack_bot_user_ignored"),
-                },
-                "telegram_recipient_import_summary": {
-                    "imported": request.query_params.get(
-                        "telegram_recipient_imported"
-                    ),
-                    "unknown": request.query_params.get("telegram_recipient_unknown"),
-                    "invalid": request.query_params.get("telegram_recipient_invalid"),
-                    "ignored": request.query_params.get("telegram_recipient_ignored"),
-                },
-                "schedule_config_import_summary": {
-                    "imported": request.query_params.get("schedule_config_imported"),
-                    "unknown": request.query_params.get("schedule_config_unknown"),
-                    "invalid": request.query_params.get("schedule_config_invalid"),
-                    "ignored": request.query_params.get("schedule_config_ignored"),
-                },
-                "schedule_import_summary": {
-                    "imported": request.query_params.get("schedule_imported"),
-                    "unknown": request.query_params.get("schedule_unknown"),
-                    "invalid": request.query_params.get("schedule_invalid"),
-                    "ignored": request.query_params.get("schedule_ignored"),
-                },
-                "kanban_import_summary": {
-                    "imported": request.query_params.get("kanban_imported"),
-                    "unknown": request.query_params.get("kanban_unknown"),
-                    "invalid": request.query_params.get("kanban_invalid"),
-                    "ignored": request.query_params.get("kanban_ignored"),
-                },
-                "profile_acceptance_import_summary": {
-                    "imported": request.query_params.get(
-                        "profile_acceptance_imported"
-                    ),
-                    "unknown": request.query_params.get("profile_acceptance_unknown"),
-                    "invalid": request.query_params.get("profile_acceptance_invalid"),
-                    "ignored": request.query_params.get("profile_acceptance_ignored"),
-                },
-                "profile_installation_import_summary": {
-                    "imported": request.query_params.get("profile_installation_imported"),
-                    "unknown": request.query_params.get("profile_installation_unknown"),
-                    "incomplete": request.query_params.get(
-                        "profile_installation_incomplete"
-                    ),
-                    "ignored": request.query_params.get("profile_installation_ignored"),
-                },
-                "profile_personalization_import_summary": {
-                    "imported": request.query_params.get(
-                        "profile_personalization_imported"
-                    ),
-                    "unknown": request.query_params.get(
-                        "profile_personalization_unknown"
-                    ),
-                    "invalid": request.query_params.get(
-                        "profile_personalization_invalid"
-                    ),
-                    "ignored": request.query_params.get(
-                        "profile_personalization_ignored"
-                    ),
-                },
-                "llm_preference_import_summary": {
-                    "imported": request.query_params.get("llm_preference_imported"),
-                    "unknown": request.query_params.get("llm_preference_unknown"),
-                    "invalid": request.query_params.get("llm_preference_invalid"),
-                    "ignored": request.query_params.get("llm_preference_ignored"),
-                },
+                "activation_summary": activation_summary(checks),
+                "input_completion": repository.setup_input_completion(),
                 "settings": request.app.state.settings,
             },
         )
+
+    def _make_setup_section_route(section: str):
+        def render_setup_section(request: Request):
+            context = _setup_section_context(request, section)
+            context["section"] = section
+            context["settings"] = request.app.state.settings
+            return templates.TemplateResponse(request, f"setup/{section}.html", context)
+
+        render_setup_section.__name__ = f"setup_section_{section}"
+        return render_setup_section
+
+    for _setup_section in (
+        "inputs",
+        "schedules",
+        "models",
+        "profiles",
+        "messaging",
+        "commands",
+        "verification",
+        "integrations",
+    ):
+        app.get(f"/setup/{_setup_section}")(_make_setup_section_route(_setup_section))
 
     @app.get("/setup/bootstrap.ps1")
     def bootstrap_script(request: Request):
@@ -3972,7 +3970,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status=preference["status"],
                 notes=preference["notes"],
             )
-        return RedirectResponse("/setup#models", status_code=303)
+        return RedirectResponse("/setup/models#models", status_code=303)
 
     @app.post("/setup/secret-requirements/{requirement_id}")
     def update_secret_requirement(
@@ -4022,7 +4020,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             evidence=evidence,
         )
         refresh_messaging_integration_status(repository, check["platform"])
-        return RedirectResponse("/setup#messaging-verification", status_code=303)
+        return RedirectResponse("/setup/messaging#messaging-verification", status_code=303)
 
     @app.post("/setup/schedule-checks/{check_id}")
     def update_schedule_check(
@@ -4050,7 +4048,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if repository.active_schedule_verification_ready():
             repository.update_integration_status("standup-cron", "configured")
-        return RedirectResponse("/setup#schedule-verification", status_code=303)
+        return RedirectResponse("/setup/verification#schedule-verification", status_code=303)
 
     @app.post("/setup/kanban-checks/{check_id}")
     def update_kanban_check(
@@ -4073,7 +4071,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if repository.kanban_verification_ready():
             repository.update_integration_status("hermes-kanban", "configured")
-        return RedirectResponse("/setup#kanban-verification", status_code=303)
+        return RedirectResponse("/setup/verification#kanban-verification", status_code=303)
 
     @app.post("/setup/profile-installation-checks/{check_id}")
     def update_profile_installation_check(
@@ -4101,7 +4099,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             evidence=evidence,
         )
         return RedirectResponse(
-            "/setup#profile-installation-tracking",
+            "/setup/profiles#profile-installation-tracking",
             status_code=303,
         )
 
@@ -4132,7 +4130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status=status,
             evidence=evidence,
         )
-        return RedirectResponse("/setup#profile-acceptance-tracking", status_code=303)
+        return RedirectResponse("/setup/profiles#profile-acceptance-tracking", status_code=303)
 
     @app.post("/setup/kanban/diagnostics")
     def kanban_diagnostics(request: Request):
@@ -4206,7 +4204,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for item in repository.list_model_preferences()
             ):
                 repository.update_integration_status("llm-provider", "configured")
-        return RedirectResponse("/setup#profile-smoke", status_code=303)
+        return RedirectResponse("/setup/profiles#profile-smoke", status_code=303)
 
     @app.get("/projects")
     def projects(request: Request):

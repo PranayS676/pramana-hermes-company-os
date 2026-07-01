@@ -52,8 +52,8 @@ def credential_status_template_markdown(secret_requirements: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk status import: `/setup#credential-status-import`",
-            "- Manual status editing: `/setup#secret-status`",
+            "- Bulk status import: `/setup/messaging#credential-status-import`",
+            "- Manual status editing: `/setup/messaging#secret-status`",
             "- Final verification: `/setup/live-verification.md`",
             "",
         ]
@@ -71,8 +71,8 @@ def credential_status_template_json(secret_requirements: list[dict]) -> str:
         ),
         "allowed_statuses": sorted(ALLOWED_CREDENTIAL_STATUSES),
         "entry_points": {
-            "bulk_import": "/setup#credential-status-import",
-            "manual_status": "/setup#secret-status",
+            "bulk_import": "/setup/messaging#credential-status-import",
+            "manual_status": "/setup/messaging#secret-status",
             "live_verification": "/setup/live-verification.md",
         },
         "requirements": [
@@ -127,7 +127,7 @@ def parse_credential_status_reply(raw_text: str, secret_requirements: list[dict]
 
 def credential_status_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/messaging?"
         f"credential_imported={summary['imported']}"
         f"&credential_unknown={len(summary['unknown_ids'])}"
         f"&credential_invalid={len(summary['invalid_statuses'])}"

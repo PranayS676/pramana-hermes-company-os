@@ -85,7 +85,7 @@
             <p>{{ founder_actions.next_best_action }}</p>
           </div>
           <div class="activation-links">
-            <a class="primary-button link-button" href="/setup#inputs">
+            <a class="primary-button link-button" href="/setup/inputs">
               <i data-lucide="clipboard-list"></i> Inputs
             </a>
             <a class="secondary-button link-button-muted" href="/setup/input-ledger.md">
@@ -220,7 +220,7 @@
                     <p>{{ task.summary }}</p>
                     {% if not task.kanban_task_id %}
                     {% if kanban_task_push_blocker %}
-                    <a class="primary-button link-button" href="/setup#kanban-verification">
+                    <a class="primary-button link-button" href="/setup/verification#kanban-verification">
                       <i data-lucide="shield-alert"></i> Kanban prerequisites needed
                     </a>
                     <small>{{ kanban_task_push_blocker }}</small>

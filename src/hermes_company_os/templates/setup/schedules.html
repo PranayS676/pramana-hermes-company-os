@@ -1,0 +1,106 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="calendar-clock"></i> Plan & schedules</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide">
+            {{ ui.panel_header("Setup Plan") }}
+            <div class="setup-timeline">
+              {% for step in setup_steps %}
+              <div class="timeline-row">
+                {{ ui.status_pill(step.status, step.status) }}
+                <div>
+                  <strong>{{ step.name }}</strong>
+                  <small>{{ step.phase }} - {{ step.owner }}</small>
+                  <p>{{ step.description }}</p>
+                  <code>{{ step.command }}</code>
+                  <a href="{{ step.docs_url }}" target="_blank" rel="noreferrer">Docs</a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="schedule-config-import">
+            {{ ui.panel_header("Schedule Configuration Import", link_url="/setup/schedule-config-template.md", link_label="Reply template") }}
+            {% if schedule_config_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Schedule config import</strong>
+              <span>
+                {{ schedule_config_import_summary.imported }} imported,
+                {{ schedule_config_import_summary.invalid }} invalid,
+                {{ schedule_config_import_summary.unknown }} unknown,
+                {{ schedule_config_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/schedule-config-reply">
+              <label>
+                Paste schedule configuration JSON or lines
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"schedules":[{"id":"morning-standup","hour":9,"minute":0,"timezone":"America/New_York","slack_channel":"#agent-standup","active":true}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports standup metadata only. Omitted fields keep current values;
+                cron verification remains separate from configuration.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import schedule config
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="schedules">
+            {{ ui.panel_header("Standup Schedules") }}
+            <div class="setup-timeline">
+              {% for schedule in schedules %}
+              <form class="timeline-row" method="post" action="/setup/schedules/{{ schedule.id }}">
+                {{ ui.status_pill("active" if schedule.active else "paused", "configured" if schedule.active else "deferred") }}
+                <div class="setup-input-grid">
+                  <label class="setup-input">
+                    <span>Name</span>
+                    <input name="name" value="{{ schedule.name }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Hour</span>
+                    <input name="hour" type="number" min="0" max="23" value="{{ schedule.hour }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Minute</span>
+                    <input name="minute" type="number" min="0" max="59" value="{{ schedule.minute }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Timezone</span>
+                    <input name="timezone" value="{{ schedule.timezone }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Slack channel</span>
+                    <input name="slack_channel" value="{{ schedule.slack_channel }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Telegram policy</span>
+                    <input name="telegram_policy" value="{{ schedule.telegram_policy }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Active</span>
+                    <input name="active" type="checkbox" {% if schedule.active %}checked{% endif %}>
+                  </label>
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="save"></i> Save schedule
+                  </button>
+                </div>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

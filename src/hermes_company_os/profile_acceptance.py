@@ -31,7 +31,7 @@ def profile_acceptance_suite(
                     "status": tracked.get("status", "needed"),
                     "has_evidence": bool(tracked.get("evidence", "").strip()),
                     "verification_route": f"/setup/profile-smoke/{agent['id']}",
-                    "tracking_route": f"/setup#profile-acceptance-tracking-{case_id}",
+                    "tracking_route": f"/setup/profiles#profile-acceptance-tracking-{case_id}",
                 }
             )
     return {
@@ -67,7 +67,7 @@ def profile_acceptance_markdown(
         "enough for profile prompts to work.",
         "3. Run each acceptance prompt through the matching Hermes profile command.",
         "4. Compare the response against expected and failure signals.",
-        "5. Track pass/fail status in `/setup#profile-acceptance-tracking`.",
+        "5. Track pass/fail status in `/setup/profiles#profile-acceptance-tracking`.",
         "6. Update profile SOUL/capabilities from the agent page if a case fails.",
         "",
         "## Cases",
@@ -82,7 +82,7 @@ def profile_acceptance_markdown(
             "- Every profile passes its role-specific acceptance prompt.",
             "- Every tracked acceptance check is marked `verified` in `/setup`.",
             "- Failed cases result in profile SOUL/capability updates.",
-            "- Basic `/setup#profile-smoke` checks are still passing after updates.",
+            "- Basic `/setup/profiles#profile-smoke` checks are still passing after updates.",
             "- No prompt asks a profile to use Slack, Telegram, browsing, or external tools.",
             "",
             "## Exports",

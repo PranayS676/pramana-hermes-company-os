@@ -52,7 +52,7 @@ def slack_channel_template_markdown(
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#slack-channel-import`",
+            "- Bulk import: `/setup/inputs#slack-channel-import`",
             "- Slack workspace matrix: `/setup/slack-workspace.md`",
             "- Slack provisioning runner: `/setup/slack-provisioning.ps1`",
             "",
@@ -74,7 +74,7 @@ def slack_channel_template_json(
         ),
         "accepted_id_pattern": "^[CGD][A-Z0-9]{2,}$",
         "entry_points": {
-            "bulk_import": "/setup#slack-channel-import",
+            "bulk_import": "/setup/inputs#slack-channel-import",
             "slack_workspace": "/setup/slack-workspace.md",
             "slack_provisioning": "/setup/slack-provisioning.md",
             "invite_matrix": "/setup/slack-invite-matrix.json",
@@ -127,7 +127,7 @@ def parse_slack_channel_reply(raw_text: str) -> dict:
 
 def slack_channel_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/inputs?"
         f"slack_channel_imported={summary['imported']}"
         f"&slack_channel_unknown={len(summary['unknown_keys'])}"
         f"&slack_channel_invalid={len(summary['invalid_channel_ids'])}"

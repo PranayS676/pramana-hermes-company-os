@@ -76,7 +76,7 @@ def test_profile_acceptance_exports_markdown_and_json_without_secrets():
     assert payload["cases"][0]["profile_id"] == "engineering-manager"
     assert payload["cases"][0]["status"] == "failed"
     assert "Status: `failed`" in markdown
-    assert "/setup#profile-acceptance-tracking" in markdown
+    assert "/setup/profiles#profile-acceptance-tracking" in markdown
     assert "/setup/profile-acceptance.json" in markdown
     assert "xoxb-" not in markdown
     assert "xapp-" not in markdown

@@ -1,0 +1,124 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="brain-circuit"></i> Language models</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="llm-presets">
+            {{ ui.panel_header("LLM Provider Presets", link_url="/setup/llm-provider-presets.md", link_label="Preset plan") }}
+            <div class="setup-timeline">
+              {% for preset in llm_presets %}
+              <div class="timeline-row">
+                {{ ui.status_pill(preset.status, preset.status) }}
+                <div>
+                  <strong>{{ preset.label }}</strong>
+                  <p>{{ preset.description }}</p>
+                  <small>{{ preset.auth_method }} - {{ preset.profiles|length }} profiles</small>
+                  <form method="post" action="/setup/llm-provider-presets/{{ preset.id }}">
+                    <button class="primary-button" type="submit">
+                      <i data-lucide="wand-sparkles"></i> Apply preset
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="llm-preference-import">
+            {{ ui.panel_header("LLM Preference Import", link_url="/setup/llm-preference-template.md", link_label="Reply template") }}
+            {% if llm_preference_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>LLM preference import</strong>
+              <span>
+                {{ llm_preference_import_summary.imported }} imported,
+                {{ llm_preference_import_summary.invalid }} invalid,
+                {{ llm_preference_import_summary.unknown }} unknown,
+                {{ llm_preference_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/llm-preference-reply">
+              <label>
+                Paste LLM preference JSON
+                <textarea
+                  name="reply_text"
+                  rows="10"
+                  placeholder='{"preferences":[{"agent_id":"research-agent","provider":"openrouter","model":"anthropic/claude-sonnet-4","status":"needs_secret"}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports provider/model metadata only. API keys stay outside the dashboard,
+                and `verified` remains reserved for profile smoke checks.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import LLM preferences
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="models">
+            {{ ui.panel_header("LLM Profile Preferences") }}
+            <div class="setup-timeline">
+              {% for preference in model_preferences %}
+              <form
+                class="timeline-row"
+                method="post"
+                action="/setup/model-preferences/{{ preference.agent_id }}"
+              >
+                {{ ui.status_pill(preference.status, preference.status) }}
+                <div class="setup-input-grid">
+                  <label class="setup-input">
+                    <span>Profile</span>
+                    <input value="{{ preference.agent_name }}" disabled>
+                  </label>
+                  <label class="setup-input">
+                    <span>Provider</span>
+                    <input name="provider" value="{{ preference.provider }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Model</span>
+                    <input name="model" value="{{ preference.model }}" required>
+                  </label>
+                  <label class="setup-input">
+                    <span>Fallback provider</span>
+                    <input name="fallback_provider" value="{{ preference.fallback_provider }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Fallback model</span>
+                    <input name="fallback_model" value="{{ preference.fallback_model }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Auth method</span>
+                    <input name="auth_method" value="{{ preference.auth_method }}">
+                  </label>
+                  <label class="setup-input">
+                    <span>Status</span>
+                    <select name="status" aria-label="Model preference status for {{ preference.agent_name }}">
+                      {% for option in ["planned", "needs_secret", "ready_for_verification"] %}
+                      <option value="{{ option }}" {% if preference.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                      {% if preference.status == "verified" %}
+                      <option value="ready_for_verification">verified by smoke check</option>
+                      {% endif %}
+                    </select>
+                  </label>
+                  <label class="setup-input">
+                    <span>Notes</span>
+                    <input name="notes" value="{{ preference.notes }}">
+                  </label>
+                  <button class="primary-button" type="submit">
+                    <i data-lucide="save"></i> Save model preference
+                  </button>
+                </div>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

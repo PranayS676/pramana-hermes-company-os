@@ -39,7 +39,7 @@ def test_schedule_config_templates_are_no_secret_and_show_current_values():
 
     assert "Schedule Configuration Reply Template" in markdown
     assert "morning-standup.hour=9" in markdown
-    assert payload["entry_points"]["bulk_import"] == "/setup#schedule-config-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/schedules#schedule-config-import"
     assert payload["schedules"][0]["id"] == "morning-standup"
     assert secret_violations({"raw": raw}) == []
 
@@ -98,7 +98,7 @@ def test_schedule_config_redirect_counts_import_summary():
     }
 
     assert schedule_config_import_redirect(summary) == (
-        "/setup?schedule_config_imported=1&schedule_config_unknown=1"
+        "/setup/schedules?schedule_config_imported=1&schedule_config_unknown=1"
         "&schedule_config_invalid=1&schedule_config_ignored=1"
         "#schedule-config-import"
     )

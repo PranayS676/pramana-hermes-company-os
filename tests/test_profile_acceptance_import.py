@@ -48,7 +48,7 @@ def test_profile_acceptance_template_exports_no_secret_reply_format():
         "verified",
     ]
     assert payload["entry_points"]["bulk_import"] == (
-        "/setup#profile-acceptance-tracking"
+        "/setup/profiles#profile-acceptance-tracking"
     )
     assert "xoxb-" not in raw
     assert "xapp-" not in raw
@@ -101,7 +101,7 @@ def test_profile_acceptance_import_redirect_targets_acceptance_panel():
     )
 
     assert redirect == (
-        "/setup?profile_acceptance_imported=2&profile_acceptance_unknown=1"
+        "/setup/profiles?profile_acceptance_imported=2&profile_acceptance_unknown=1"
         "&profile_acceptance_invalid=1&profile_acceptance_ignored=1"
         "#profile-acceptance-tracking"
     )

@@ -56,8 +56,8 @@ def messaging_drill_payload(
             "slack_workspace": "/setup/slack-workspace.md",
             "telegram_policy": "/setup/telegram-policy.md",
             "verification_template": "/setup/messaging-verification-template.md",
-            "messaging_verification": "/setup#messaging-verification",
-            "secret_status": "/setup#secret-status",
+            "messaging_verification": "/setup/messaging#messaging-verification",
+            "secret_status": "/setup/messaging#secret-status",
             "live_verification": "/setup/live-verification.md",
         },
     }
@@ -147,7 +147,7 @@ def messaging_drill_markdown(**kwargs) -> str:
             "- Every Slack DM and channel mention drill is verified.",
             "- Chief of Staff Telegram sends only urgent founder alerts.",
             "- Routine updates stay in Slack.",
-            "- `/setup#messaging-verification` stores non-secret evidence only.",
+            "- `/setup/messaging#messaging-verification` stores non-secret evidence only.",
             "- Use `/setup/messaging-verification-template.md` for bulk status import.",
             "",
         ]

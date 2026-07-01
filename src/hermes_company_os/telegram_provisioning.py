@@ -61,7 +61,7 @@ def telegram_provisioning_payload(
             "recipient_template": "/setup/telegram-recipient-template.md",
             "telegram_policy": "/setup/telegram-policy.md",
             "telegram_policy_json": "/setup/telegram-policy.json",
-            "messaging_verification": "/setup#messaging-verification",
+            "messaging_verification": "/setup/messaging#messaging-verification",
             "gateway_operations": "/setup/gateway-operations.md",
         },
         "official_docs": {
@@ -150,7 +150,7 @@ def telegram_provisioning_markdown(**kwargs) -> str:
         "- `setMyCommands` succeeds for the command list above.",
         "- Optional urgent test sends one short founder alert to the configured chat.",
         "- Routine updates still stay in Slack only.",
-        "- `/setup#messaging-verification` records non-secret evidence for the "
+        "- `/setup/messaging#messaging-verification` records non-secret evidence for the "
         "Chief of Staff Telegram urgent-alert check.",
         "",
         "## Official Reference",

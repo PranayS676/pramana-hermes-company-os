@@ -51,7 +51,7 @@ def parse_founder_input_reply(raw_text: str, setup_inputs: list[dict]) -> dict:
 
 def founder_input_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/inputs?"
         f"input_imported={summary['imported']}"
         f"&input_unknown={len(summary['unknown_keys'])}"
         f"&input_deferred={len(summary['deferred_keys'])}"

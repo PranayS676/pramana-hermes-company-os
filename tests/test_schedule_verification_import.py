@@ -45,7 +45,7 @@ def test_schedule_verification_template_exports_no_secret_reply_format():
         "needed",
         "verified",
     ]
-    assert payload["entry_points"]["bulk_import"] == "/setup#schedule-verification"
+    assert payload["entry_points"]["bulk_import"] == "/setup/verification#schedule-verification"
     assert "xoxb-" not in raw
     assert "xapp-" not in raw
     assert "sk-" not in raw
@@ -86,6 +86,6 @@ def test_schedule_verification_import_redirect_targets_schedule_panel():
     )
 
     assert redirect == (
-        "/setup?schedule_imported=2&schedule_unknown=1"
+        "/setup/verification?schedule_imported=2&schedule_unknown=1"
         "&schedule_invalid=1&schedule_ignored=1#schedule-verification"
     )

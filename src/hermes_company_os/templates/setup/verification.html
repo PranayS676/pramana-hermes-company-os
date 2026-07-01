@@ -1,0 +1,154 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="shield-check"></i> Verification</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="schedule-verification">
+            {{ ui.panel_header("Schedule Verification", link_url="/setup/schedule-verification-template.md", link_label="Reply template") }}
+            {% if schedule_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Schedule import</strong>
+              <span>
+                {{ schedule_import_summary.imported }} imported,
+                {{ schedule_import_summary.invalid }} invalid,
+                {{ schedule_import_summary.unknown }} unknown,
+                {{ schedule_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/schedule-verification-reply">
+              <label>
+                Paste schedule verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="morning-standup-manual-run=verified | Manual run posted to Slack"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Manual standup verification
+                still requires Chief of Staff LLM, Slack, and Telegram checks first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import schedule checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in schedule_checks %}
+              <div class="integration-row">
+                <div>
+                  {{ ui.status_pill(check.status, check.status) }}
+                  <strong>{{ check.label }}</strong>
+                  <small>
+                    {{ "%02d"|format(check.schedule_hour) }}:{{ "%02d"|format(check.schedule_minute) }}
+                    - {{ check.schedule_timezone }}
+                    {% if not check.schedule_active %} - paused{% endif %}
+                  </small>
+                  <p>{{ check.instructions }}</p>
+                  {% set prerequisite_blocker = schedule_prerequisite_blockers.get(check.id, "") %}
+                  {% if prerequisite_blocker %}
+                  <p>{{ prerequisite_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/schedule-checks/{{ check.id }}">
+                    <select name="status" aria-label="Schedule verification status for {{ check.label }}">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Schedule verification evidence for {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save schedule verification for {{ check.label }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="kanban-verification">
+            {% call ui.panel_header("Kanban Verification") %}
+              <a href="/setup/kanban-verification-template.md">Reply template</a>
+              <form method="post" action="/setup/kanban/diagnostics">
+                <button class="primary-button" type="submit">
+                  <i data-lucide="radar"></i> Kanban diagnostics
+                </button>
+              </form>
+            {% endcall %}
+            {% if kanban_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Kanban import</strong>
+              <span>
+                {{ kanban_import_summary.imported }} imported,
+                {{ kanban_import_summary.invalid }} invalid,
+                {{ kanban_import_summary.unknown }} unknown,
+                {{ kanban_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/kanban-verification-reply">
+              <label>
+                Paste Kanban verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="kanban-board-initialized=verified | Board initialized locally"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Use diagnostics and task-create
+                checks for live Hermes Kanban behavior.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Kanban checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in kanban_checks %}
+              <div class="integration-row">
+                <div>
+                  {{ ui.status_pill(check.status, check.status) }}
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.check_type }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/kanban-checks/{{ check.id }}">
+                    <select name="status" aria-label="Kanban verification status for {{ check.label }}">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Kanban verification evidence for {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save Kanban verification for {{ check.label }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

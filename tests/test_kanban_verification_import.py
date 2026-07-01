@@ -39,7 +39,7 @@ def test_kanban_verification_template_exports_no_secret_reply_format():
         "needed",
         "verified",
     ]
-    assert payload["entry_points"]["bulk_import"] == "/setup#kanban-verification"
+    assert payload["entry_points"]["bulk_import"] == "/setup/verification#kanban-verification"
     assert "xoxb-" not in raw
     assert "xapp-" not in raw
     assert "sk-" not in raw
@@ -80,6 +80,6 @@ def test_kanban_verification_import_redirect_targets_kanban_panel():
     )
 
     assert redirect == (
-        "/setup?kanban_imported=2&kanban_unknown=1"
+        "/setup/verification?kanban_imported=2&kanban_unknown=1"
         "&kanban_invalid=1&kanban_ignored=1#kanban-verification"
     )

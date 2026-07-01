@@ -205,7 +205,7 @@ def profile_live_assets_payload(
             "json": "/setup/profile-live-assets.json",
             "script": "/setup/profile-live-assets.ps1",
             "installation_audit": "/setup/profile-installation.ps1",
-            "profile_smoke": "/setup#profile-smoke",
+            "profile_smoke": "/setup/profiles#profile-smoke",
         },
     }
 

@@ -71,7 +71,7 @@ def schedule_config_template_markdown(schedules: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#schedule-config-import`",
+            "- Bulk import: `/setup/schedules#schedule-config-import`",
             "- Schedule provisioning: `/setup/schedule-provisioning.md`",
             "- Standup preview: `/setup/standup-preview.md`",
             "",
@@ -88,10 +88,10 @@ def schedule_config_template_json(schedules: list[dict]) -> str:
             "provider API keys, private prompt output, or logs."
         ),
         "entry_points": {
-            "bulk_import": "/setup#schedule-config-import",
+            "bulk_import": "/setup/schedules#schedule-config-import",
             "schedule_provisioning": "/setup/schedule-provisioning.md",
             "standup_preview": "/setup/standup-preview.md",
-            "schedule_verification": "/setup#schedule-verification",
+            "schedule_verification": "/setup/verification#schedule-verification",
         },
         "allowed_fields": sorted(SCHEDULE_FIELDS),
         "schedules": [_schedule_template(schedule) for schedule in schedules],
@@ -162,7 +162,7 @@ def parse_schedule_config_reply(raw_text: str, schedules: list[dict]) -> dict:
 
 def schedule_config_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/schedules?"
         f"schedule_config_imported={summary['imported']}"
         f"&schedule_config_unknown={len(summary['unknown_schedules'])}"
         f"&schedule_config_invalid={len(summary['invalid_fields'])}"

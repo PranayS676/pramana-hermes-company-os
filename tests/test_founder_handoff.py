@@ -93,7 +93,7 @@ def test_founder_handoff_payload_combines_safe_inputs_and_external_status():
     )
     focused_by_id = {item["id"]: item for item in payload["focused_setup_imports"]}
     assert focused_by_id["slack_bot_user"]["dashboard_anchor"] == (
-        "/setup#slack-bot-user-import"
+        "/setup/inputs#slack-bot-user-import"
     )
     assert focused_by_id["profile_acceptance"]["template"] == (
         "/setup/profile-acceptance-template.md"
@@ -118,7 +118,7 @@ def test_founder_handoff_markdown_and_json_are_no_secret_artifacts():
     assert "Founder Return Packet" in markdown
     assert "Credential Status Reply Template" in markdown
     assert "Focused Setup Reply Templates" in markdown
-    assert "/setup#input-import" in markdown
+    assert "/setup/inputs#input-import" in markdown
     assert "/setup/slack-bot-user-map-template.md" in markdown
     assert "/setup/profile-acceptance-template.md" in markdown
     assert "/setup/llm-provisioning.md" in markdown

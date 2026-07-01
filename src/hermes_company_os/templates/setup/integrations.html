@@ -1,0 +1,52 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="plug"></i> Integrations</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="integrations">
+            {{ ui.panel_header("Integrations") }}
+            <div class="integration-table">
+              {% for integration in integrations %}
+              <div class="integration-row">
+                <div>
+                  {{ ui.status_pill(integration.status, integration.status) }}
+                  <strong>{{ integration.name }}</strong>
+                  <small>{{ integration.category }}{% if integration.owner_name %} - {{ integration.owner_name }}{% endif %}</small>
+                  <p>{{ integration.setup_notes }}</p>
+                  <details>
+                    <summary>Required inputs</summary>
+                    <ul>
+                      {% for required in integration.required_inputs %}
+                      <li>{{ required }}</li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                </div>
+                <div class="integration-actions">
+                  <code>{{ integration.validation_command }}</code>
+                  <form method="post" action="/setup/integrations/{{ integration.id }}">
+                    <select name="status" aria-label="Integration status for {{ integration.name }}">
+                      {% for option in ["needs_input", "needs_setup", "ready", "configured", "deferred"] %}
+                      <option value="{{ option }}" {% if integration.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="icon-button" title="Save status" type="submit" aria-label="Save integration status for {{ integration.name }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                  <a href="{{ integration.docs_url }}" target="_blank" rel="noreferrer">Docs</a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

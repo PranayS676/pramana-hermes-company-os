@@ -1,0 +1,64 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="square-terminal"></i> Commands & activation</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel" id="profiles">
+            {{ ui.panel_header("Profile Commands") }}
+            <div class="command-list">
+              {% for command in profile_commands %}
+              <div class="command-row">
+                <strong>{{ command.agent }}</strong>
+                <code>{{ command.create }}</code>
+                <code>{{ command.gateway_setup }}</code>
+                <code>{{ command.gateway_start }}</code>
+                <a href="/setup/profile-soul/{{ command.profile_id }}.md">SOUL.md</a>
+                <a href="/setup/profile-manifest/{{ command.profile_id }}.json">Profile manifest</a>
+                <a href="/setup/profile-apply/{{ command.profile_id }}.ps1">Profile apply script</a>
+                <a href="/setup/profile-env/{{ command.profile_id }}.env">Profile .env template</a>
+                <a href="/setup/profile-llm-env/{{ command.profile_id }}.env">Profile LLM .env starter</a>
+                <a href="/setup/profile-config/{{ command.profile_id }}.yaml">Profile config.yaml starter</a>
+                <a href="/setup/profile-live-config/{{ command.profile_id }}.yaml">Live config.yaml</a>
+                <a href="/setup/profile-live-context/{{ command.profile_id }}.md">Live context</a>
+                <a href="/setup/profile-live-prompts/{{ command.profile_id }}.md">Live prompts</a>
+                <a href="/setup/profile-live-rules/{{ command.profile_id }}.md">Live rules</a>
+                <a href="/setup/slack-manifest/{{ command.profile_id }}.json">Slack manifest starter</a>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel">
+            {{ ui.panel_header("Activation Commands") }}
+            <div class="command-list">
+              {% for command in activation_commands %}
+              <div class="command-row">
+                <strong>{{ command.agent }}</strong>
+                {% for env_line in command.env %}
+                <code>{{ env_line }}</code>
+                {% endfor %}
+                <code>{{ command.model }}</code>
+                <a href="{{ command.config_template }}">Model config starter</a>
+                <code>{{ command.setup }}</code>
+                <code>{{ command.start }}</code>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel">
+            {{ ui.panel_header("Standup Cron") }}
+            <div class="command-list">
+              {% for command in cron_commands %}
+              <code>{{ command }}</code>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

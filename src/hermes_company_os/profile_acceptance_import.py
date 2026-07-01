@@ -58,7 +58,7 @@ def profile_acceptance_template_markdown(acceptance_checks: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#profile-acceptance-tracking`",
+            "- Bulk import: `/setup/profiles#profile-acceptance-tracking`",
             "- Acceptance suite: `/setup/profile-acceptance.md`",
             "- Evidence summary: `/setup/verification-evidence.md`",
             "",
@@ -76,7 +76,7 @@ def profile_acceptance_template_json(acceptance_checks: list[dict]) -> str:
         ),
         "allowed_statuses": sorted(ALLOWED_PROFILE_ACCEPTANCE_STATUSES),
         "entry_points": {
-            "bulk_import": "/setup#profile-acceptance-tracking",
+            "bulk_import": "/setup/profiles#profile-acceptance-tracking",
             "acceptance_suite": "/setup/profile-acceptance.md",
             "verification_evidence": "/setup/verification-evidence.md",
         },
@@ -135,7 +135,7 @@ def parse_profile_acceptance_reply(
 
 def profile_acceptance_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/profiles?"
         f"profile_acceptance_imported={summary['imported']}"
         f"&profile_acceptance_unknown={len(summary['unknown_ids'])}"
         f"&profile_acceptance_invalid={len(summary['invalid_statuses'])}"

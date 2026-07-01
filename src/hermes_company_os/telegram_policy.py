@@ -149,7 +149,7 @@ def telegram_policy_markdown(setup_values: dict[str, str], schedules: list[dict]
             "",
             "- JSON policy: `/setup/telegram-policy.json`",
             "- BotFather setup: `/setup/telegram-botfather.md`",
-            "- Messaging verification: `/setup#messaging-verification`",
+            "- Messaging verification: `/setup/messaging#messaging-verification`",
             "",
         ]
     )

@@ -58,29 +58,29 @@ def founder_handoff_payload(
             for preference in model_preferences
         ],
         "return_steps": [
-            "Paste safe dashboard values into `/setup#input-import`.",
+            "Paste safe dashboard values into `/setup/inputs#input-import`.",
             "Use the focused setup reply templates for Slack channel IDs, Slack bot "
             "user IDs, Telegram recipient IDs, schedule settings, verification, and "
             "profile personalization.",
             "Load Slack and Telegram credentials into the real Hermes profile env files.",
             "Run `/setup/secret-audit.ps1 -PostDashboardStatus`.",
             "Run `/setup/gateway-operations.ps1 -CheckCommands`, then setup/start gateways.",
-            "Complete `/setup#messaging-verification` with short non-secret evidence.",
-            "Run Kanban diagnostics and complete `/setup#kanban-verification`.",
-            "Verify standups and complete `/setup#schedule-verification`.",
+            "Complete `/setup/messaging#messaging-verification` with short non-secret evidence.",
+            "Run Kanban diagnostics and complete `/setup/verification#kanban-verification`.",
+            "Verify standups and complete `/setup/verification#schedule-verification`.",
             "Review `/setup/llm-provisioning.md`, load LLM provider credentials last, "
             "then run `/setup/llm-finalize.md`.",
             "Review `/setup/verification-evidence.md` and `/setup/live-verification.md`.",
         ],
         "entry_points": {
-            "input_import": "/setup#input-import",
+            "input_import": "/setup/inputs#input-import",
             "credential_loading": "/setup/credential-loading.md",
-            "credential_status_import": "/setup#credential-status-import",
+            "credential_status_import": "/setup/messaging#credential-status-import",
             "gateway_operations": "/setup/gateway-operations.md",
             "secret_audit": "/setup/secret-audit.md",
-            "messaging_verification": "/setup#messaging-verification",
-            "kanban_verification": "/setup#kanban-verification",
-            "schedule_verification": "/setup#schedule-verification",
+            "messaging_verification": "/setup/messaging#messaging-verification",
+            "kanban_verification": "/setup/verification#kanban-verification",
+            "schedule_verification": "/setup/verification#schedule-verification",
             "llm_provisioning": "/setup/llm-provisioning.md",
             "llm_finalization": "/setup/llm-finalize.md",
             "verification_evidence": "/setup/verification-evidence.md",

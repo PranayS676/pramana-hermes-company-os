@@ -76,7 +76,7 @@ def standup_preview_payload(
         ],
         "drill_cases": DRILL_CASES,
         "verification": {
-            "manual_run": "/setup#schedule-verification",
+            "manual_run": "/setup/verification#schedule-verification",
             "cron_install": "/setup/standup-cron.ps1",
             "runbook": "/setup/standup-runbook.md",
             "live_verification": "/setup/live-verification.md",
@@ -149,7 +149,7 @@ def standup_preview_markdown(**kwargs) -> str:
             "## Verification",
             "",
             "- Run each active standup manually from the dashboard first.",
-            "- Record non-secret evidence in `/setup#schedule-verification`.",
+            "- Record non-secret evidence in `/setup/verification#schedule-verification`.",
             "- Install cron only after manual runs and messaging verification pass.",
             "",
         ]

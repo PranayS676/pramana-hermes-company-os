@@ -135,7 +135,7 @@ def idea_intake_payload(workflow_templates: list[dict]) -> dict:
             "kickoff_readiness": "/setup/kickoff-readiness.md",
             "project_workflow": "/setup/project-workflow.md",
             "delegation_playbook": "/setup/delegation-playbook.md",
-            "kanban_verification": "/setup#kanban-verification",
+            "kanban_verification": "/setup/verification#kanban-verification",
             "llm_finalization": "/setup/llm-finalize.md",
         },
     }

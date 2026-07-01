@@ -99,7 +99,7 @@ def llm_credentials_plan_markdown(model_preferences: list[dict]) -> str:
                 ),
                 f"- LLM-only env starter: `/setup/profile-llm-env/{preference['agent_id']}.env`",
                 f"- Config starter: `/setup/profile-config/{preference['agent_id']}.yaml`",
-                "- Dashboard verification: `/setup#profile-smoke`",
+                "- Dashboard verification: `/setup/profiles#profile-smoke`",
                 f"- Current status: `{preference['status']}`",
                 "",
             ]
@@ -109,12 +109,13 @@ def llm_credentials_plan_markdown(model_preferences: list[dict]) -> str:
             "## Activation Order",
             "",
             "1. Finish Slack, Telegram, schedule, and Kanban setup first.",
-            "2. Pick the provider/model per profile in `/setup#models`.",
+            "2. Pick the provider/model per profile in `/setup/models#models`.",
             "3. Review `/setup/profile-config/<profile>.yaml` for every profile.",
             "4. Add only the needed provider env keys to each real Hermes profile `.env`.",
             "5. Run `<profile> model` if Hermes needs interactive provider selection.",
-            "6. Mark the matching LLM credential status `loaded` in `/setup#secret-status`.",
-            "7. Run `/setup#profile-smoke` for each profile.",
+            "6. Mark the matching LLM credential status `loaded` in "
+            "`/setup/messaging#secret-status`.",
+            "7. Run `/setup/profiles#profile-smoke` for each profile.",
             "8. Treat LLM integration as complete only when every profile smoke check passes.",
             "",
             "## No-Secret Rule",
@@ -171,7 +172,7 @@ def profile_llm_env_template(agent: dict, preference: dict | None = None) -> str
             "",
             "# After loading credentials externally:",
             f"# 1. Run `{agent['hermes_command']} model` if Hermes requires provider selection.",
-            "# 2. Use `/setup#profile-smoke` to verify this profile.",
+            "# 2. Use `/setup/profiles#profile-smoke` to verify this profile.",
             "",
         ]
     )

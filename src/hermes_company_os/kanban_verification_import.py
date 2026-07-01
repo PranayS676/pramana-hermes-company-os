@@ -55,7 +55,7 @@ def kanban_verification_template_markdown(kanban_checks: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#kanban-verification`",
+            "- Bulk import: `/setup/verification#kanban-verification`",
             "- Kanban provisioning: `/setup/kanban-provisioning.md`",
             "- Kanban runbook: `/setup/kanban-runbook.md`",
             "",
@@ -73,7 +73,7 @@ def kanban_verification_template_json(kanban_checks: list[dict]) -> str:
         ),
         "allowed_statuses": sorted(ALLOWED_KANBAN_VERIFICATION_STATUSES),
         "entry_points": {
-            "bulk_import": "/setup#kanban-verification",
+            "bulk_import": "/setup/verification#kanban-verification",
             "kanban_provisioning": "/setup/kanban-provisioning.md",
             "kanban_runbook": "/setup/kanban-runbook.md",
         },
@@ -130,7 +130,7 @@ def parse_kanban_verification_reply(
 
 def kanban_verification_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/verification?"
         f"kanban_imported={summary['imported']}"
         f"&kanban_unknown={len(summary['unknown_ids'])}"
         f"&kanban_invalid={len(summary['invalid_statuses'])}"

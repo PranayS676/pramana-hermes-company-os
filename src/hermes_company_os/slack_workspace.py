@@ -158,10 +158,11 @@ def slack_workspace_markdown(agents: list[dict], setup_values: dict[str, str]) -
             "## Verification",
             "",
             "- Every required channel exists in Slack.",
-            "- Every required channel ID is captured in `/setup#inputs`.",
+            "- Every required channel ID is captured in `/setup/inputs#inputs`.",
             "- Every profile bot is installed in the workspace.",
             "- Every listed invite command has been run in the target channel.",
-            "- `/setup#messaging-verification` has Slack gateway, DM, and mention checks.",
+            "- `/setup/messaging#messaging-verification` has Slack "
+            "gateway, DM, and mention checks.",
             "",
         ]
     )

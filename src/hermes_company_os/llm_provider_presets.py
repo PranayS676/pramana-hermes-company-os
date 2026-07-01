@@ -141,10 +141,10 @@ def llm_provider_presets_payload(
         ),
         "verification_last": True,
         "entry_points": {
-            "manual_preferences": "/setup#models",
+            "manual_preferences": "/setup/models#models",
             "llm_credentials": "/setup/llm-credentials.md",
             "llm_smoke": "/setup/llm-smoke.md",
-            "profile_smoke": "/setup#profile-smoke",
+            "profile_smoke": "/setup/profiles#profile-smoke",
         },
         "current": [_current_preference(agent, current.get(agent["id"])) for agent in agents],
         "presets": [
@@ -202,12 +202,12 @@ def llm_provider_presets_markdown(**kwargs) -> str:
         [
             "## Final Verification Still Last",
             "",
-            "1. Apply a preset or edit `/setup#models` manually.",
+            "1. Apply a preset or edit `/setup/models#models` manually.",
             "2. Review `/setup/profile-config/<profile>.yaml` and "
             "`/setup/profile-llm-env/<profile>.env`.",
             "3. Load provider credentials into real Hermes profile files later.",
             "4. Run `/setup/secret-audit.ps1 -AuditLlm`.",
-            "5. Run `/setup#profile-smoke` for every profile.",
+            "5. Run `/setup/profiles#profile-smoke` for every profile.",
             "",
         ]
     )

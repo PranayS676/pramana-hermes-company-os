@@ -29,7 +29,7 @@ def test_slack_bot_user_templates_are_no_secret_and_profile_keyed():
 
     assert "Slack Bot User ID Reply Template" in markdown
     assert "chief-of-staff=U012ABCDEF" in markdown
-    assert payload["entry_points"]["bulk_import"] == "/setup#slack-bot-user-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/inputs#slack-bot-user-import"
     assert payload["bot_user_ids"][0]["input_key"] == (
         "slack_bot_user_id_chief_of_staff"
     )
@@ -79,7 +79,7 @@ def test_slack_bot_user_redirect_counts_import_summary():
     }
 
     assert slack_bot_user_import_redirect(summary) == (
-        "/setup?slack_bot_user_imported=2&slack_bot_user_unknown=1"
+        "/setup/inputs?slack_bot_user_imported=2&slack_bot_user_unknown=1"
         "&slack_bot_user_invalid=0&slack_bot_user_ignored=1"
         "#slack-bot-user-import"
     )

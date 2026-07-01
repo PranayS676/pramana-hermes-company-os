@@ -39,7 +39,7 @@ def test_telegram_provisioning_payload_is_chief_owned_and_llm_last_safe():
         "/setup/telegram-recipient-template.md"
     )
     assert payload["entry_points"]["messaging_verification"] == (
-        "/setup#messaging-verification"
+        "/setup/messaging#messaging-verification"
     )
 
 

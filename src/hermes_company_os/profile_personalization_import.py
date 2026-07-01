@@ -32,7 +32,7 @@ def profile_personalization_template_markdown(agents: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#profile-personalization-import`",
+            "- Bulk import: `/setup/inputs#profile-personalization-import`",
             "- Profile artifacts: `/setup/profile-artifacts.md`",
             "- Profile acceptance: `/setup/profile-acceptance.md`",
             "",
@@ -49,7 +49,7 @@ def profile_personalization_template_json(agents: list[dict]) -> str:
             "logs, or raw profile outputs."
         ),
         "entry_points": {
-            "bulk_import": "/setup#profile-personalization-import",
+            "bulk_import": "/setup/inputs#profile-personalization-import",
             "profile_artifacts": "/setup/profile-artifacts.md",
             "profile_acceptance": "/setup/profile-acceptance.md",
         },
@@ -136,7 +136,7 @@ def parse_profile_personalization_reply(raw_text: str, agents: list[dict]) -> di
 
 def profile_personalization_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/inputs?"
         f"profile_personalization_imported={summary['imported']}"
         f"&profile_personalization_unknown={len(summary['unknown_ids'])}"
         f"&profile_personalization_invalid={len(summary['invalid_profiles'])}"

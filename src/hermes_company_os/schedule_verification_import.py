@@ -56,7 +56,7 @@ def schedule_verification_template_markdown(schedule_checks: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#schedule-verification`",
+            "- Bulk import: `/setup/verification#schedule-verification`",
             "- Schedule provisioning: `/setup/schedule-provisioning.md`",
             "- Standup runbook: `/setup/standup-runbook.md`",
             "",
@@ -75,7 +75,7 @@ def schedule_verification_template_json(schedule_checks: list[dict]) -> str:
         ),
         "allowed_statuses": sorted(ALLOWED_SCHEDULE_VERIFICATION_STATUSES),
         "entry_points": {
-            "bulk_import": "/setup#schedule-verification",
+            "bulk_import": "/setup/verification#schedule-verification",
             "schedule_provisioning": "/setup/schedule-provisioning.md",
             "standup_runbook": "/setup/standup-runbook.md",
         },
@@ -135,7 +135,7 @@ def parse_schedule_verification_reply(
 
 def schedule_verification_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/verification?"
         f"schedule_imported={summary['imported']}"
         f"&schedule_unknown={len(summary['unknown_ids'])}"
         f"&schedule_invalid={len(summary['invalid_statuses'])}"

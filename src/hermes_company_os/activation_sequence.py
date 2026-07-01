@@ -51,7 +51,7 @@ def activation_sequence_markdown(
         "## Ordered Activation Path",
         "",
         "1. Run `/setup/first-run.md` for the guided local sequence, or capture "
-        "non-secret founder and workspace IDs directly in `/setup#inputs`. Track "
+        "non-secret founder and workspace IDs directly in `/setup/inputs#inputs`. Track "
         "stage progress in `/setup/progress-board.md`.",
         "2. Install or connect Hermes with `/setup/hermes-runtime.md` and "
         "`/setup/hermes-install.ps1`, then review local runtime state with "
@@ -59,7 +59,7 @@ def activation_sequence_markdown(
         "3. Review `/setup/activation-runner.md` and decide which local phases to run.",
         "4. Create or review Hermes profiles with `/setup/bootstrap.ps1` and "
         "`/setup/profile-artifacts.md`, then verify them in "
-        "`/setup#profile-installation-tracking`.",
+        "`/setup/profiles#profile-installation-tracking`.",
         "5. Create Slack apps from `/setup/slack-plan.md`, `/setup/slack-manifests.json`, "
         "and `/setup/slack-provisioning.md`.",
         "6. Configure the Chief of Staff Telegram bot with `/setup/telegram-botfather.md`, "
@@ -72,9 +72,9 @@ def activation_sequence_markdown(
         "10. Configure LLM provider credentials last with `/setup/llm-provisioning.md`, "
         "`/setup/llm-credentials.md`, and `/setup/llm-finalize.md`.",
         "11. Audit LLM keys with `/setup/secret-audit.ps1 -AuditLlm`.",
-        "12. Run profile smoke checks in `/setup#profile-smoke`.",
+        "12. Run profile smoke checks in `/setup/profiles#profile-smoke`.",
         "13. Run role-specific acceptance prompts from `/setup/profile-acceptance.md` "
-        "and track them in `/setup#profile-acceptance-tracking`.",
+        "and track them in `/setup/profiles#profile-acceptance-tracking`.",
         "14. Review `/setup/company-launch-drill.md`, then make the founder "
         "go/no-go decision before `/setup/idea-intake.md`.",
         "",
@@ -229,7 +229,7 @@ def next_best_action(
     if profile_installation and profile_installation["status"] == "needs_setup":
         return (
             "Run `/setup/profile-installation.ps1`, then complete "
-            "`/setup#profile-installation-tracking`."
+            "`/setup/profiles#profile-installation-tracking`."
         )
 
     if _category_has_status(secret_requirements, "slack", {"needed"}):
@@ -244,7 +244,7 @@ def next_best_action(
         )
     if _checks_have_open_work(messaging_checks):
         return (
-            "Complete `/setup#messaging-verification` for Slack DMs, channel "
+            "Complete `/setup/messaging#messaging-verification` for Slack DMs, channel "
             "mentions, and Telegram urgent alerts."
         )
     if _checks_have_open_work(kanban_checks):
@@ -253,14 +253,17 @@ def next_best_action(
             "using `/setup/kanban-runbook.md`."
         )
     if _checks_have_open_work(schedule_checks):
-        return "Run manual standups, install cron, and complete `/setup#schedule-verification`."
+        return (
+            "Run manual standups, install cron, and complete "
+            "`/setup/verification#schedule-verification`."
+        )
     if _category_has_status(secret_requirements, "llm", {"needed", "deferred"}):
         return (
             "Load LLM provider credentials into each Hermes profile externally, "
-            "then run `/setup#profile-smoke`."
+            "then run `/setup/profiles#profile-smoke`."
         )
     if any(preference["status"] != "verified" for preference in model_preferences):
-        return "Run `/setup#profile-smoke` until every Hermes profile is verified."
+        return "Run `/setup/profiles#profile-smoke` until every Hermes profile is verified."
     if not _integration_ready(integrations, "runtime"):
         return (
             "Mark the LLM provider integration configured after every profile smoke "

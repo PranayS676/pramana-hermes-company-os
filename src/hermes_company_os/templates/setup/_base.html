@@ -1,0 +1,48 @@
+{% import "_macros.html" as ui %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Setup - Hermes Company OS</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="{{ url_for('static', path='/lucide.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/htmx.min.js') }}"></script>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
+  </head>
+  <body hx-boost="true">
+    <div id="app-progress" aria-hidden="true"></div>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">H</span>
+          <div>
+            <strong>Hermes Company OS</strong>
+            <small>Infrastructure setup</small>
+          </div>
+        </div>
+                <nav>
+          <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a class="active" href="/setup"><i data-lucide="settings-2"></i> Setup</a>
+          <a href="/projects"><i data-lucide="rocket"></i> Projects</a>
+        </nav>
+      </aside>
+
+      <main class="content">
+      <nav class="setup-subnav" aria-label="Setup sections">
+        <a href="/setup"{% if section == "hub" %} class="active"{% endif %}><i data-lucide="layout-grid"></i> Overview</a>
+        <a href="/setup/inputs"{% if section == "inputs" %} class="active"{% endif %}><i data-lucide="clipboard-list"></i> Founder inputs <span class="setup-subnav-count">6</span></a>
+        <a href="/setup/schedules"{% if section == "schedules" %} class="active"{% endif %}><i data-lucide="calendar-clock"></i> Plan & schedules <span class="setup-subnav-count">3</span></a>
+        <a href="/setup/models"{% if section == "models" %} class="active"{% endif %}><i data-lucide="brain-circuit"></i> Language models <span class="setup-subnav-count">3</span></a>
+        <a href="/setup/profiles"{% if section == "profiles" %} class="active"{% endif %}><i data-lucide="users-round"></i> Agent profiles <span class="setup-subnav-count">3</span></a>
+        <a href="/setup/messaging"{% if section == "messaging" %} class="active"{% endif %}><i data-lucide="message-square"></i> Messaging & credentials <span class="setup-subnav-count">3</span></a>
+        <a href="/setup/commands"{% if section == "commands" %} class="active"{% endif %}><i data-lucide="square-terminal"></i> Commands & activation <span class="setup-subnav-count">3</span></a>
+        <a href="/setup/verification"{% if section == "verification" %} class="active"{% endif %}><i data-lucide="shield-check"></i> Verification <span class="setup-subnav-count">2</span></a>
+        <a href="/setup/integrations"{% if section == "integrations" %} class="active"{% endif %}><i data-lucide="plug"></i> Integrations <span class="setup-subnav-count">1</span></a>
+      </nav>
+      {% block section_body %}{% endblock %}
+      </main>
+    </div>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

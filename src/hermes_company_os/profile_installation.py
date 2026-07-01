@@ -39,7 +39,7 @@ def profile_installation_payload(
         "entry_points": {
             "bootstrap": "/setup/bootstrap.ps1",
             "profile_artifacts": "/setup/profile-artifacts.md",
-            "profile_installation_tracking": "/setup#profile-installation-tracking",
+            "profile_installation_tracking": "/setup/profiles#profile-installation-tracking",
             "runtime_preflight": "/setup/runtime-preflight.md",
             "gateway_operations": "/setup/gateway-operations.md",
             "credential_loading": "/setup/credential-loading.md",
@@ -74,7 +74,7 @@ def profile_installation_markdown(**kwargs) -> str:
         ".\\profile-installation.ps1",
         "```",
         "",
-        "Paste the script output into `/setup#profile-installation-tracking` to "
+        "Paste the script output into `/setup/profiles#profile-installation-tracking` to "
         "bulk-update profile installation checks without storing file contents.",
         "",
         "## Expected Files",
@@ -87,7 +87,7 @@ def profile_installation_markdown(**kwargs) -> str:
         "## Dashboard Tracking",
         "",
         f"- Status: {_format_counts(payload['tracking']['status'])}",
-        "- Update checks at `/setup#profile-installation-tracking`.",
+        "- Update checks at `/setup/profiles#profile-installation-tracking`.",
         "",
         "## Profiles",
         "",

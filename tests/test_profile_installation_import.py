@@ -90,7 +90,7 @@ def test_profile_installation_import_redirect_summarizes_parse_result():
     )
 
     assert redirect == (
-        "/setup?profile_installation_imported=2"
+        "/setup/profiles?profile_installation_imported=2"
         "&profile_installation_unknown=1"
         "&profile_installation_incomplete=1"
         "&profile_installation_ignored=1"

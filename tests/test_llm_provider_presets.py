@@ -75,7 +75,7 @@ def test_llm_provider_presets_json_is_structured():
         )
     )
 
-    assert payload["entry_points"]["manual_preferences"] == "/setup#models"
+    assert payload["entry_points"]["manual_preferences"] == "/setup/models#models"
     assert payload["presets"][0]["profiles"]
 
 

@@ -1,0 +1,182 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="users-round"></i> Agent profiles</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="profile-installation-tracking">
+            {{ ui.panel_header("Profile Installation Tracking", link_url="/setup/profile-installation.md", link_label="Installation audit") }}
+            {% if profile_installation_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Profile audit import</strong>
+              <span>
+                {{ profile_installation_import_summary.imported }} imported,
+                {{ profile_installation_import_summary.incomplete }} incomplete,
+                {{ profile_installation_import_summary.unknown }} unknown,
+                {{ profile_installation_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-installation-audit">
+              <label>
+                Paste profile-installation.ps1 output
+                <textarea
+                  name="audit_text"
+                  rows="7"
+                  placeholder="FOUND chief-of-staff profile directory&#10;FOUND chief-of-staff command alias&#10;MISSING engineering-manager SOUL.md"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only no-secret FOUND/MISSING/DEFER audit lines. Missing required
+                identity files, starter files, command aliases, or profile directories mark
+                the matching profile installation blocked.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import audit output
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in profile_installation_checks %}
+              <div class="integration-row" id="profile-installation-tracking-{{ check.id }}">
+                <div>
+                  {{ ui.status_pill(check.status, check.status) }}
+                  <strong>{{ check.agent_name }} - {{ check.label }}</strong>
+                  <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/profile-installation-checks/{{ check.id }}">
+                    <select name="status" aria-label="Installation status for {{ check.agent_name }} {{ check.label }}">
+                      {% for option in ["needed", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret installation evidence"
+                      aria-label="Installation evidence for {{ check.agent_name }} {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save installation status" type="submit" aria-label="Save installation status for {{ check.agent_name }} {{ check.label }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="profile-smoke">
+            {{ ui.panel_header("Profile Smoke Checks") }}
+            <div class="setup-timeline">
+              {% for preference in model_preferences %}
+              {% set smoke_run = profile_smoke_runs.get(preference.agent_id) %}
+              {% set smoke_blocker = profile_smoke_blockers.get(preference.agent_id, "") %}
+              <div class="timeline-row">
+                {{ ui.status_pill(smoke_run.status if smoke_run else "not run", smoke_run.status if smoke_run else "deferred") }}
+                <div>
+                  <strong>{{ preference.agent_name }}</strong>
+                  <small>{{ preference.hermes_command }} - {{ preference.provider }} / {{ preference.model }}</small>
+                  {% if smoke_run %}
+                  <p>{{ smoke_run.error or smoke_run.output }}</p>
+                  <small>Last checked {{ smoke_run.created_at }}</small>
+                  {% else %}
+                  <p>Run after the profile command, model config, and external credential are ready.</p>
+                  {% endif %}
+                  {% if smoke_blocker %}
+                  <p id="profile-smoke-blocker-{{ preference.agent_id }}">{{ smoke_blocker }}</p>
+                  {% endif %}
+                  <form method="post" action="/setup/profile-smoke/{{ preference.agent_id }}">
+                    <button
+                      class="primary-button"
+                      type="submit"
+                      {% if smoke_blocker %}aria-describedby="profile-smoke-blocker-{{ preference.agent_id }}"{% endif %}
+                      {% if smoke_blocker %}disabled title="{{ smoke_blocker }}"{% endif %}
+                    >
+                      <i data-lucide="activity"></i> Run smoke check
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="profile-acceptance-tracking">
+            {% call ui.panel_header("Profile Acceptance Tracking") %}
+              <a href="/setup/profile-acceptance.md">Acceptance suite</a>
+              <a href="/setup/profile-acceptance-template.md">Reply template</a>
+            {% endcall %}
+            {% if profile_acceptance_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Acceptance import</strong>
+              <span>
+                {{ profile_acceptance_import_summary.imported }} imported,
+                {{ profile_acceptance_import_summary.invalid }} invalid,
+                {{ profile_acceptance_import_summary.unknown }} unknown,
+                {{ profile_acceptance_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-acceptance-reply">
+              <label>
+                Paste profile acceptance reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="engineering-manager-acceptance-1=verified | Architecture and testing answer accepted"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. `verified` checks still require
+                the matching profile smoke check to pass first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import acceptance checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in profile_acceptance_checks %}
+              <div class="integration-row" id="profile-acceptance-tracking-{{ check.id }}">
+                <div>
+                  {{ ui.status_pill(check.status, check.status) }}
+                  <strong>{{ check.agent_name }} - {{ check.title }}</strong>
+                  <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% set acceptance_blocker = profile_acceptance_blockers.get(check.id, "") %}
+                  {% if acceptance_blocker %}
+                  <p>{{ acceptance_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/profile-acceptance-checks/{{ check.id }}">
+                    <select name="status" aria-label="Acceptance status for {{ check.agent_name }} {{ check.title }}">
+                      {% for option in ["needed", "verified", "failed", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret acceptance evidence"
+                      aria-label="Acceptance evidence for {{ check.agent_name }} {{ check.title }}"
+                    >
+                    <button class="icon-button" title="Save acceptance status" type="submit" aria-label="Save acceptance status for {{ check.agent_name }} {{ check.title }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

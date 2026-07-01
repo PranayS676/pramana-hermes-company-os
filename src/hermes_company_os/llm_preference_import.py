@@ -44,7 +44,7 @@ def llm_preference_template_markdown(model_preferences: list[dict]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#llm-preference-import`",
+            "- Bulk import: `/setup/models#llm-preference-import`",
             "- Provider presets: `/setup/llm-provider-presets.md`",
             "- LLM provisioning: `/setup/llm-provisioning.md`",
             "",
@@ -64,10 +64,10 @@ def llm_preference_template_json(model_preferences: list[dict]) -> str:
         "allowed_statuses": sorted(ALLOWED_LLM_PREFERENCE_STATUSES),
         "editable_fields": sorted(EDITABLE_LLM_PREFERENCE_FIELDS),
         "entry_points": {
-            "bulk_import": "/setup#llm-preference-import",
+            "bulk_import": "/setup/models#llm-preference-import",
             "provider_presets": "/setup/llm-provider-presets.md",
             "llm_provisioning": "/setup/llm-provisioning.md",
-            "profile_smoke": "/setup#profile-smoke",
+            "profile_smoke": "/setup/profiles#profile-smoke",
         },
         "preferences": [
             {
@@ -154,7 +154,7 @@ def parse_llm_preference_reply(raw_text: str, model_preferences: list[dict]) -> 
 
 def llm_preference_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/models?"
         f"llm_preference_imported={summary['imported']}"
         f"&llm_preference_unknown={len(summary['unknown_ids'])}"
         f"&llm_preference_invalid={len(summary['invalid_preferences'])}"

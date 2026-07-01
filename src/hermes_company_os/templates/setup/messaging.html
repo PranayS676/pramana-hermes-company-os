@@ -1,0 +1,156 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="message-square"></i> Messaging & credentials</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="messaging-verification">
+            {{ ui.panel_header("Messaging Verification", link_url="/setup/messaging-verification-template.md", link_label="Reply template") }}
+            {% if messaging_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Messaging import</strong>
+              <span>
+                {{ messaging_import_summary.imported }} imported,
+                {{ messaging_import_summary.invalid }} invalid,
+                {{ messaging_import_summary.unknown }} unknown,
+                {{ messaging_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/messaging-verification-reply">
+              <label>
+                Paste messaging verification reply
+                <textarea
+                  name="reply_text"
+                  rows="7"
+                  placeholder="research-agent-slack-dm=verified | Founder DM reply observed"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports status and non-secret evidence only. Live `verified` checks still require
+                matching external credential status to be loaded first.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import messaging checks
+              </button>
+            </form>
+            <div class="integration-table">
+              {% for check in messaging_checks %}
+              <div class="integration-row">
+                <div>
+                  {{ ui.status_pill(check.status, check.status) }}
+                  <strong>{{ check.label }}</strong>
+                  <small>{{ check.platform }} - {{ check.owner_name }}</small>
+                  <p>{{ check.instructions }}</p>
+                  {% set credential_blocker = messaging_credential_blockers.get(check.id, "") %}
+                  {% if credential_blocker %}
+                  <p>{{ credential_blocker }}</p>
+                  {% endif %}
+                  {% if check.evidence %}<p>{{ check.evidence }}</p>{% endif %}
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/messaging-checks/{{ check.id }}">
+                    <select name="status" aria-label="Messaging status for {{ check.owner_name }} {{ check.label }}">
+                      {% for option in ["needed", "loaded", "verified", "blocked", "deferred"] %}
+                      <option value="{{ option }}" {% if check.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                    <input
+                      name="evidence"
+                      value="{{ check.evidence }}"
+                      placeholder="non-secret evidence"
+                      aria-label="Messaging evidence for {{ check.owner_name }} {{ check.label }}"
+                    >
+                    <button class="icon-button" title="Save verification" type="submit" aria-label="Save messaging verification for {{ check.owner_name }} {{ check.label }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+<div class="panel wide" id="credential-status-import">
+            {{ ui.panel_header("Credential Status Import", link_url="/setup/credential-status-template.md", link_label="Status template") }}
+            {% if credential_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Credential import</strong>
+              <span>
+                {{ credential_import_summary.imported }} imported,
+                {{ credential_import_summary.invalid }} invalid,
+                {{ credential_import_summary.unknown }} unknown,
+                {{ credential_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/credential-status-reply">
+              <label>
+                Paste credential status reply
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder="chief-of-staff-slack-bot-token=loaded | Loaded externally into profile .env"
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Updates status metadata only. Do not paste bot tokens, API keys, OAuth
+                payloads, request headers, private endpoints, or raw logs.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import credential statuses
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="secret-status">
+            {{ ui.panel_header("External Secret Status") }}
+            <div class="integration-table">
+              {% for secret in secret_requirements %}
+              <div class="integration-row">
+                <div>
+                  {{ ui.status_pill(secret.status, secret.status) }}
+                  <strong>{{ secret.label }}</strong>
+                  <small>
+                    {{ secret.category }}
+                    {% if secret.owner_name %} - {{ secret.owner_name }}{% endif %}
+                  </small>
+                  <p>{{ secret.destination }} - {{ secret.environment_key }}</p>
+                </div>
+                <div class="integration-actions">
+                  <form method="post" action="/setup/secret-requirements/{{ secret.id }}">
+                    <select name="status" aria-label="Secret requirement status for {{ secret.label }}">
+                      {% if secret.category == "llm" %}
+                      {% set secret_status_options = ["needed", "loaded", "deferred"] %}
+                      {% else %}
+                      {% set secret_status_options = ["needed", "loaded", "verified", "deferred"] %}
+                      {% endif %}
+                      {% for option in secret_status_options %}
+                      <option value="{{ option }}" {% if secret.status == option %}selected{% endif %}>{{ option }}</option>
+                      {% endfor %}
+                      {% if secret.category == "llm" and secret.status == "verified" %}
+                      <option value="loaded">verified by smoke check</option>
+                      {% endif %}
+                    </select>
+                    <input
+                      name="notes"
+                      value="{{ secret.notes }}"
+                      placeholder="no secret values"
+                      aria-label="Secret requirement notes for {{ secret.label }}"
+                    >
+                    <button class="icon-button" title="Save status" type="submit" aria-label="Save secret requirement status for {{ secret.label }}">
+                      <i data-lucide="save"></i>
+                    </button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+{% endblock %}

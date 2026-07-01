@@ -51,7 +51,7 @@ def test_founder_input_request_markdown_separates_safe_inputs_from_external_secr
     assert "Deferred Non-Secret Preferences" in markdown
     assert "External Secrets To Load Later" in markdown
     assert "Focused Setup Reply Templates" in markdown
-    assert "/setup#input-import" in markdown
+    assert "/setup/inputs#input-import" in markdown
     assert "/setup/slack-channel-template.md" in markdown
     assert "/setup/schedule-config-template.md" in markdown
     assert "Chief of Staff Slack bot token" in markdown
@@ -94,11 +94,11 @@ def test_founder_input_request_json_is_structured_and_no_secret_examples():
         "/setup/telegram-recipient-template.md"
     )
     assert focused_by_id["schedule_config"]["dashboard_anchor"] == (
-        "/setup#schedule-config-import"
+        "/setup/schedules#schedule-config-import"
     )
-    assert payload["entry_points"]["reply_import"] == "/setup#input-import"
+    assert payload["entry_points"]["reply_import"] == "/setup/inputs#input-import"
     assert payload["entry_points"]["collector_script"] == "/setup/founder-inputs.ps1"
-    assert payload["entry_points"]["safe_inputs"] == "/setup#inputs"
+    assert payload["entry_points"]["safe_inputs"] == "/setup/inputs#inputs"
     assert payload["entry_points"]["slack_bot_user_template"] == (
         "/setup/slack-bot-user-map-template.md"
     )
@@ -195,5 +195,5 @@ def test_founder_input_import_redirect_summarizes_parse_result():
     )
 
     assert redirect == (
-        "/setup?input_imported=2&input_unknown=1&input_deferred=1&input_ignored=1#inputs"
+        "/setup/inputs?input_imported=2&input_unknown=1&input_deferred=1&input_ignored=1#inputs"
     )

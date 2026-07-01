@@ -83,34 +83,44 @@ def test_disabled_project_gates_have_reachable_reasons(tmp_path):
 def test_setup_repeated_rows_have_accessible_control_names(tmp_path):
     _, client = app_and_client(tmp_path)
 
-    response = client.get("/setup")
-
-    assert response.status_code == 200
-    expected_fragments = [
-        "Installation status for",
-        "Installation evidence for",
-        "Save installation status for",
-        "Acceptance status for",
-        "Acceptance evidence for",
-        "Save acceptance status for",
-        "Messaging status for",
-        "Messaging evidence for",
-        "Save messaging verification for",
-        "Secret requirement status for",
-        "Secret requirement notes for",
-        "Save secret requirement status for",
-        "Schedule verification status for",
-        "Schedule verification evidence for",
-        "Save schedule verification for",
-        "Kanban verification status for",
-        "Kanban verification evidence for",
-        "Save Kanban verification for",
-        "Integration status for",
-        "Save integration status for",
-    ]
-    for fragment in expected_fragments:
-        assert fragment in response.text
-    assert 'aria-describedby="profile-smoke-blocker-' in response.text
+    # Setup is split into section pages; each repeated-row control lives on the
+    # page that owns that section.
+    section_fragments = {
+        "/setup/profiles": [
+            "Installation status for",
+            "Installation evidence for",
+            "Save installation status for",
+            "Acceptance status for",
+            "Acceptance evidence for",
+            "Save acceptance status for",
+            'aria-describedby="profile-smoke-blocker-',
+        ],
+        "/setup/messaging": [
+            "Messaging status for",
+            "Messaging evidence for",
+            "Save messaging verification for",
+            "Secret requirement status for",
+            "Secret requirement notes for",
+            "Save secret requirement status for",
+        ],
+        "/setup/verification": [
+            "Schedule verification status for",
+            "Schedule verification evidence for",
+            "Save schedule verification for",
+            "Kanban verification status for",
+            "Kanban verification evidence for",
+            "Save Kanban verification for",
+        ],
+        "/setup/integrations": [
+            "Integration status for",
+            "Save integration status for",
+        ],
+    }
+    for path, fragments in section_fragments.items():
+        response = client.get(path)
+        assert response.status_code == 200, path
+        for fragment in fragments:
+            assert fragment in response.text, f"{fragment!r} missing from {path}"
 
 
 def test_status_labels_are_not_color_only_on_decision_project_and_queue_pages(tmp_path):

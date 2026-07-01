@@ -124,7 +124,7 @@ def kanban_provisioning_payload(
             "kanban_diagnostics": "/setup/kanban-diagnostics.ps1",
             "project_workflow": "/setup/project-workflow.md",
             "project_workflow_json": "/setup/project-workflow.json",
-            "kanban_verification": "/setup#kanban-verification",
+            "kanban_verification": "/setup/verification#kanban-verification",
             "projects": "/projects",
         },
     }
@@ -209,7 +209,7 @@ def kanban_provisioning_markdown(**kwargs) -> str:
             "- `hermes kanban diagnostics --json` passes.",
             "- The first project workflow creates local tasks and documents.",
             "- One dashboard task push receives a remote Hermes Kanban task ID.",
-            "- `/setup#kanban-verification` checks are all `verified`.",
+            "- `/setup/verification#kanban-verification` checks are all `verified`.",
             "",
         ]
     )

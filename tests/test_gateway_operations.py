@@ -85,7 +85,7 @@ def test_gateway_operations_payload_maps_profiles_commands_and_statuses():
     assert payload["profiles"][0]["messaging_status"] == {"needed": 1, "deferred": 1}
     assert payload["profiles"][1]["secret_status"] == {}
     assert payload["entry_points"]["messaging_verification"] == (
-        "/setup#messaging-verification"
+        "/setup/messaging#messaging-verification"
     )
 
 

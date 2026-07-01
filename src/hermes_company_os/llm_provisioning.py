@@ -74,7 +74,7 @@ def llm_provisioning_payload(
             "finalization_runner": "/setup/llm-finalize.ps1",
             "secret_audit": "/setup/secret-audit.ps1",
             "smoke_drill": "/setup/llm-smoke.md",
-            "profile_smoke": "/setup#profile-smoke",
+            "profile_smoke": "/setup/profiles#profile-smoke",
             "profile_acceptance": "/setup/profile-acceptance.md",
         },
     }
@@ -161,7 +161,7 @@ def llm_provisioning_markdown(**kwargs) -> str:
             "",
             "- Every expected provider key name is present in the real Hermes profile runtime.",
             "- `/setup/secret-audit.ps1 -AuditLlm` passes without printing values.",
-            "- Every profile smoke check passes in `/setup#profile-smoke`.",
+            "- Every profile smoke check passes in `/setup/profiles#profile-smoke`.",
             "- Every model preference is marked `verified`.",
             "- Every LLM credential requirement is marked `verified`.",
             "- `llm-provider` integration status is `configured`.",

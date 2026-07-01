@@ -62,7 +62,8 @@ def project_workflow_payload(
             {
                 "step": 3,
                 "action": "Run Kanban diagnostics before pushing.",
-                "expected": "`/setup#kanban-verification` records diagnostics as verified.",
+                "expected": "`/setup/verification#kanban-verification` "
+                "records diagnostics as verified.",
             },
             {
                 "step": 4,

@@ -1322,6 +1322,43 @@ summary {
   padding: 16px;
 }
 
+/* Setup hub: cards that link to each section page */
+.setup-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.setup-card:hover {
+  border-color: var(--accent);
+}
+
+.setup-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.setup-card-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .agent-page {
   max-width: 1160px;
   margin: 0 auto;

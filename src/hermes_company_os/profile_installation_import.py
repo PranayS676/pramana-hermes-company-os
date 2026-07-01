@@ -69,7 +69,7 @@ def parse_profile_installation_audit(
 
 def profile_installation_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/profiles?"
         f"profile_installation_imported={summary['imported']}"
         f"&profile_installation_unknown={len(summary['unknown_agent_ids'])}"
         f"&profile_installation_incomplete={len(summary['incomplete_agent_ids'])}"

@@ -118,97 +118,90 @@ def test_setup_page_loads(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     client = TestClient(app)
 
-    response = client.get("/setup")
+    # The setup surface is split into a hub plus one page per section; each page
+    # is asserted against the content it now owns.
+    page_expectations = {
+        "/setup": [
+            "Company infrastructure readiness",
+            "Founder return packet",
+            "Founder input request",
+            "Input collector",
+            "Founder next actions",
+            "Founder decision queue",
+            "Team topology",
+            "Delegation playbook",
+            "Profile installation audit",
+            "Profile acceptance",
+            "Standup cron",
+        ],
+        "/setup/inputs": [
+            "Deferred Setup Inputs",
+            "Founder Reply Import",
+            "Import safe inputs",
+            "Slack Bot User ID Import",
+            "/setup/slack-bot-user-map-template.md",
+            "slack-bot-user-map-reply",
+            "Telegram Recipient ID Import",
+            "/setup/telegram-recipient-template.md",
+            "telegram-recipient-reply",
+            "Slack Channel ID Import",
+            "/setup/slack-channel-template.md",
+            "slack-channel-reply",
+            "Profile Personalization Import",
+            "/setup/profile-personalization-reply",
+            "Import profile personalization",
+        ],
+        "/setup/schedules": [
+            "Schedule Configuration Import",
+            "/setup/schedule-config-template.md",
+            "schedule-config-reply",
+        ],
+        "/setup/models": [
+            "LLM Profile Preferences",
+            "LLM Preference Import",
+            "/setup/llm-preference-reply",
+            "Import LLM preferences",
+            "LLM Provider Presets",
+            "Apply preset",
+        ],
+        "/setup/profiles": [
+            "Profile Installation Tracking",
+            "Import audit output",
+            "Profile Acceptance Tracking",
+            "Reply template",
+            "/setup/profile-acceptance-reply",
+            "Import acceptance checks",
+            "Profile Smoke Checks",
+        ],
+        "/setup/messaging": [
+            "Credential Status Import",
+            "Import credential statuses",
+            "Messaging Verification",
+            "External Secret Status",
+        ],
+        "/setup/commands": [
+            "Profile apply script",
+            "Standup Cron",
+        ],
+        "/setup/verification": [
+            "Schedule Verification",
+            "/setup/schedule-verification-reply",
+            "Import schedule checks",
+            "Kanban Verification",
+            "/setup/kanban-verification-reply",
+            "Import Kanban checks",
+        ],
+        "/setup/integrations": [
+            "Chief of Staff Slack bot",
+            "Founder Telegram urgent alerts",
+        ],
+    }
 
-    assert response.status_code == 200
-    assert "Company infrastructure readiness" in response.text
-    assert "Deferred Setup Inputs" in response.text
-    assert "Founder Reply Import" in response.text
-    assert "Import safe inputs" in response.text
-    assert "Slack Bot User ID Import" in response.text
-    assert "/setup/slack-bot-user-map-template.md" in response.text
-    assert "slack-bot-user-map-reply" in response.text
-    assert "Telegram Recipient ID Import" in response.text
-    assert "/setup/telegram-recipient-template.md" in response.text
-    assert "telegram-recipient-reply" in response.text
-    assert "Slack Channel ID Import" in response.text
-    assert "/setup/slack-channel-template.md" in response.text
-    assert "slack-channel-reply" in response.text
-    assert "Credential Status Import" in response.text
-    assert "Import credential statuses" in response.text
-    assert "Founder return packet" in response.text
-    assert "Founder input request" in response.text
-    assert "Input collector" in response.text
-    assert "Founder next actions" in response.text
-    assert "Founder decision queue" in response.text
-    assert "Team topology" in response.text
-    assert "Delegation playbook" in response.text
-    assert "LLM Profile Preferences" in response.text
-    assert "LLM Preference Import" in response.text
-    assert "/setup/llm-preference-reply" in response.text
-    assert "Import LLM preferences" in response.text
-    assert "LLM Provider Presets" in response.text
-    assert "Apply preset" in response.text
-    assert "Profile apply script" in response.text
-    assert "Profile Personalization Import" in response.text
-    assert "/setup/profile-personalization-reply" in response.text
-    assert "Import profile personalization" in response.text
-    assert "Profile installation audit" in response.text
-    assert "Profile Installation Tracking" in response.text
-    assert "Import audit output" in response.text
-    assert "Profile acceptance" in response.text
-    assert "Profile Acceptance Tracking" in response.text
-    assert "Reply template" in response.text
-    assert "/setup/profile-acceptance-reply" in response.text
-    assert "Import acceptance checks" in response.text
-    assert "Profile Smoke Checks" in response.text
-    assert "Messaging Verification" in response.text
-    assert "Schedule Verification" in response.text
-    assert "/setup/schedule-verification-reply" in response.text
-    assert "Import schedule checks" in response.text
-    assert "Schedule Configuration Import" in response.text
-    assert "/setup/schedule-config-template.md" in response.text
-    assert "schedule-config-reply" in response.text
-    assert "Kanban Verification" in response.text
-    assert "/setup/kanban-verification-reply" in response.text
-    assert "Import Kanban checks" in response.text
-    assert "Slack manifest starter" in response.text
-    assert "Slack provisioning" in response.text
-    assert "Slack workspace matrix" in response.text
-    assert "Telegram BotFather" in response.text
-    assert "Telegram provisioning" in response.text
-    assert "Telegram urgent policy" in response.text
-    assert "Messaging drill" in response.text
-    assert "Gateway operations" in response.text
-    assert "LLM credentials" in response.text
-    assert "LLM provisioning" in response.text
-    assert "Founder input ledger" in response.text
-    assert "LLM finalization runner" in response.text
-    assert "LLM smoke drill" in response.text
-    assert "Profile LLM .env starter" in response.text
-    assert "Secret audit" in response.text
-    assert "Hermes runtime" in response.text
-    assert "Runtime preflight" in response.text
-    assert "Schedule provisioning" in response.text
-    assert "Standup preview" in response.text
-    assert "Standup runbook" in response.text
-    assert "Standup cron" in response.text
-    assert "Idea intake" in response.text
-    assert "Project workflow handoff" in response.text
-    assert "Kanban provisioning" in response.text
-    assert "Kanban runbook" in response.text
-    assert "Kanban diagnostics" in response.text
-    assert "Activation sequence" in response.text
-    assert "Activation runner" in response.text
-    assert "Live verification" in response.text
-    assert "Verification evidence" in response.text
-    assert "Credential loading sequence" in response.text
-    assert "Company manifest" in response.text
-    assert "Launch drill" in response.text
-    assert "Kickoff readiness" in response.text
-    assert "External Secret Status" in response.text
-    assert "Chief of Staff Slack bot" in response.text
-    assert "Founder Telegram urgent alerts" in response.text
+    for path, fragments in page_expectations.items():
+        response = client.get(path)
+        assert response.status_code == 200, path
+        for fragment in fragments:
+            assert fragment in response.text, f"{fragment!r} missing from {path}"
 
 
 def test_projects_page_loads(tmp_path):
@@ -352,7 +345,7 @@ def test_profile_artifacts_route(tmp_path):
     assert "sk-" not in template.text
     assert template_json.status_code == 200
     assert template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#profile-personalization-import"
+        "/setup/inputs#profile-personalization-import"
     )
 
 
@@ -514,7 +507,7 @@ def test_profile_personalization_reply_import_updates_artifacts(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?profile_personalization_imported=1"
+        "/setup/inputs?profile_personalization_imported=1"
         "&profile_personalization_unknown=0"
         "&profile_personalization_invalid=0"
         "&profile_personalization_ignored=0"
@@ -737,7 +730,9 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in founder_handoff.text
     assert founder_handoff_json.status_code == 200
     assert founder_handoff_json.json()["title"] == "Founder Return Packet"
-    assert founder_handoff_json.json()["entry_points"]["input_import"] == ("/setup#input-import")
+    assert founder_handoff_json.json()["entry_points"]["input_import"] == (
+        "/setup/inputs#input-import"
+    )
     assert founder_input_request.status_code == 200
     assert "Founder Input Request" in founder_input_request.text
     assert "Reply Template" in founder_input_request.text
@@ -746,7 +741,7 @@ def test_external_setup_plan_routes(tmp_path):
     assert "xapp-" not in founder_input_request.text
     assert "sk-" not in founder_input_request.text
     assert founder_input_json.status_code == 200
-    assert founder_input_json.json()["entry_points"]["safe_inputs"] == "/setup#inputs"
+    assert founder_input_json.json()["entry_points"]["safe_inputs"] == "/setup/inputs#inputs"
     assert founder_input_json.json()["entry_points"]["collector_script"] == (
         "/setup/founder-inputs.ps1"
     )
@@ -819,23 +814,23 @@ def test_external_setup_plan_routes(tmp_path):
         "profile_acceptance_final",
     ]
     assert credential_loading_payload["entry_points"]["profile_installation"] == (
-        "/setup#profile-installation-tracking"
+        "/setup/profiles#profile-installation-tracking"
     )
     assert credential_loading_payload["entry_points"]["profile_acceptance"] == (
-        "/setup#profile-acceptance-tracking"
+        "/setup/profiles#profile-acceptance-tracking"
     )
     assert credential_loading_payload["entry_points"]["live_verification"] == (
         "/setup/live-verification.md"
     )
     assert credential_status_template.status_code == 200
     assert "External Credential Status Template" in credential_status_template.text
-    assert "/setup#credential-status-import" in credential_status_template.text
+    assert "/setup/messaging#credential-status-import" in credential_status_template.text
     assert "xoxb-" not in credential_status_template.text
     assert "xapp-" not in credential_status_template.text
     assert "sk-" not in credential_status_template.text
     assert credential_status_json.status_code == 200
     assert credential_status_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#credential-status-import"
+        "/setup/messaging#credential-status-import"
     )
     assert founder_next_actions.status_code == 200
     assert "Founder Next Actions" in founder_next_actions.text
@@ -866,7 +861,7 @@ def test_external_setup_plan_routes(tmp_path):
     )
     assert "local_runtime" in founder_next_actions_json.json()
     assert founder_next_actions_json.json()["entry_points"]["profile_installation"] == (
-        "/setup#profile-installation-tracking"
+        "/setup/profiles#profile-installation-tracking"
     )
     assert founder_decisions.status_code == 200
     assert "Founder Decision Queue" in founder_decisions.text
@@ -1056,13 +1051,13 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in profile_installation_script.text
     assert profile_personalization.status_code == 200
     assert "Profile Personalization Reply Template" in profile_personalization.text
-    assert "/setup#profile-personalization-import" in profile_personalization.text
+    assert "/setup/inputs#profile-personalization-import" in profile_personalization.text
     assert "xoxb-" not in profile_personalization.text
     assert "xapp-" not in profile_personalization.text
     assert "sk-" not in profile_personalization.text
     assert profile_personalization_json.status_code == 200
     assert profile_personalization_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#profile-personalization-import"
+        "/setup/inputs#profile-personalization-import"
     )
     assert profile_acceptance.status_code == 200
     assert "Profile Acceptance Suite" in profile_acceptance.text
@@ -1074,13 +1069,13 @@ def test_external_setup_plan_routes(tmp_path):
     assert profile_acceptance_json.json()["cases"][0]["status"] == "needed"
     assert profile_acceptance_template.status_code == 200
     assert "Profile Acceptance Reply Template" in profile_acceptance_template.text
-    assert "/setup#profile-acceptance-tracking" in profile_acceptance_template.text
+    assert "/setup/profiles#profile-acceptance-tracking" in profile_acceptance_template.text
     assert "xoxb-" not in profile_acceptance_template.text
     assert "xapp-" not in profile_acceptance_template.text
     assert "sk-" not in profile_acceptance_template.text
     assert profile_acceptance_template_json.status_code == 200
     assert profile_acceptance_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#profile-acceptance-tracking"
+        "/setup/profiles#profile-acceptance-tracking"
     )
     assert slack.status_code == 200
     assert "Slack Setup Plan" in slack.text
@@ -1109,10 +1104,10 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in slack_provisioning_script.text
     assert slack_channel_template.status_code == 200
     assert "Slack Channel ID Reply Template" in slack_channel_template.text
-    assert "/setup#slack-channel-import" in slack_channel_template.text
+    assert "/setup/inputs#slack-channel-import" in slack_channel_template.text
     assert slack_channel_template_json.status_code == 200
     assert slack_channel_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#slack-channel-import"
+        "/setup/inputs#slack-channel-import"
     )
     assert (
         secret_violations(
@@ -1129,10 +1124,10 @@ def test_external_setup_plan_routes(tmp_path):
     )
     assert slack_bot_user_template.status_code == 200
     assert "Slack Bot User ID Reply Template" in slack_bot_user_template.text
-    assert "/setup#slack-bot-user-import" in slack_bot_user_template.text
+    assert "/setup/inputs#slack-bot-user-import" in slack_bot_user_template.text
     assert slack_bot_user_template_json.status_code == 200
     assert slack_bot_user_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#slack-bot-user-import"
+        "/setup/inputs#slack-bot-user-import"
     )
     assert (
         secret_violations(
@@ -1168,10 +1163,10 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in telegram_botfather.text
     assert telegram_recipient_template.status_code == 200
     assert "Telegram Recipient ID Reply Template" in telegram_recipient_template.text
-    assert "/setup#telegram-recipient-import" in telegram_recipient_template.text
+    assert "/setup/inputs#telegram-recipient-import" in telegram_recipient_template.text
     assert telegram_recipient_template_json.status_code == 200
     assert telegram_recipient_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#telegram-recipient-import"
+        "/setup/inputs#telegram-recipient-import"
     )
     assert (
         secret_violations(
@@ -1270,18 +1265,18 @@ def test_external_setup_plan_routes(tmp_path):
     assert llm_provider_presets_json.status_code == 200
     assert llm_provider_presets_json.json()["verification_last"] is True
     assert llm_provider_presets_json.json()["entry_points"]["manual_preferences"] == (
-        "/setup#models"
+        "/setup/models#models"
     )
     assert llm_preference_template.status_code == 200
     assert "LLM Preference Reply Template" in llm_preference_template.text
-    assert "/setup#llm-preference-import" in llm_preference_template.text
+    assert "/setup/models#llm-preference-import" in llm_preference_template.text
     assert "xoxb-" not in llm_preference_template.text
     assert "xapp-" not in llm_preference_template.text
     assert "sk-" not in llm_preference_template.text
     assert llm_preference_template_json.status_code == 200
     assert llm_preference_template_json.json()["verification_last"] is True
     assert llm_preference_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#llm-preference-import"
+        "/setup/models#llm-preference-import"
     )
     assert llm_finalization.status_code == 200
     assert "LLM Finalization Runner" in llm_finalization.text
@@ -1361,10 +1356,10 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in schedule_provisioning_script.text
     assert schedule_config_template.status_code == 200
     assert "Schedule Configuration Reply Template" in schedule_config_template.text
-    assert "/setup#schedule-config-import" in schedule_config_template.text
+    assert "/setup/schedules#schedule-config-import" in schedule_config_template.text
     assert schedule_config_template_json.status_code == 200
     assert schedule_config_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#schedule-config-import"
+        "/setup/schedules#schedule-config-import"
     )
     assert (
         secret_violations(
@@ -1383,7 +1378,7 @@ def test_external_setup_plan_routes(tmp_path):
     assert "sk-" not in schedule_template.text
     assert schedule_template_json.status_code == 200
     assert schedule_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#schedule-verification"
+        "/setup/verification#schedule-verification"
     )
     assert standup_preview.status_code == 200
     assert "Standup Preview And Drill Pack" in standup_preview.text
@@ -1442,7 +1437,7 @@ def test_external_setup_plan_routes(tmp_path):
     assert secret_violations({"kanban_template": kanban_template.text}) == []
     assert kanban_template_json.status_code == 200
     assert kanban_template_json.json()["entry_points"]["bulk_import"] == (
-        "/setup#kanban-verification"
+        "/setup/verification#kanban-verification"
     )
     assert kanban_runbook.status_code == 200
     assert "Hermes Kanban Setup Runbook" in kanban_runbook.text
@@ -1537,8 +1532,8 @@ def test_external_setup_plan_routes(tmp_path):
     assert "Profile installation checks: none tracked." not in live_verification.text
     assert "Profile acceptance checks: 0 verified" in live_verification.text
     assert "Profile acceptance checks: none tracked." not in live_verification.text
-    assert "/setup#profile-acceptance-tracking" in live_verification.text
-    assert "/setup#profile-smoke" in live_verification.text
+    assert "/setup/profiles#profile-acceptance-tracking" in live_verification.text
+    assert "/setup/profiles#profile-smoke" in live_verification.text
     assert "xoxb-" not in live_verification.text
     assert "xapp-" not in live_verification.text
     assert "sk-" not in live_verification.text
@@ -1694,7 +1689,7 @@ def test_founder_input_reply_import_route_updates_safe_inputs_only(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?input_imported=3&input_unknown=1&input_deferred=1&input_ignored=1#inputs"
+        "/setup/inputs?input_imported=3&input_unknown=1&input_deferred=1&input_ignored=1#inputs"
     )
     values = app.state.repository.setup_input_map()
     assert values["founder_name"] == "Masad"
@@ -1739,7 +1734,7 @@ def test_slack_channel_reply_import_route_updates_safe_channel_ids(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?slack_channel_imported=2&slack_channel_unknown=1"
+        "/setup/inputs?slack_channel_imported=2&slack_channel_unknown=1"
         "&slack_channel_invalid=0&slack_channel_ignored=1"
         "#slack-channel-import"
     )
@@ -1803,7 +1798,7 @@ def test_slack_bot_user_reply_import_route_updates_safe_bot_ids(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?slack_bot_user_imported=2&slack_bot_user_unknown=1"
+        "/setup/inputs?slack_bot_user_imported=2&slack_bot_user_unknown=1"
         "&slack_bot_user_invalid=0&slack_bot_user_ignored=1"
         "#slack-bot-user-import"
     )
@@ -1864,7 +1859,7 @@ def test_telegram_recipient_reply_import_route_updates_safe_ids(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?telegram_recipient_imported=2&telegram_recipient_unknown=1"
+        "/setup/inputs?telegram_recipient_imported=2&telegram_recipient_unknown=1"
         "&telegram_recipient_invalid=0&telegram_recipient_ignored=1"
         "#telegram-recipient-import"
     )
@@ -1927,7 +1922,7 @@ def test_credential_status_reply_import_route_updates_secret_statuses(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?credential_imported=2&credential_unknown=1"
+        "/setup/messaging?credential_imported=2&credential_unknown=1"
         "&credential_invalid=0&credential_ignored=1#secret-status"
     )
     slack_requirement = app.state.repository.get_secret_requirement(
@@ -2017,7 +2012,7 @@ def test_schedule_config_reply_import_route_updates_schedule_metadata(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?schedule_config_imported=2&schedule_config_unknown=1"
+        "/setup/schedules?schedule_config_imported=2&schedule_config_unknown=1"
         "&schedule_config_invalid=0&schedule_config_ignored=1"
         "#schedule-config-import"
     )
@@ -2149,7 +2144,7 @@ def test_llm_preference_reply_import_updates_config_export(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?llm_preference_imported=1"
+        "/setup/models?llm_preference_imported=1"
         "&llm_preference_unknown=0"
         "&llm_preference_invalid=0"
         "&llm_preference_ignored=0#llm-preference-import"
@@ -2259,7 +2254,7 @@ def test_apply_llm_provider_preset_updates_all_profile_preferences(tmp_path):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/setup#models"
+    assert response.headers["location"] == "/setup/models#models"
     research = app.state.repository.get_model_preference("research-agent")
     engineering = app.state.repository.get_model_preference("engineering-manager")
     product = app.state.repository.get_model_preference("product-manager")
@@ -2476,7 +2471,7 @@ def test_messaging_check_update_requires_loaded_platform_credentials(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     client = TestClient(app)
 
-    setup = client.get("/setup")
+    setup = client.get("/setup/messaging")
     response = client.post(
         "/setup/messaging-checks/research-agent-slack-dm",
         data={
@@ -2560,9 +2555,8 @@ def test_schedule_update_route_changes_generated_cron(tmp_path):
     assert response.status_code == 303
     schedule = app.state.repository.get_schedule("afternoon-standup")
     assert schedule["name"] == "Late founder sync"
-    setup = client.get("/setup")
-    assert "every day at 6:30pm" in setup.text
-    assert "Late founder sync" in setup.text
+    assert "Late founder sync" in client.get("/setup/schedules").text
+    assert "every day at 6:30pm" in client.get("/setup/commands").text
 
 
 def test_schedule_check_update_route_changes_readiness_report(tmp_path):
@@ -2592,7 +2586,7 @@ def test_schedule_check_update_requires_chief_llm_and_messaging_first(tmp_path):
     app = create_app(Settings(database_path=tmp_path / "company.db"))
     client = TestClient(app)
 
-    setup = client.get("/setup")
+    setup = client.get("/setup/verification")
     blocked_by_llm = client.post(
         "/setup/schedule-checks/morning-standup-manual-run",
         data={
@@ -2703,7 +2697,7 @@ def test_schedule_verification_reply_import_updates_with_staged_manual_run(tmp_p
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?schedule_imported=4&schedule_unknown=0"
+        "/setup/verification?schedule_imported=4&schedule_unknown=0"
         "&schedule_invalid=0&schedule_ignored=0#schedule-verification"
     )
     for check in app.state.repository.list_schedule_checks():
@@ -2825,7 +2819,7 @@ def test_kanban_verification_reply_import_updates_and_configures_integration(tmp
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?kanban_imported=3&kanban_unknown=0"
+        "/setup/verification?kanban_imported=3&kanban_unknown=0"
         "&kanban_invalid=0&kanban_ignored=0#kanban-verification"
     )
     for check in app.state.repository.list_kanban_checks():
@@ -2979,7 +2973,7 @@ def test_profile_installation_audit_import_updates_checks(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?profile_installation_imported=2"
+        "/setup/profiles?profile_installation_imported=2"
         "&profile_installation_unknown=0"
         "&profile_installation_incomplete=0"
         "&profile_installation_ignored=0"
@@ -3120,7 +3114,7 @@ def test_profile_acceptance_reply_import_updates_after_smoke(tmp_path):
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/setup?profile_acceptance_imported=2"
+        "/setup/profiles?profile_acceptance_imported=2"
         "&profile_acceptance_unknown=0"
         "&profile_acceptance_invalid=0"
         "&profile_acceptance_ignored=0"

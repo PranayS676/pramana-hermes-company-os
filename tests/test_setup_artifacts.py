@@ -126,10 +126,10 @@ def test_activation_checklist_includes_model_gateway_kanban_and_cron():
     assert "`chief-of-staff model`" in plan
     assert "`chief-of-staff gateway setup`" in plan
     assert "/setup/profile-installation.ps1" in plan
-    assert "/setup#profile-installation-tracking" in plan
+    assert "/setup/profiles#profile-installation-tracking" in plan
     assert "/setup/llm-finalize.ps1" in plan
     assert "/setup/profile-acceptance.md" in plan
-    assert "/setup#profile-acceptance-tracking" in plan
+    assert "/setup/profiles#profile-acceptance-tracking" in plan
     assert "hermes kanban diagnostics --json" in plan
     assert '"every weekday at 9am"' in plan
     assert plan.index("## 3. Configure Slack And Telegram Gateways") < plan.index(

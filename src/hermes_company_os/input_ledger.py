@@ -75,9 +75,9 @@ def input_ledger_payload(
         },
         "focused_setup_imports": focused_imports,
         "entry_points": {
-            "input_import": "/setup#input-import",
-            "safe_inputs": "/setup#inputs",
-            "credential_status_import": "/setup#credential-status-import",
+            "input_import": "/setup/inputs#input-import",
+            "safe_inputs": "/setup/inputs#inputs",
+            "credential_status_import": "/setup/messaging#credential-status-import",
             "founder_input_request": "/setup/founder-input-request.md",
             "founder_handoff": "/setup/founder-handoff.md",
             "credential_loading": "/setup/credential-loading.md",
@@ -203,7 +203,7 @@ def _safe_input(item: dict) -> dict:
         "status": "captured" if value else "missing",
         "value": value,
         "help_text": item["help_text"],
-        "route": "/setup#inputs",
+        "route": "/setup/inputs#inputs",
         "can_continue_without": not required,
     }
 
@@ -216,7 +216,7 @@ def _deferred_preference(item: dict) -> dict:
         "label": item["label"],
         "status": "captured" if value else "deferred",
         "help_text": item["help_text"],
-        "route": "/setup#inputs",
+        "route": "/setup/inputs#inputs",
         "store_value_here": False,
     }
 
@@ -230,7 +230,7 @@ def _external_credential(item: dict) -> dict:
         "owner": owner,
         "destination": item["destination"],
         "status": item["status"],
-        "route": "/setup#secret-status",
+        "route": "/setup/messaging#secret-status",
         "status_only": True,
     }
 
@@ -279,7 +279,7 @@ def _founder_questions(
                     f"After loading {category} credentials externally, tell me "
                     "`loaded` or `verified` status only. Do not send credential values."
                 ),
-                "route": "/setup#credential-status-import",
+                "route": "/setup/messaging#credential-status-import",
             }
         )
     if any(item["status"] == "deferred" for item in deferred_preferences):

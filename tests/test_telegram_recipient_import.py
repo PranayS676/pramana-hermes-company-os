@@ -21,7 +21,7 @@ def test_telegram_recipient_templates_are_no_secret_and_show_current_values():
     assert "Telegram Recipient ID Reply Template" in markdown
     assert "founder_telegram_user_id=123456789" in markdown
     assert "telegram_home_channel=-100987654321" in markdown
-    assert payload["entry_points"]["bulk_import"] == "/setup#telegram-recipient-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/inputs#telegram-recipient-import"
     assert payload["values"]["founder_telegram_user_id"] == "123456789"
     assert secret_violations({"raw": raw}) == []
 
@@ -65,7 +65,7 @@ def test_telegram_recipient_redirect_counts_import_summary():
     }
 
     assert telegram_recipient_import_redirect(summary) == (
-        "/setup?telegram_recipient_imported=2&telegram_recipient_unknown=1"
+        "/setup/inputs?telegram_recipient_imported=2&telegram_recipient_unknown=1"
         "&telegram_recipient_invalid=0&telegram_recipient_ignored=1"
         "#telegram-recipient-import"
     )

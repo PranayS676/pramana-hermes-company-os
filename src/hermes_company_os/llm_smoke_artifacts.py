@@ -42,7 +42,7 @@ def llm_smoke_payload(
             "Verify scheduling and Kanban handoff.",
             "Load provider credentials into real Hermes profile .env files.",
             "Run `/setup/secret-audit.ps1 -AuditLlm`.",
-            "Run one `/setup#profile-smoke` check per profile.",
+            "Run one `/setup/profiles#profile-smoke` check per profile.",
             "Run role acceptance prompts from `/setup/profile-acceptance.md`.",
         ],
         "expected_response_schema": [
@@ -66,7 +66,7 @@ def llm_smoke_payload(
             "llm_finalization": "/setup/llm-finalize.md",
             "secret_audit": "/setup/secret-audit.ps1",
             "profile_acceptance": "/setup/profile-acceptance.md",
-            "setup_smoke_section": "/setup#profile-smoke",
+            "setup_smoke_section": "/setup/profiles#profile-smoke",
         },
     }
 

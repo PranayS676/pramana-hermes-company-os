@@ -4,17 +4,17 @@ PHASES = [
     (
         "Profile installation verified",
         "Profile Installation Tracking",
-        "/setup#profile-installation-tracking",
+        "/setup/profiles#profile-installation-tracking",
     ),
-    ("External credentials loaded", "Secret Status", "/setup#secret-status"),
-    ("Messaging works", "Messaging Verification", "/setup#messaging-verification"),
-    ("Kanban works", "Kanban Verification", "/setup#kanban-verification"),
-    ("Standups work", "Schedule Verification", "/setup#schedule-verification"),
-    ("Profiles answer", "Profile Smoke Checks", "/setup#profile-smoke"),
+    ("External credentials loaded", "Secret Status", "/setup/messaging#secret-status"),
+    ("Messaging works", "Messaging Verification", "/setup/messaging#messaging-verification"),
+    ("Kanban works", "Kanban Verification", "/setup/verification#kanban-verification"),
+    ("Standups work", "Schedule Verification", "/setup/verification#schedule-verification"),
+    ("Profiles answer", "Profile Smoke Checks", "/setup/profiles#profile-smoke"),
     (
         "Profile acceptance passes",
         "Profile Acceptance Tracking",
-        "/setup#profile-acceptance-tracking",
+        "/setup/profiles#profile-acceptance-tracking",
     ),
 ]
 
@@ -66,16 +66,18 @@ def live_verification_markdown(
             "",
             "## Exact Final Steps",
             "",
-            "1. Verify each installed Hermes profile at `/setup#profile-installation-tracking`.",
-            "2. Mark each externally loaded credential as `loaded` in `/setup#secret-status`.",
+            "1. Verify each installed Hermes profile at "
+            "`/setup/profiles#profile-installation-tracking`.",
+            "2. Mark each externally loaded credential as `loaded` in "
+            "`/setup/messaging#secret-status`.",
             "3. Start every Hermes profile gateway and complete Slack DM/channel checks.",
             "4. Trigger the Chief of Staff urgent Telegram check and record non-secret evidence.",
             "5. Run Kanban diagnostics from the dashboard and push one dashboard task.",
             "6. Run each active standup manually, then install cron and confirm the cron list.",
             "7. Configure provider/model credentials in each profile runtime.",
-            "8. Run every profile smoke check from `/setup#profile-smoke`.",
+            "8. Run every profile smoke check from `/setup/profiles#profile-smoke`.",
             "9. Run profile acceptance prompts and record outcomes at "
-            "`/setup#profile-acceptance-tracking`.",
+            "`/setup/profiles#profile-acceptance-tracking`.",
             "10. Open `/setup/activation-sequence.md` and confirm the next action is "
             "complete.",
             "",

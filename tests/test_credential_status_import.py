@@ -38,7 +38,7 @@ def test_credential_status_template_markdown_has_no_secret_examples():
 
     assert "External Credential Status Template" in markdown
     assert "chief-of-staff-slack-bot-token=needed | status note only" in markdown
-    assert "/setup#credential-status-import" in markdown
+    assert "/setup/messaging#credential-status-import" in markdown
     assert "xoxb-" not in markdown
     assert "xapp-" not in markdown
     assert "sk-" not in markdown
@@ -48,7 +48,7 @@ def test_credential_status_template_json_is_structured():
     payload = json.loads(credential_status_template_json(REQUIREMENTS))
 
     assert payload["title"] == "External Credential Status Template"
-    assert payload["entry_points"]["bulk_import"] == "/setup#credential-status-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/messaging#credential-status-import"
     assert payload["requirements"][0]["id"] == "chief-of-staff-slack-bot-token"
     assert payload["requirements"][0]["environment_key"] == "SLACK_BOT_TOKEN"
 
@@ -103,6 +103,6 @@ def test_credential_status_import_redirect_summarizes_parse_result():
     )
 
     assert redirect == (
-        "/setup?credential_imported=2&credential_unknown=1"
+        "/setup/messaging?credential_imported=2&credential_unknown=1"
         "&credential_invalid=1&credential_ignored=1#secret-status"
     )

@@ -43,7 +43,7 @@ def team_topology_payload(
             "profile_artifacts": "/setup/profile-artifacts.md",
             "slack_workspace": "/setup/slack-workspace.md",
             "company_manifest": "/setup/company-manifest.md",
-            "setup_dashboard": "/setup#profiles",
+            "setup_dashboard": "/setup/commands#profiles",
         },
     }
 

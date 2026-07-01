@@ -45,9 +45,9 @@ def test_founder_next_actions_routes_export_compact_current_packet(tmp_path):
         "/setup/founder-inputs.ps1"
     )
     assert payload["entry_points"]["profile_installation"] == (
-        "/setup#profile-installation-tracking"
+        "/setup/profiles#profile-installation-tracking"
     )
-    assert payload["entry_points"]["safe_inputs"] == "/setup#inputs"
+    assert payload["entry_points"]["safe_inputs"] == "/setup/inputs#inputs"
     assert payload["entry_points"]["live_verification"] == "/setup/live-verification.md"
     assert payload["entry_points"]["profile_acceptance_template"] == (
         "/setup/profile-acceptance-template.md"
@@ -57,7 +57,7 @@ def test_founder_next_actions_routes_export_compact_current_packet(tmp_path):
         "/setup/slack-channel-template.md"
     )
     assert focused_by_id["credential_status"]["dashboard_anchor"] == (
-        "/setup#credential-status-import"
+        "/setup/messaging#credential-status-import"
     )
     assert payload["missing_dashboard_inputs"]
     assert "local_runtime" in payload

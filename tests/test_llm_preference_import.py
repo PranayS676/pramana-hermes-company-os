@@ -41,7 +41,7 @@ def test_llm_preference_template_exports_no_secret_json():
 
     assert "LLM Preference Reply Template" in markdown
     assert payload["verification_last"] is True
-    assert payload["entry_points"]["bulk_import"] == "/setup#llm-preference-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/models#llm-preference-import"
     assert payload["preferences"][1]["status"] == "ready_for_verification"
     assert "verified" not in payload["allowed_statuses"]
     assert "xoxb-" not in raw
@@ -140,7 +140,7 @@ def test_llm_preference_import_redirect_targets_import_panel():
     )
 
     assert redirect == (
-        "/setup?llm_preference_imported=2"
+        "/setup/models?llm_preference_imported=2"
         "&llm_preference_unknown=1"
         "&llm_preference_invalid=1"
         "&llm_preference_ignored=1#llm-preference-import"

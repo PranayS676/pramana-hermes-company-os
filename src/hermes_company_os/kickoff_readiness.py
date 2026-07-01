@@ -189,7 +189,7 @@ def _input_gate(activation_checks: list[dict]) -> dict:
         "Founder and workspace inputs",
         "blocked",
         first["detail"],
-        f"Complete `/setup#inputs` for {first['label']}.",
+        f"Complete `/setup/inputs#inputs` for {first['label']}.",
     )
 
 
@@ -238,7 +238,7 @@ def _profile_installation_gate(profile_installation_checks: list[dict]) -> dict:
         f"{len(profile_installation_checks) - len(open_checks)} verified, "
         f"{len(open_checks)} open.",
         "Run `/setup/profile-installation.ps1` and import results at "
-        "`/setup#profile-installation-tracking`.",
+        "`/setup/profiles#profile-installation-tracking`.",
     )
 
 
@@ -260,7 +260,8 @@ def _messaging_gate(messaging_checks: list[dict], integrations: list[dict]) -> d
         "Slack and Telegram messaging",
         "blocked",
         f"{len(messaging_checks) - len(open_checks)} verified, {len(open_checks)} open.",
-        "Load external messaging credentials and complete `/setup#messaging-verification`.",
+        "Load external messaging credentials and complete "
+        "`/setup/messaging#messaging-verification`.",
     )
 
 
@@ -279,7 +280,7 @@ def _kanban_gate(kanban_checks: list[dict], integrations: list[dict]) -> dict:
         "Hermes Kanban handoff",
         "blocked",
         f"{len(kanban_checks) - len(open_checks)} verified, {len(open_checks)} open.",
-        "Run `/setup/kanban-runbook.md` and complete `/setup#kanban-verification`.",
+        "Run `/setup/kanban-runbook.md` and complete `/setup/verification#kanban-verification`.",
     )
 
 
@@ -299,7 +300,8 @@ def _schedule_gate(schedule_checks: list[dict], integrations: list[dict]) -> dic
         "Standup scheduling",
         "blocked",
         f"{len(active_checks) - len(open_checks)} verified, {len(open_checks)} open.",
-        "Verify manual standups, install cron, and complete `/setup#schedule-verification`.",
+        "Verify manual standups, install cron, and complete "
+        "`/setup/verification#schedule-verification`.",
     )
 
 
@@ -353,7 +355,7 @@ def _profile_acceptance_gate(profile_acceptance_checks: list[dict]) -> dict:
         f"{len(profile_acceptance_checks) - len(open_checks)} verified, "
         f"{len(open_checks)} open.",
         "After profile smoke checks pass, run `/setup/profile-acceptance.md` and "
-        "import outcomes at `/setup#profile-acceptance-tracking`.",
+        "import outcomes at `/setup/profiles#profile-acceptance-tracking`.",
     )
 
 

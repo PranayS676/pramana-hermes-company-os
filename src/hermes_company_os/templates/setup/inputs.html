@@ -1,0 +1,192 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+{% import "_macros.html" as ui %}
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Company setup</p>
+            <h1><i data-lucide="clipboard-list"></i> Founder inputs</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup">
+            <i data-lucide="arrow-left"></i> Setup overview
+          </a>
+        </section>
+        <section class="workspace-grid">
+<div class="panel wide" id="input-import">
+            {{ ui.panel_header("Founder Reply Import", link_url="/setup/founder-input-request.md", link_label="Request packet") }}
+            {% if input_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Input import</strong>
+              <span>
+                {{ input_import_summary.imported }} imported,
+                {{ input_import_summary.deferred }} deferred,
+                {{ input_import_summary.unknown }} unknown,
+                {{ input_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/founder-input-reply">
+              <label>
+                Paste non-secret reply template
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder="founder_name=&#10;slack_workspace_name=&#10;founder_slack_member_id=U..."
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only known non-secret setup keys. Tokens, API keys, OAuth payloads,
+                and secret environment assignments are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import safe inputs
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="profile-personalization-import">
+            {{ ui.panel_header("Profile Personalization Import", link_url="/setup/profile-personalization-template.md", link_label="Reply template") }}
+            {% if profile_personalization_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Profile import</strong>
+              <span>
+                {{ profile_personalization_import_summary.imported }} imported,
+                {{ profile_personalization_import_summary.invalid }} invalid,
+                {{ profile_personalization_import_summary.unknown }} unknown,
+                {{ profile_personalization_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/profile-personalization-reply">
+              <label>
+                Paste profile personalization JSON
+                <textarea
+                  name="reply_text"
+                  rows="10"
+                  placeholder='{"profiles":[{"id":"engineering-manager","description":"...","capabilities":["architecture","testing"]}]}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports no-secret starter profile metadata only. Omitted fields keep
+                their current values; regenerated profile artifacts reflect imported changes.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import profile personalization
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="slack-channel-import">
+            {{ ui.panel_header("Slack Channel ID Import", link_url="/setup/slack-channel-template.md", link_label="Reply template") }}
+            {% if slack_channel_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Slack channel import</strong>
+              <span>
+                {{ slack_channel_import_summary.imported }} imported,
+                {{ slack_channel_import_summary.invalid }} invalid,
+                {{ slack_channel_import_summary.unknown }} unknown,
+                {{ slack_channel_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/slack-channel-reply">
+              <label>
+                Paste Slack channel ID map
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"channel_ids":{"slack_channel_founder_command":"C012ABCDEF","slack_channel_engineering":"C045GHIJKL"}}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only non-secret Slack channel IDs for workspace setup.
+                Slack bot tokens, app tokens, OAuth payloads, and request logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Slack channels
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="slack-bot-user-import">
+            {{ ui.panel_header("Slack Bot User ID Import", link_url="/setup/slack-bot-user-map-template.md", link_label="Reply template") }}
+            {% if slack_bot_user_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Slack bot user import</strong>
+              <span>
+                {{ slack_bot_user_import_summary.imported }} imported,
+                {{ slack_bot_user_import_summary.invalid }} invalid,
+                {{ slack_bot_user_import_summary.unknown }} unknown,
+                {{ slack_bot_user_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/slack-bot-user-map-reply">
+              <label>
+                Paste Slack bot user ID map
+                <textarea
+                  name="reply_text"
+                  rows="8"
+                  placeholder='{"bot_user_ids":{"chief-of-staff":"U012ABCDEF","engineering-manager":"U045GHIJKL"}}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only non-secret Slack bot user IDs for separate profile bots.
+                Slack bot tokens, app tokens, OAuth payloads, and request logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Slack bot users
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="telegram-recipient-import">
+            {{ ui.panel_header("Telegram Recipient ID Import", link_url="/setup/telegram-recipient-template.md", link_label="Reply template") }}
+            {% if telegram_recipient_import_summary.imported is not none %}
+            <section class="notice-band compact">
+              <strong>Telegram recipient import</strong>
+              <span>
+                {{ telegram_recipient_import_summary.imported }} imported,
+                {{ telegram_recipient_import_summary.invalid }} invalid,
+                {{ telegram_recipient_import_summary.unknown }} unknown,
+                {{ telegram_recipient_import_summary.ignored }} ignored
+              </span>
+            </section>
+            {% endif %}
+            <form class="stacked-form" method="post" action="/setup/telegram-recipient-reply">
+              <label>
+                Paste Telegram recipient IDs
+                <textarea
+                  name="reply_text"
+                  rows="6"
+                  placeholder='{"founder_telegram_user_id":"123456789","telegram_home_channel":"-1001234567890"}'
+                ></textarea>
+              </label>
+              <p class="empty-state">
+                Imports only numeric Telegram recipient IDs. BotFather tokens,
+                API URLs, request headers, screenshots, and message logs are rejected.
+              </p>
+              <button class="primary-button" type="submit">
+                <i data-lucide="upload"></i> Import Telegram recipients
+              </button>
+            </form>
+          </div>
+<div class="panel wide" id="inputs">
+            {{ ui.panel_header("Deferred Setup Inputs") }}
+            <form class="setup-input-grid" method="post" action="/setup/inputs">
+              {% for input in setup_inputs %}
+              <label class="setup-input {{ input.group_name }}">
+                <span>
+                  {{ input.label }}
+                  {% if input.required %}<em>required</em>{% endif %}
+                </span>
+                <input
+                  name="{{ input.key }}"
+                  value="{{ input.value }}"
+                  placeholder="{% if input.secret_policy == 'secret_external' %}deferred external secret/config{% else %}enter {{ input.label|lower }}{% endif %}"
+                >
+                <small>{{ input.group_name }} - {{ input.help_text }}</small>
+              </label>
+              {% endfor %}
+              <button class="primary-button" type="submit">
+                <i data-lucide="save"></i> Save inputs
+              </button>
+            </form>
+          </div>
+        </section>
+{% endblock %}

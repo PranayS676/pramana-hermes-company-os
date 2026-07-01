@@ -19,7 +19,8 @@ def kanban_runbook_markdown(
         "",
         "1. Create Hermes profiles and starter profile artifacts.",
         "2. Run `/setup/kanban-diagnostics.ps1` locally.",
-        "3. Use the dashboard `Kanban diagnostics` button in `/setup#kanban-verification`.",
+        "3. Use the dashboard `Kanban diagnostics` button in "
+        "`/setup/verification#kanban-verification`.",
         "4. Create a dashboard task or project workflow.",
         "5. Push one task to Hermes Kanban and confirm a remote task ID appears.",
         "6. Mark remaining Kanban verification checks with non-secret evidence.",
@@ -88,7 +89,7 @@ def kanban_runbook_markdown(
             "- `hermes kanban init` has been run successfully.",
             "- `hermes kanban diagnostics --json` passes locally and from the dashboard.",
             "- At least one dashboard task has a remote Hermes Kanban task ID.",
-            "- `/setup#kanban-verification` checks are all `verified`.",
+            "- `/setup/verification#kanban-verification` checks are all `verified`.",
             "- `hermes-kanban` integration status is `configured`.",
             "",
             "## No-Secret Rule",

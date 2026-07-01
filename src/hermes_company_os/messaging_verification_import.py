@@ -52,7 +52,7 @@ def messaging_verification_template_markdown(messaging_checks: list[dict]) -> st
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#messaging-verification`",
+            "- Bulk import: `/setup/messaging#messaging-verification`",
             "- Live verification runbook: `/setup/live-verification.md`",
             "- Evidence summary: `/setup/verification-evidence.md`",
             "",
@@ -71,7 +71,7 @@ def messaging_verification_template_json(messaging_checks: list[dict]) -> str:
         ),
         "allowed_statuses": sorted(ALLOWED_MESSAGING_STATUSES),
         "entry_points": {
-            "bulk_import": "/setup#messaging-verification",
+            "bulk_import": "/setup/messaging#messaging-verification",
             "live_verification": "/setup/live-verification.md",
             "verification_evidence": "/setup/verification-evidence.md",
         },
@@ -130,7 +130,7 @@ def parse_messaging_verification_reply(
 
 def messaging_verification_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/messaging?"
         f"messaging_imported={summary['imported']}"
         f"&messaging_unknown={len(summary['unknown_ids'])}"
         f"&messaging_invalid={len(summary['invalid_statuses'])}"

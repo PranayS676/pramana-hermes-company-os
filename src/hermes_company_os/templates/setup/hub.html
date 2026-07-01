@@ -1,0 +1,268 @@
+{% extends "setup/_base.html" %}
+{% block section_body %}
+
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Before idea phase</p>
+            <h1>Company infrastructure readiness</h1>
+          </div>
+          <a class="secondary-button link-button-muted" href="/setup/bootstrap.ps1">
+            <i data-lucide="download"></i> Bootstrap script
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/profile-artifacts.md">
+            <i data-lucide="file-text"></i> Profile artifacts
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/profile-live-assets.md">
+            <i data-lucide="file-cog"></i> Live starter assets
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/team-topology.md">
+            <i data-lucide="network"></i> Team topology
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/profile-acceptance.md">
+            <i data-lucide="clipboard-check"></i> Profile acceptance
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/inputs-needed.md">
+            <i data-lucide="clipboard-list"></i> Inputs needed
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/founder-input-request.md">
+            <i data-lucide="messages-square"></i> Founder input request
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/founder-inputs.ps1">
+            <i data-lucide="square-terminal"></i> Input collector
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/first-run.ps1">
+            <i data-lucide="play"></i> First run helper
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/progress-board.md">
+            <i data-lucide="columns-3"></i> Progress board
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/founder-next-actions.md">
+            <i data-lucide="list-todo"></i> Founder next actions
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/readiness-report.md">
+            <i data-lucide="shield-check"></i> Readiness report
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/company-manifest.md">
+            <i data-lucide="package-check"></i> Company manifest
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/company-launch-drill.md">
+            <i data-lucide="clipboard-check"></i> Launch drill
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/kickoff-readiness.md">
+            <i data-lucide="rocket"></i> Kickoff readiness
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/runtime-preflight.md">
+            <i data-lucide="terminal"></i> Runtime preflight
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/hermes-runtime.md">
+            <i data-lucide="plug-zap"></i> Hermes runtime
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/hermes-install.ps1">
+            <i data-lucide="download"></i> Hermes install helper
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/secret-audit.ps1">
+            <i data-lucide="key-round"></i> Secret audit
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/activation-checklist.md">
+            <i data-lucide="list-checks"></i> Activation checklist
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/activation-sequence.md">
+            <i data-lucide="route"></i> Activation sequence
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/activation-runner.ps1">
+            <i data-lucide="square-terminal"></i> Activation runner
+          </a>
+          <a class="secondary-button link-button-muted" href="/setup/live-verification.md">
+            <i data-lucide="badge-check"></i> Live verification
+          </a>
+        </section>
+
+        <section class="notice-band">
+          <strong>Hermes version check</strong>
+          <span>{{ hermes_version }}</span>
+        </section>
+
+        <section class="notice-band">
+          <strong>Preflight inputs</strong>
+          <span>{{ input_completion.completed }} of {{ input_completion.required }} required non-secret inputs captured</span>
+        </section>
+
+        <section class="notice-band">
+          <strong>Activation gate</strong>
+          <span>
+            {% if activation_summary.ready %}ready{% else %}not ready{% endif %}
+            -
+            {{ activation_summary.blocking }} blocking,
+            {{ activation_summary.needs_setup }} needs setup,
+            {{ activation_summary.deferred }} deferred
+          </span>
+        </section>
+
+        <section class="notice-band">
+          <strong>External setup plans</strong>
+          <span>
+            <a href="/setup/slack-plan.md">Slack plan</a>
+            <a href="/setup/slack-manifests.json">Slack manifests</a>
+            <a href="/setup/slack-provisioning.md">Slack provisioning</a>
+            <a href="/setup/slack-provisioning.json">Slack provisioning JSON</a>
+            <a href="/setup/slack-provisioning.ps1">Slack provisioning script</a>
+            <a href="/setup/slack-channel-template.md">Slack channel template</a>
+            <a href="/setup/slack-channel-template.json">Slack channel JSON</a>
+            <a href="/setup/slack-bot-user-map.json">Slack bot user map</a>
+            <a href="/setup/slack-bot-user-map-template.md">Slack bot user template</a>
+            <a href="/setup/slack-bot-user-map-template.json">Slack bot user template JSON</a>
+            <a href="/setup/slack-workspace.md">Slack workspace matrix</a>
+            <a href="/setup/slack-invite-matrix.json">Slack invite JSON</a>
+            <a href="/setup/slack-invite-matrix.csv">Slack invite CSV</a>
+            <a href="/setup/telegram-plan.md">Telegram plan</a>
+            <a href="/setup/telegram-botfather.md">Telegram BotFather</a>
+            <a href="/setup/telegram-recipient-template.md">Telegram recipient template</a>
+            <a href="/setup/telegram-recipient-template.json">Telegram recipient JSON</a>
+            <a href="/setup/telegram-provisioning.md">Telegram provisioning</a>
+            <a href="/setup/telegram-provisioning.json">Telegram provisioning JSON</a>
+            <a href="/setup/telegram-provisioning.ps1">Telegram provisioning script</a>
+            <a href="/setup/telegram-policy.md">Telegram urgent policy</a>
+            <a href="/setup/telegram-policy.json">Telegram policy JSON</a>
+            <a href="/setup/messaging-drill.md">Messaging drill</a>
+            <a href="/setup/messaging-drill.json">Messaging drill JSON</a>
+            <a href="/setup/gateway-operations.md">Gateway operations</a>
+            <a href="/setup/gateway-operations.json">Gateway operations JSON</a>
+            <a href="/setup/gateway-operations.ps1">Gateway operations script</a>
+            <a href="/setup/llm-plan.md">LLM plan</a>
+            <a href="/setup/llm-credentials.md">LLM credentials</a>
+            <a href="/setup/llm-provisioning.md">LLM provisioning</a>
+            <a href="/setup/llm-provisioning.json">LLM provisioning JSON</a>
+            <a href="/setup/llm-provisioning.ps1">LLM provisioning script</a>
+            <a href="/setup/llm-provider-presets.md">LLM provider presets</a>
+            <a href="/setup/llm-provider-presets.json">LLM provider presets JSON</a>
+            <a href="/setup/llm-preference-template.md">LLM preference template</a>
+            <a href="/setup/llm-preference-template.json">LLM preference JSON</a>
+            <a href="/setup/llm-finalize.md">LLM finalization plan</a>
+            <a href="/setup/llm-finalize.ps1">LLM finalization runner</a>
+            <a href="/setup/llm-smoke.md">LLM smoke drill</a>
+            <a href="/setup/llm-smoke.json">LLM smoke JSON</a>
+            <a href="/setup/company-manifest.md">Company manifest</a>
+            <a href="/setup/company-manifest.json">Company manifest JSON</a>
+            <a href="/setup/company-launch-drill.md">Company launch drill</a>
+            <a href="/setup/company-launch-drill.json">Company launch drill JSON</a>
+            <a href="/setup/kickoff-readiness.md">Kickoff readiness</a>
+            <a href="/setup/kickoff-readiness.json">Kickoff readiness JSON</a>
+            <a href="/setup/team-topology.md">Team topology</a>
+            <a href="/setup/team-topology.json">Team topology JSON</a>
+            <a href="/setup/delegation-playbook.md">Delegation playbook</a>
+            <a href="/setup/delegation-playbook.json">Delegation playbook JSON</a>
+            <a href="/setup/profile-installation.md">Profile installation audit</a>
+            <a href="/setup/profile-installation.json">Profile installation JSON</a>
+            <a href="/setup/profile-installation.ps1">Profile installation script</a>
+            <a href="/setup/profile-live-assets.md">Profile live starter assets</a>
+            <a href="/setup/profile-live-assets.json">Profile live starter JSON</a>
+            <a href="/setup/profile-live-assets.ps1">Profile live starter script</a>
+            <a href="/setup/profile-acceptance.md">Profile acceptance suite</a>
+            <a href="/setup/profile-acceptance.json">Profile acceptance JSON</a>
+            <a href="/setup/profile-acceptance-template.md">Profile acceptance template</a>
+            <a href="/setup/profile-acceptance-template.json">Profile acceptance template JSON</a>
+            <a href="/setup/secret-audit.md">Secret audit plan</a>
+            <a href="/setup/secret-audit.ps1">Secret audit script</a>
+            <a href="/setup/hermes-runtime.md">Hermes runtime connect</a>
+            <a href="/setup/hermes-runtime.json">Hermes runtime JSON</a>
+            <a href="/setup/hermes-install.ps1">Hermes install helper</a>
+            <a href="/setup/runtime-preflight.md">Runtime preflight</a>
+            <a href="/setup/runtime-preflight.json">Runtime preflight JSON</a>
+            <a href="/setup/runtime-preflight.ps1">Runtime preflight script</a>
+            <a href="/setup/schedule-provisioning.md">Schedule provisioning</a>
+            <a href="/setup/schedule-provisioning.json">Schedule provisioning JSON</a>
+            <a href="/setup/schedule-provisioning.ps1">Schedule provisioning script</a>
+            <a href="/setup/schedule-config-template.md">Schedule config template</a>
+            <a href="/setup/schedule-config-template.json">Schedule config JSON</a>
+            <a href="/setup/schedule-verification-template.md">Schedule verification template</a>
+            <a href="/setup/schedule-verification-template.json">Schedule verification template JSON</a>
+            <a href="/setup/standup-preview.md">Standup preview</a>
+            <a href="/setup/standup-preview.json">Standup preview JSON</a>
+            <a href="/setup/standup-runbook.md">Standup runbook</a>
+            <a href="/setup/standup-cron.ps1">Standup cron</a>
+            <a href="/setup/idea-intake.md">Idea intake packet</a>
+            <a href="/setup/idea-intake.json">Idea intake JSON</a>
+            <a href="/setup/project-workflow.md">Project workflow handoff</a>
+            <a href="/setup/project-workflow.json">Project workflow JSON</a>
+            <a href="/setup/kanban-provisioning.md">Kanban provisioning</a>
+            <a href="/setup/kanban-provisioning.json">Kanban provisioning JSON</a>
+            <a href="/setup/kanban-provisioning.ps1">Kanban provisioning script</a>
+            <a href="/setup/kanban-verification-template.md">Kanban verification template</a>
+            <a href="/setup/kanban-verification-template.json">Kanban verification template JSON</a>
+            <a href="/setup/kanban-runbook.md">Kanban runbook</a>
+            <a href="/setup/kanban-diagnostics.ps1">Kanban diagnostics</a>
+            <a href="/setup/activation-sequence.md">Activation sequence</a>
+            <a href="/setup/activation-runner.md">Activation runner plan</a>
+            <a href="/setup/activation-runner.ps1">Activation runner script</a>
+            <a href="/setup/live-verification.md">Live verification</a>
+            <a href="/setup/verification-evidence.md">Verification evidence</a>
+            <a href="/setup/verification-evidence.json">Verification evidence JSON</a>
+            <a href="/setup/profile-personalization-template.md">Profile personalization template</a>
+            <a href="/setup/profile-personalization-template.json">Profile personalization JSON</a>
+            <a href="/setup/founder-handoff.md">Founder return packet</a>
+            <a href="/setup/founder-handoff.json">Founder return JSON</a>
+            <a href="/setup/founder-input-request.md">Founder input request</a>
+            <a href="/setup/founder-input-request.json">Founder input JSON</a>
+            <a href="/setup/founder-inputs.ps1">Founder input collector</a>
+            <a href="/setup/first-run.md">First run helper</a>
+            <a href="/setup/first-run.json">First run JSON</a>
+            <a href="/setup/first-run.ps1">First run script</a>
+            <a href="/setup/progress-board.md">Progress board</a>
+            <a href="/setup/progress-board.json">Progress board JSON</a>
+            <a href="/setup/input-ledger.md">Founder input ledger</a>
+            <a href="/setup/input-ledger.json">Founder input ledger JSON</a>
+            <a href="/setup/credential-loading.md">Credential loading sequence</a>
+            <a href="/setup/credential-loading.json">Credential loading JSON</a>
+            <a href="/setup/credential-status-template.md">Credential status template</a>
+            <a href="/setup/credential-status-template.json">Credential status JSON</a>
+            <a href="/setup/founder-next-actions.md">Founder next actions</a>
+            <a href="/setup/founder-next-actions.json">Founder next actions JSON</a>
+            <a href="/setup/founder-decisions.md">Founder decision queue</a>
+            <a href="/setup/founder-decisions.json">Founder decision queue JSON</a>
+          </span>
+        </section>
+
+        <section class="readiness-grid" aria-label="Readiness checks">
+          {% for item in readiness %}
+          <div class="readiness-card {{ item.status }}">
+            {{ ui.status_pill(item.status) }}
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.detail }}</small>
+          </div>
+          {% endfor %}
+        </section>
+        <section class="setup-card-grid" aria-label="Setup sections">
+          <a class="setup-card" href="/setup/inputs">
+            <span class="setup-card-title"><i data-lucide="clipboard-list"></i> Founder inputs</span>
+            <span class="setup-card-count">6 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/schedules">
+            <span class="setup-card-title"><i data-lucide="calendar-clock"></i> Plan & schedules</span>
+            <span class="setup-card-count">3 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/models">
+            <span class="setup-card-title"><i data-lucide="brain-circuit"></i> Language models</span>
+            <span class="setup-card-count">3 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/profiles">
+            <span class="setup-card-title"><i data-lucide="users-round"></i> Agent profiles</span>
+            <span class="setup-card-count">3 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/messaging">
+            <span class="setup-card-title"><i data-lucide="message-square"></i> Messaging & credentials</span>
+            <span class="setup-card-count">3 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/commands">
+            <span class="setup-card-title"><i data-lucide="square-terminal"></i> Commands & activation</span>
+            <span class="setup-card-count">3 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/verification">
+            <span class="setup-card-title"><i data-lucide="shield-check"></i> Verification</span>
+            <span class="setup-card-count">2 panels</span>
+          </a>
+          <a class="setup-card" href="/setup/integrations">
+            <span class="setup-card-title"><i data-lucide="plug"></i> Integrations</span>
+            <span class="setup-card-count">1 panels</span>
+          </a>
+        </section>
+{% endblock %}

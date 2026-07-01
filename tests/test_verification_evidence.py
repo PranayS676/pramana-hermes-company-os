@@ -196,12 +196,12 @@ def test_verification_evidence_markdown_and_json_omit_raw_evidence_and_outputs()
 
     assert "Verification Evidence Pack" in markdown
     assert "Verified items missing evidence" in markdown
-    assert payload["entry_points"]["profile_smoke"] == "/setup#profile-smoke"
+    assert payload["entry_points"]["profile_smoke"] == "/setup/profiles#profile-smoke"
     assert payload["entry_points"]["profile_installation"] == (
-        "/setup#profile-installation-tracking"
+        "/setup/profiles#profile-installation-tracking"
     )
     assert payload["entry_points"]["profile_acceptance"] == (
-        "/setup#profile-acceptance-tracking"
+        "/setup/profiles#profile-acceptance-tracking"
     )
     raw = json.dumps(payload) + markdown
     assert "Private reply observed" not in raw

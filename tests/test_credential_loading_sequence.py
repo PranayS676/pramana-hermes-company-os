@@ -137,18 +137,18 @@ def test_credential_loading_markdown_and_json_are_no_secret_artifacts():
     assert "Profile Installation Precheck" in markdown
     assert "LLM Credentials Last" in markdown
     assert "Profile Acceptance Last" in markdown
-    assert "/setup#profile-installation-tracking" in markdown
-    assert "/setup#profile-acceptance-tracking" in markdown
+    assert "/setup/profiles#profile-installation-tracking" in markdown
+    assert "/setup/profiles#profile-acceptance-tracking" in markdown
     assert "/setup/llm-provisioning.md" in markdown
     assert ".\\secret-audit.ps1 -AuditLlm -PostDashboardStatus" in markdown
     assert payload["entry_points"]["llm_provisioning"] == (
         "/setup/llm-provisioning.md"
     )
     assert payload["entry_points"]["profile_installation"] == (
-        "/setup#profile-installation-tracking"
+        "/setup/profiles#profile-installation-tracking"
     )
     assert payload["entry_points"]["profile_acceptance"] == (
-        "/setup#profile-acceptance-tracking"
+        "/setup/profiles#profile-acceptance-tracking"
     )
     assert payload["entry_points"]["live_verification"] == "/setup/live-verification.md"
     raw = json.dumps(payload) + markdown

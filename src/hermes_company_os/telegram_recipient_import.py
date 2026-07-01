@@ -57,7 +57,7 @@ def telegram_recipient_template_markdown(setup_values: dict[str, str]) -> str:
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#telegram-recipient-import`",
+            "- Bulk import: `/setup/inputs#telegram-recipient-import`",
             "- BotFather setup: `/setup/telegram-botfather.md`",
             "- Telegram provisioning: `/setup/telegram-provisioning.md`",
             "",
@@ -77,7 +77,7 @@ def telegram_recipient_template_json(setup_values: dict[str, str]) -> str:
         ),
         "accepted_id_pattern": "^-?\\d+$",
         "entry_points": {
-            "bulk_import": "/setup#telegram-recipient-import",
+            "bulk_import": "/setup/inputs#telegram-recipient-import",
             "botfather": "/setup/telegram-botfather.md",
             "telegram_provisioning": "/setup/telegram-provisioning.md",
             "telegram_policy": "/setup/telegram-policy.md",
@@ -136,7 +136,7 @@ def parse_telegram_recipient_reply(raw_text: str) -> dict:
 
 def telegram_recipient_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/inputs?"
         f"telegram_recipient_imported={summary['imported']}"
         f"&telegram_recipient_unknown={len(summary['unknown_keys'])}"
         f"&telegram_recipient_invalid={len(summary['invalid_keys'])}"

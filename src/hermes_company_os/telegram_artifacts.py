@@ -76,7 +76,7 @@ def telegram_botfather_setup_markdown(setup_values: dict[str, str]) -> str:
             "",
             "Expected result: the Chief of Staff profile sends one Telegram alert to the "
             "configured founder/home chat and records non-secret evidence in "
-            "`/setup#messaging-verification`.",
+            "`/setup/messaging#messaging-verification`.",
             "",
             "### Should Stay In Slack Only",
             "",
@@ -94,7 +94,8 @@ def telegram_botfather_setup_markdown(setup_values: dict[str, str]) -> str:
             "- Chief of Staff gateway starts without exposing the token in logs.",
             "- Urgent smoke prompt sends exactly one founder alert.",
             "- Routine smoke prompt sends no Telegram message.",
-            "- `/setup#messaging-verification` has the Chief of Staff Telegram check marked "
+            "- `/setup/messaging#messaging-verification` has the Chief "
+            "of Staff Telegram check marked "
             "`verified` with non-secret evidence.",
             "",
         ]

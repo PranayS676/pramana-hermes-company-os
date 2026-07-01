@@ -39,7 +39,7 @@ def test_profile_personalization_template_exports_no_secret_json():
 
     assert "Profile Personalization Reply Template" in markdown
     assert payload["entry_points"]["bulk_import"] == (
-        "/setup#profile-personalization-import"
+        "/setup/inputs#profile-personalization-import"
     )
     assert "description" in payload["editable_fields"]
     assert payload["profiles"][0]["id"] == "engineering-manager"
@@ -139,7 +139,7 @@ def test_profile_personalization_import_redirect_targets_import_panel():
     )
 
     assert redirect == (
-        "/setup?profile_personalization_imported=2"
+        "/setup/inputs?profile_personalization_imported=2"
         "&profile_personalization_unknown=1"
         "&profile_personalization_invalid=1"
         "&profile_personalization_ignored=1"

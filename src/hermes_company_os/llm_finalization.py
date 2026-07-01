@@ -40,7 +40,7 @@ def llm_finalization_markdown(model_preferences: list[dict]) -> str:
             "",
             "- Every LLM credential requirement is marked `loaded` or `verified`.",
             "- Every model preference is `verified` after a dashboard smoke check.",
-            "- `/setup#profile-smoke` has one passing run for each profile.",
+            "- `/setup/profiles#profile-smoke` has one passing run for each profile.",
             "- `llm-provider` integration status is `configured`.",
             "",
             "## Safety",
@@ -125,7 +125,7 @@ if ($RunSmokeChecks) {{
 
 Write-Host ""
 Write-Host "LLM finalization runner finished."
-Write-Host "Review /setup#profile-smoke and /setup/readiness-report.md."
+Write-Host "Review /setup/profiles#profile-smoke and /setup/readiness-report.md."
 """
 
 

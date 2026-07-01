@@ -54,7 +54,7 @@ def slack_bot_user_template_markdown(
             "",
             "## Where To Paste",
             "",
-            "- Bulk import: `/setup#slack-bot-user-import`",
+            "- Bulk import: `/setup/inputs#slack-bot-user-import`",
             "- Generated map: `/setup/slack-bot-user-map.json`",
             "- Slack provisioning runner: `/setup/slack-provisioning.ps1`",
             "",
@@ -75,7 +75,7 @@ def slack_bot_user_template_json(
             "tokens, app tokens, OAuth payloads, request headers, or logs."
         ),
         "entry_points": {
-            "bulk_import": "/setup#slack-bot-user-import",
+            "bulk_import": "/setup/inputs#slack-bot-user-import",
             "bot_user_map": "/setup/slack-bot-user-map.json",
             "slack_provisioning": "/setup/slack-provisioning.md",
         },
@@ -134,7 +134,7 @@ def parse_slack_bot_user_reply(raw_text: str, agents: list[dict]) -> dict:
 
 def slack_bot_user_import_redirect(summary: dict) -> str:
     return (
-        "/setup?"
+        "/setup/inputs?"
         f"slack_bot_user_imported={summary['imported']}"
         f"&slack_bot_user_unknown={len(summary['unknown_profiles'])}"
         f"&slack_bot_user_invalid={len(summary['invalid_user_ids'])}"

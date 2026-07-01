@@ -33,7 +33,7 @@ def test_slack_channel_templates_are_no_secret_and_show_current_values():
 
     assert "Slack Channel ID Reply Template" in markdown
     assert "slack_channel_founder_command=CFOUNDER123" in markdown
-    assert payload["entry_points"]["bulk_import"] == "/setup#slack-channel-import"
+    assert payload["entry_points"]["bulk_import"] == "/setup/inputs#slack-channel-import"
     assert payload["channel_ids"]["slack_channel_engineering"] == "CENGINEER123"
     assert secret_violations({"raw": raw}) == []
 
@@ -79,7 +79,7 @@ def test_slack_channel_redirect_counts_import_summary():
     }
 
     assert slack_channel_import_redirect(summary) == (
-        "/setup?slack_channel_imported=2&slack_channel_unknown=1"
+        "/setup/inputs?slack_channel_imported=2&slack_channel_unknown=1"
         "&slack_channel_invalid=0&slack_channel_ignored=1"
         "#slack-channel-import"
     )

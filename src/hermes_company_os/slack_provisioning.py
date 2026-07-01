@@ -54,7 +54,7 @@ def slack_provisioning_payload(*, agents: list[dict], setup_values: dict[str, st
             "invite_matrix_json": "/setup/slack-invite-matrix.json",
             "invite_matrix_csv": "/setup/slack-invite-matrix.csv",
             "bot_user_map": "/setup/slack-bot-user-map.json",
-            "messaging_verification": "/setup#messaging-verification",
+            "messaging_verification": "/setup/messaging#messaging-verification",
             "gateway_operations": "/setup/gateway-operations.md",
         },
         "official_docs": SLACK_DOCS,
@@ -163,12 +163,12 @@ def slack_provisioning_markdown(**kwargs) -> str:
         [
             "## Verification",
             "",
-            "- Channel IDs returned by Slack are pasted into `/setup#inputs`.",
+            "- Channel IDs returned by Slack are pasted into `/setup/inputs#inputs`.",
             "- Every separate profile app is installed in the Slack workspace.",
             "- Every profile bot user ID is copied into the local bot map if using API invites.",
             "- Every listed bot is invited to its required channels.",
             "- Slack gateway, DM, and channel mention checks are completed in "
-            "`/setup#messaging-verification`.",
+            "`/setup/messaging#messaging-verification`.",
             "",
             "## Official Slack References",
             "",

@@ -33,7 +33,9 @@ def test_messaging_drill_routes_export_slack_and_telegram_drills(tmp_path):
     assert payload["entry_points"]["verification_template"] == (
         "/setup/messaging-verification-template.md"
     )
-    assert payload["entry_points"]["messaging_verification"] == "/setup#messaging-verification"
+    assert payload["entry_points"]["messaging_verification"] == (
+        "/setup/messaging#messaging-verification"
+    )
 
     raw = json.dumps(payload) + markdown.text
     assert "xoxb-" not in raw

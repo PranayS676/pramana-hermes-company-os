@@ -71,7 +71,7 @@ def gateway_operations_payload(
             "credential_loading": "/setup/credential-loading.md",
             "secret_audit": "/setup/secret-audit.md",
             "messaging_drill": "/setup/messaging-drill.md",
-            "messaging_verification": "/setup#messaging-verification",
+            "messaging_verification": "/setup/messaging#messaging-verification",
             "verification_evidence": "/setup/verification-evidence.md",
             "live_verification": "/setup/live-verification.md",
         },
@@ -139,7 +139,7 @@ def gateway_operations_markdown(**kwargs) -> str:
             "## Verification After Gateways Start",
             "",
             "- Complete Slack gateway, Slack DM, Slack channel mention, and Telegram "
-            "urgent-alert checks in `/setup#messaging-verification`.",
+            "urgent-alert checks in `/setup/messaging#messaging-verification`.",
             "- Then review `/setup/verification-evidence.md` before proceeding to "
             "Kanban, standups, and final LLM verification.",
             "",
@@ -254,7 +254,7 @@ if ($Start) {{
 }}
 
 Write-Host ""
-Write-Host "Gateway operation finished. Complete /setup#messaging-verification next."
+Write-Host "Gateway operation finished. Complete /setup/messaging#messaging-verification next."
 """
 
 

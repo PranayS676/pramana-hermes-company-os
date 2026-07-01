@@ -87,7 +87,7 @@ def test_input_ledger_payload_groups_questions_and_phase_unlocks():
         "/setup/slack-channel-template.md"
     )
     assert focused_by_id["llm_preference"]["dashboard_anchor"] == (
-        "/setup#llm-preference-import"
+        "/setup/models#llm-preference-import"
     )
     assert payload["founder_questions"][0]["priority"] == "now"
     assert any(
@@ -110,7 +110,7 @@ def test_input_ledger_markdown_and_json_are_no_secret_artifacts():
     assert "Safe Reply Template" in markdown
     assert "Credential Status Reply Template" in markdown
     assert "Focused Setup Reply Templates" in markdown
-    assert "/setup#input-import" in markdown
+    assert "/setup/inputs#input-import" in markdown
     assert "/setup/telegram-recipient-template.md" in markdown
     assert "/setup/kanban-verification-template.md" in markdown
     assert payload["entry_points"]["founder_handoff"] == "/setup/founder-handoff.md"

@@ -44,7 +44,7 @@ def standup_runbook_markdown(
             "2. Use the dashboard standup run button for each active schedule.",
             "3. Confirm the full summary appears in the schedule Slack channel.",
             "4. Confirm Telegram stays quiet unless the standup contains an urgent founder alert.",
-            "5. Record non-secret evidence in `/setup#schedule-verification`.",
+            "5. Record non-secret evidence in `/setup/verification#schedule-verification`.",
             "",
             "## Cron Install Commands",
             "",
@@ -72,7 +72,10 @@ def standup_runbook_markdown(
                 ]
             )
     else:
-        lines.append("- Use `/setup#schedule-verification` to track manual and cron checks.")
+        lines.append(
+            "- Use `/setup/verification#schedule-verification` "
+            "to track manual and cron checks."
+        )
     lines.extend(
         [
             "",
@@ -80,7 +83,8 @@ def standup_runbook_markdown(
             "",
             "- Every active schedule has one successful manual run.",
             "- `chief-of-staff cron list` shows every active schedule.",
-            "- `/setup#schedule-verification` checks are verified with non-secret evidence.",
+            "- `/setup/verification#schedule-verification` checks are "
+            "verified with non-secret evidence.",
             "- `standup-cron` integration status is `configured`.",
             "",
         ]

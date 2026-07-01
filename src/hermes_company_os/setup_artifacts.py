@@ -116,7 +116,7 @@ def inputs_needed_markdown(setup_inputs: list[dict], agents: list[dict]) -> str:
             "- Slack and Telegram credentials: real Hermes profile runtime",
             "- Provider model routing: Hermes profile `config.yaml` or `<profile> model`",
             "- Provider credentials: Hermes profile runtime or provider OAuth flow",
-            "- Secret readiness status only: `/setup#secret-status`",
+            "- Secret readiness status only: `/setup/messaging#secret-status`",
             "",
             "## Focused Reply Templates",
             "",
@@ -204,7 +204,7 @@ def slack_setup_plan_markdown(agents: list[dict], setup_values: dict[str, str]) 
             "- `SLACK_ALLOWED_USERS` includes the founder Slack member ID.",
             "- `SLACK_HOME_CHANNEL` is the channel ID, not the channel name.",
             "- In channels, start conversations by mentioning the bot.",
-            "- Use `/setup#messaging-verification` to record Slack gateway, DM, and "
+            "- Use `/setup/messaging#messaging-verification` to record Slack gateway, DM, and "
             "channel-mention checks after external tokens are loaded.",
             "",
         ]
@@ -258,7 +258,7 @@ def telegram_setup_plan_markdown(setup_values: dict[str, str]) -> str:
             "- The founder can DM the bot.",
             "- `/sethome` is run if using a group/channel instead of the founder DM.",
             "- Chief of Staff standup prompts mention Telegram only for urgent alerts.",
-            "- Use `/setup#messaging-verification` to record the Chief of Staff "
+            "- Use `/setup/messaging#messaging-verification` to record the Chief of Staff "
             "Telegram urgent-alert check after the bot token is loaded externally.",
             "",
         ]
@@ -308,7 +308,7 @@ def llm_setup_plan_markdown(model_preferences: list[dict]) -> str:
             "## Verification",
             "",
             "- Run `<profile> model` for each profile after credentials exist.",
-            "- Use `/setup#profile-smoke` to run one dashboard smoke test per profile.",
+            "- Use `/setup/profiles#profile-smoke` to run one dashboard smoke test per profile.",
             "- Mark a profile `ready_for_verification` only after secrets are loaded.",
             "- A successful dashboard smoke test marks that profile `verified` and updates "
             "the matching LLM credential status without storing the credential value.",
@@ -335,7 +335,7 @@ def activation_checklist_markdown(
         "## 2. Verify Profile Installation",
         "",
         "Run `/setup/profile-installation.ps1`, then import the no-secret audit "
-        "output at `/setup#profile-installation-tracking`.",
+        "output at `/setup/profiles#profile-installation-tracking`.",
         "",
         "Do not run profile smoke checks until the matching profile installation "
         "check is verified.",
@@ -358,7 +358,7 @@ def activation_checklist_markdown(
         )
     lines.extend(
         [
-            "Complete `/setup#messaging-verification` for Slack gateway, Slack DM, "
+            "Complete `/setup/messaging#messaging-verification` for Slack gateway, Slack DM, "
             "Slack channel mention, and Chief of Staff urgent Telegram checks.",
             "",
             "## 4. Initialize Kanban",
@@ -370,7 +370,7 @@ def activation_checklist_markdown(
             "hermes kanban diagnostics --json",
             "```",
             "",
-            "Then complete `/setup#kanban-verification` for board initialization, "
+            "Then complete `/setup/verification#kanban-verification` for board initialization, "
             "diagnostics, and dashboard task creation.",
             "",
             "## 5. Verify Standups And Create Cron",
@@ -387,7 +387,8 @@ def activation_checklist_markdown(
             "chief-of-staff cron list",
             "```",
             "",
-            "Complete `/setup#schedule-verification` for manual standup and cron checks.",
+            "Complete `/setup/verification#schedule-verification` "
+            "for manual standup and cron checks.",
             "",
             "## 6. Load And Verify LLM Provider Last",
             "",
@@ -405,14 +406,14 @@ def activation_checklist_markdown(
     lines.extend(
         [
             "",
-            "Run `/setup#profile-smoke` once for each profile after model credentials "
+            "Run `/setup/profiles#profile-smoke` once for each profile after model credentials "
             "are loaded.",
             "",
             "## 7. Founder Smoke And Acceptance",
             "",
-            "- Complete `/setup#kanban-verification` for Kanban board readiness.",
+            "- Complete `/setup/verification#kanban-verification` for Kanban board readiness.",
             "- Run `/setup/profile-acceptance.md` after all profile smoke checks pass.",
-            "- Import acceptance outcomes at `/setup#profile-acceptance-tracking`.",
+            "- Import acceptance outcomes at `/setup/profiles#profile-acceptance-tracking`.",
             "- Send a Slack DM to each profile bot.",
             "- Mention each profile bot in its home channel.",
             "- Create one dashboard task and push it to Hermes Kanban.",

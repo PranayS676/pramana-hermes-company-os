@@ -48,8 +48,8 @@ def test_live_verification_markdown_counts_checks_and_preserves_no_secret_rule()
     assert "Active schedule checks: 1 verified" in markdown
     assert "Kanban checks: 1 verified" in markdown
     assert "Profile smoke checks: 1 verified, 1 open" in markdown
-    assert "/setup#profile-acceptance-tracking" in markdown
-    assert "/setup#profile-smoke" in markdown
+    assert "/setup/profiles#profile-acceptance-tracking" in markdown
+    assert "/setup/profiles#profile-smoke" in markdown
     assert "Do not paste bot tokens" in markdown
     assert "xoxb-" not in markdown
     assert "xapp-" not in markdown

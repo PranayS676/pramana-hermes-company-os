@@ -66,8 +66,8 @@ def schedule_provisioning_payload(
             "standup_preview_json": "/setup/standup-preview.json",
             "standup_runbook": "/setup/standup-runbook.md",
             "standup_cron": "/setup/standup-cron.ps1",
-            "schedule_verification": "/setup#schedule-verification",
-            "messaging_verification": "/setup#messaging-verification",
+            "schedule_verification": "/setup/verification#schedule-verification",
+            "messaging_verification": "/setup/messaging#messaging-verification",
             "telegram_policy": "/setup/telegram-policy.md",
             "gateway_operations": "/setup/gateway-operations.md",
         },
@@ -106,7 +106,7 @@ def schedule_provisioning_markdown(**kwargs) -> str:
         "Default mode prints the schedule and cron plan. Use `-Execute` only after "
         "manual standup verification and messaging verification pass. Add "
         "`-PostDashboardStatus` after a successful cron install/list to update "
-        "`/setup#schedule-verification` with non-secret evidence.",
+        "`/setup/verification#schedule-verification` with non-secret evidence.",
         "",
         "```powershell",
         ".\\schedule-provisioning.ps1 -PrintSchedules",
@@ -146,7 +146,7 @@ def schedule_provisioning_markdown(**kwargs) -> str:
             "",
             f"- Ready: {'yes' if payload['verification']['ready'] else 'no'}",
             f"- Status: {_format_counts(payload['verification']['status'])}",
-            "- Complete `/setup#schedule-verification` before treating cron as live.",
+            "- Complete `/setup/verification#schedule-verification` before treating cron as live.",
             "",
             "## Completion Criteria",
             "",

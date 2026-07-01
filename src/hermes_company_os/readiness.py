@@ -17,6 +17,7 @@ class ReadinessItem:
 class ReadinessService:
     def __init__(self, database_path: Path):
         self.database_path = database_path
+        self._hermes_version: str | None = None
 
     def check(self, agents: list[dict], integrations: list[dict]) -> list[ReadinessItem]:
         items = [
@@ -40,6 +41,14 @@ class ReadinessService:
         return items
 
     def hermes_version(self) -> str:
+        # The Hermes CLI version does not change within a process; spawning the
+        # subprocess on every /setup render was a measurable load cost.
+        if self._hermes_version is not None:
+            return self._hermes_version
+        self._hermes_version = self._resolve_hermes_version()
+        return self._hermes_version
+
+    def _resolve_hermes_version(self) -> str:
         hermes = shutil.which("hermes")
         if not hermes:
             return "Hermes CLI not found on PATH."
