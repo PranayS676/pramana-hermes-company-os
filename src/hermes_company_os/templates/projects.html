@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -78,15 +79,11 @@
 
         <section class="workspace-grid project-workspace-grid">
           <div class="panel project-list-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Projects</h2>
-                <p class="panel-kicker">One staged workflow per product bet.</p>
-              </div>
+            {% call ui.panel_header("Projects", "One staged workflow per product bet.") %}
               <a class="primary-button link-button compact-button" href="/projects/new">
                 <i data-lucide="plus"></i> New
               </a>
-            </div>
+            {% endcall %}
             <div class="item-list">
               {% for project in projects %}
               <a class="project-row polished-project-row" href="/projects/{{ project.id }}">
@@ -94,7 +91,7 @@
                   <strong>{{ project.name }}</strong>
                   <small>{{ project.status }} - {{ project.workflow_count }} workflow items</small>
                 </div>
-                <span class="status-pill {{ project.status }}">{{ project.status }}</span>
+                {{ ui.status_pill(project.status, project.status) }}
                 <i data-lucide="chevron-right"></i>
               </a>
               {% else %}
@@ -112,13 +109,9 @@
           </div>
 
           <aside class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>New Product Wizard</h2>
-                <p class="panel-kicker">Basics, audience, constraints, review.</p>
-              </div>
+            {% call ui.panel_header("New Product Wizard", "Basics, audience, constraints, review.") %}
               <i data-lucide="wand-sparkles"></i>
-            </div>
+            {% endcall %}
             {% if not kickoff_readiness.live_kickoff_ready %}
             <p class="empty-state">
               Draft workflow creation is available now. Treat live agent execution,
@@ -139,17 +132,13 @@
           </aside>
 
           <section class="panel full workflow-template-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Workflow Templates</h2>
-                <p class="panel-kicker">Default specialist handoff for every new product.</p>
-              </div>
+            {% call ui.panel_header("Workflow Templates", "Default specialist handoff for every new product.") %}
               <a href="/setup/project-workflow.md">Project workflow handoff</a>
-            </div>
+            {% endcall %}
             <div class="template-stage-grid">
               {% for template in templates %}
               <div class="template-stage">
-                <span class="status-pill {{ template.priority }}">{{ template.priority }}</span>
+                {{ ui.status_pill(template.priority, template.priority) }}
                 <div>
                   <strong>{{ template.name }}</strong>
                   <small>{{ template.phase }} - {{ template.owner_name }} - {{ template.doc_type }}</small>

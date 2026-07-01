@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -36,13 +37,9 @@
 
       <section class="research-layout">
         <aside class="panel research-controls">
-          <div class="panel-header">
-            <div>
-              <h2>New research package</h2>
-              <p class="panel-kicker">One focused thread per package. No credentials.</p>
-            </div>
+          {% call ui.panel_header("New research package", "One focused thread per package. No credentials.") %}
             <i data-lucide="microscope"></i>
-          </div>
+          {% endcall %}
           <form class="stacked-form" method="post" action="/projects/{{ project.id }}/research">
             <label>
               Title
@@ -136,27 +133,21 @@
         </aside>
 
         <section class="panel research-list-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Research packages</h2>
-              <p class="panel-kicker">Recommendations only. UI changes require implementation-plan approval.</p>
-            </div>
-            <span class="status-pill planned">{{ packages|length }} shown</span>
-          </div>
+          {% call ui.panel_header("Research packages", "Recommendations only. UI changes require implementation-plan approval.") %}
+            {{ ui.status_pill((packages|length) ~ " shown", "planned") }}
+          {% endcall %}
 
           {% for package in packages %}
           <article class="panel research-package {{ package.status }}">
             <div class="queue-title-line">
-              <span class="status-pill {{ package.status }}">{{ package.status|title }}</span>
+              {{ ui.status_pill(package.status|title, package.status) }}
               <strong>{{ package.title }}</strong>
             </div>
             <p>{{ package.summary or package.research_question }}</p>
             <div class="research-severity-row">
               {% for severity in severity_options %}
               {% if package.severity_counts[severity.id] %}
-              <span class="status-pill" aria-label="{{ severity.label }} findings">
-                {{ severity.label }}: {{ package.severity_counts[severity.id] }}
-              </span>
+              {{ ui.status_pill((severity.label) ~ ": " ~ (package.severity_counts[severity.id]), "", (severity.label) ~ " findings") }}
               {% endif %}
               {% endfor %}
             </div>

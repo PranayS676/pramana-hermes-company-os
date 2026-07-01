@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -61,9 +62,7 @@
           </p>
         </div>
         <div class="project-title-actions">
-          <span class="status-pill {% if scope.company_wide %}ready{% else %}current{% endif %}">
-            {% if scope.company_wide %}Company-wide{% else %}Project scope{% endif %}
-          </span>
+          {{ ui.status_pill("Company-wide" if scope.company_wide else "Project scope", "ready" if scope.company_wide else "current") }}
         </div>
       </section>
 
@@ -92,13 +91,9 @@
 
       <section class="observability-layout">
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Deliveries by platform</h2>
-              <p class="panel-kicker">Counts across recorded delivery rows.</p>
-            </div>
+          {% call ui.panel_header("Deliveries by platform", "Counts across recorded delivery rows.") %}
             <i data-lucide="share-2"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             {% for platform, count in summary.by_platform.items() %}
             <div class="readiness-line">
@@ -112,17 +107,13 @@
         </section>
 
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Deliveries by status</h2>
-              <p class="panel-kicker">sent / failed / blocked / dry-run / skipped.</p>
-            </div>
+          {% call ui.panel_header("Deliveries by status", "sent / failed / blocked / dry-run / skipped.") %}
             <i data-lucide="activity"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             {% for status, count in summary.by_status.items() %}
             <div class="readiness-line">
-              <span><span class="status-pill {{ status }}">{{ status }}</span></span>
+              <span>{{ ui.status_pill(status, status) }}</span>
               <strong>{{ count }}</strong>
             </div>
             {% else %}
@@ -133,15 +124,9 @@
       </section>
 
       <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Delivery records</h2>
-            <p class="panel-kicker">
-              Idempotent external-dispatch deliveries, newest first.
-            </p>
-          </div>
-          <span class="status-pill ready">{{ deliveries|length }} shown</span>
-        </div>
+        {% call ui.panel_header("Delivery records", "Idempotent external-dispatch deliveries, newest first.") %}
+          {{ ui.status_pill((deliveries|length) ~ " shown", "ready") }}
+        {% endcall %}
         {% if deliveries %}
         <div class="table-scroll">
           <table class="delivery-table">
@@ -161,7 +146,7 @@
             <tbody>
               {% for delivery in deliveries %}
               <tr>
-                <td><span class="status-pill {{ delivery.status }}">{{ delivery.status }}</span></td>
+                <td>{{ ui.status_pill(delivery.status, delivery.status) }}</td>
                 <td><code>{{ delivery.platform }}</code></td>
                 <td>{{ delivery.action }}</td>
                 {% if scope.company_wide %}<td>{{ delivery.project_name }}</td>{% endif %}
@@ -188,13 +173,9 @@
 
       {% if scope.company_wide and projects %}
       <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Per-project operating loop</h2>
-            <p class="panel-kicker">Scoped delivery records for each company project.</p>
-          </div>
-          <span class="status-pill ready">{{ projects|length }} projects</span>
-        </div>
+        {% call ui.panel_header("Per-project operating loop", "Scoped delivery records for each company project.") %}
+          {{ ui.status_pill((projects|length) ~ " projects", "ready") }}
+        {% endcall %}
         <div class="readiness-stack">
           {% for project in projects %}
           <a class="readiness-line linked-readiness-line" href="/projects/{{ project.id }}/operating-loop">

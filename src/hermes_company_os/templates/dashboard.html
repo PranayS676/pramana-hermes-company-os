@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -83,9 +84,7 @@
           aria-label="Activation readiness"
         >
           <div class="activation-summary-copy">
-            <span class="status-pill {% if founder_actions.activation_summary.ready %}ready{% else %}needs_setup{% endif %}">
-              {% if founder_actions.activation_summary.ready %}live ready{% else %}setup needed{% endif %}
-            </span>
+            {{ ui.status_pill("live ready" if founder_actions.activation_summary.ready else "setup needed", "ready" if founder_actions.activation_summary.ready else "needs_setup") }}
             <strong>Activation gate</strong>
             <p>{{ founder_actions.next_best_action }}</p>
           </div>
@@ -125,13 +124,12 @@
 
         <section class="workspace-grid">
           <div class="panel full" id="founder-decisions">
-            <div class="panel-header">
-              <h2>Founder Decision Queue</h2>
+            {% call ui.panel_header("Founder Decision Queue") %}
               <span class="panel-header-actions">
                 <a href="/decisions">Inbox</a>
                 <a href="/setup/founder-decisions.md">Export</a>
               </span>
-            </div>
+            {% endcall %}
             <section class="notice-band compact">
               <strong>{{ founder_actions.founder_decisions.open }} open</strong>
               <span>
@@ -139,7 +137,8 @@
                 Slack is primary; Telegram is urgent-only after credentials exist.
               </span>
             </section>
-            <div class="decision-grid">
+            <details class="new-form">
+              <summary>New decision…</summary>
               <form class="stacked-form" method="post" action="/decisions">
                 <input type="hidden" name="return_to" value="/#founder-decisions">
                 <input type="hidden" name="decision_type" value="operating_decision">
@@ -182,13 +181,14 @@
                   <i data-lucide="plus"></i> Add decision
                 </button>
               </form>
+            </details>
 
-              <div class="item-list">
-                {% for decision in founder_decisions %}
+            <div class="item-list">
+              {% for decision in founder_decisions %}
                 <div class="decision-row list-row {{ decision.status }}">
                   <div class="decision-title-line">
-                    <span class="status-pill {{ decision.status }}" aria-label="Decision status: {{ decision.status }}">{{ decision.status }}</span>
-                    <span class="status-pill {{ decision.urgency }}" aria-label="Decision urgency: {{ decision.urgency }}">{{ decision.urgency }}</span>
+                    {{ ui.status_pill(decision.status, decision.status, "Decision status: " ~ (decision.status)) }}
+                    {{ ui.status_pill(decision.urgency, decision.urgency, "Decision urgency: " ~ (decision.urgency)) }}
                     <strong>{{ decision.title }}</strong>
                   </div>
                   <small>
@@ -234,19 +234,14 @@
                 <p class="empty-state">No founder decisions yet.</p>
                 {% endfor %}
               </div>
-            </div>
           </div>
 
           <div class="panel full" id="agent-work-queue">
-            <div class="panel-header">
-              <div>
-                <h2>Agent Work Queue</h2>
-                <p class="panel-kicker">Chief of Staff triage. Dashboard state is the source of truth.</p>
-              </div>
+            {% call ui.panel_header("Agent Work Queue", "Chief of Staff triage. Dashboard state is the source of truth.") %}
               <span class="panel-header-actions">
                 <a href="/queue">Open queue</a>
               </span>
-            </div>
+            {% endcall %}
             <section class="notice-band compact">
               <strong>{{ agent_work_summary.blocked }} blocked</strong>
               <span>
@@ -257,17 +252,10 @@
             <div class="queue-strip">
               {% for item in agent_work_items %}
               <a class="queue-strip-row" href="/queue?owner_agent_id={{ item.owner_agent_id }}">
-                <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ item.status }}">{{ item.status }}</span>
-                <div>
-                  <strong>{{ item.title }}</strong>
-                  <small>
-                    {{ item.owner_name }}
-                    {% if item.project_id %} - {{ item.project_name }}{% endif %}
-                    {% if item.stage_id %} - {{ item.stage_id }}{% endif %}
-                  </small>
-                </div>
+                {{ ui.status_pill(item.status, item.status, "Queue state: " ~ (item.status)) }}
+                {% call ui.list_row(item.title) %}{{ item.owner_name }}{% if item.project_id %} - {{ item.project_name }}{% endif %}{% if item.stage_id %} - {{ item.stage_id }}{% endif %}{% endcall %}
                 {% if item.founder_action_required %}
-                <span class="status-pill urgent">founder</span>
+                {{ ui.status_pill("founder", "urgent") }}
                 {% endif %}
               </a>
               {% else %}
@@ -277,9 +265,7 @@
           </div>
 
           <div class="panel wide" id="agents">
-            <div class="panel-header">
-              <h2>Agent Profiles</h2>
-            </div>
+            {{ ui.panel_header("Agent Profiles") }}
             <div class="agent-table">
               {% for agent in agents %}
               <a class="agent-row" href="/agents/{{ agent.id }}">
@@ -297,9 +283,7 @@
           </div>
 
           <div class="panel" id="standups">
-            <div class="panel-header">
-              <h2>Standups</h2>
-            </div>
+            {{ ui.panel_header("Standups") }}
             {% if standup_run_blocker %}
             <p class="empty-state" id="standup-run-blocker">
               {{ standup_run_blocker }} Manual standup runs stay locked until the
@@ -309,10 +293,7 @@
             <div class="schedule-list">
               {% for schedule in schedules %}
               <form class="schedule-item" method="post" action="/standups/{{ schedule.id }}/run">
-                <div>
-                  <strong>{{ "%02d"|format(schedule.hour) }}:{{ "%02d"|format(schedule.minute) }}</strong>
-                  <small>{{ schedule.name }} - {{ schedule.timezone }}</small>
-                </div>
+                {% call ui.list_row("%02d:%02d"|format(schedule.hour, schedule.minute)) %}{{ schedule.name }} - {{ schedule.timezone }}{% endcall %}
                 <button
                   title="{% if standup_run_blocker %}{{ standup_run_blocker }}{% else %}Run standup now{% endif %}"
                   type="submit"
@@ -327,55 +308,44 @@
             </div>
           </div>
 
-          <div class="panel">
-            <div class="panel-header">
-              <h2>New Planning Task</h2>
-            </div>
-            <form class="stacked-form" method="post" action="/tasks">
-              <label>
-                Title
-                <input name="title" required placeholder="Rank three startup concepts">
-              </label>
-              <label>
-                Owner
-                <select name="owner_agent_id">
-                  {% for agent in agents %}
-                  <option value="{{ agent.id }}">{{ agent.name }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>
-                Priority
-                <select name="priority">
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-              <label>
-                Summary
-                <textarea name="summary" rows="4" placeholder="What should this agent produce?"></textarea>
-              </label>
-              <button class="primary-button" type="submit">
-                <i data-lucide="plus"></i> Add task
-              </button>
-            </form>
-          </div>
-
           <div class="panel wide">
-            <div class="panel-header">
-              <h2>Tasks</h2>
-            </div>
+            {{ ui.panel_header("Tasks") }}
+            <details class="new-form">
+              <summary>New planning task…</summary>
+              <form class="stacked-form" method="post" action="/tasks">
+                <label>
+                  Title
+                  <input name="title" required placeholder="Rank three startup concepts">
+                </label>
+                <label>
+                  Owner
+                  <select name="owner_agent_id">
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}">{{ agent.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select name="priority">
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                  </select>
+                </label>
+                <label>
+                  Summary
+                  <textarea name="summary" rows="4" placeholder="What should this agent produce?"></textarea>
+                </label>
+                <button class="primary-button" type="submit">
+                  <i data-lucide="plus"></i> Add task
+                </button>
+              </form>
+            </details>
             <div class="item-list">
               {% for task in tasks %}
               <div class="list-row">
-                <div>
-                  <strong>{{ task.title }}</strong>
-                  <small>
-                    {{ task.owner_name }} - {{ task.status }} - {{ task.priority }}
-                    {% if task.kanban_task_id %} - Kanban {{ task.kanban_task_id }}{% endif %}
-                  </small>
-                </div>
+                {% call ui.list_row(task.title) %}{{ task.owner_name }} - {{ task.status }} - {{ task.priority }}{% if task.kanban_task_id %} - Kanban {{ task.kanban_task_id }}{% endif %}{% endcall %}
                 <p>{{ task.summary }}</p>
                 {% if not task.kanban_task_id %}
                 {% if kanban_task_push_blocker %}
@@ -399,52 +369,60 @@
           </div>
 
           <div class="panel">
-            <div class="panel-header">
-              <h2>New Document</h2>
+            {{ ui.panel_header("Documents") }}
+            <details class="new-form">
+              <summary>New document…</summary>
+              <form class="stacked-form" method="post" action="/documents">
+                <label>
+                  Title
+                  <input name="title" required placeholder="Founder brief">
+                </label>
+                <label>
+                  Type
+                  <select name="doc_type">
+                    <option value="brief">Brief</option>
+                    <option value="prd">PRD</option>
+                    <option value="research">Research</option>
+                    <option value="architecture">Architecture</option>
+                  </select>
+                </label>
+                <label>
+                  Owner
+                  <select name="owner_agent_id">
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}">{{ agent.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  Body
+                  <textarea name="body" rows="5" placeholder="Draft notes or founder context"></textarea>
+                </label>
+                <button class="primary-button" type="submit">
+                  <i data-lucide="file-plus-2"></i> Save draft
+                </button>
+              </form>
+            </details>
+            <div class="item-list compact">
+              {% for document in documents %}
+              <div class="list-row">
+                {% call ui.list_row(document.title) %}{{ document.doc_type }} - {{ document.owner_name }} - {{ document.status }}{% endcall %}
+                {% if document.body %}
+                <p>{{ document.body }}</p>
+                {% endif %}
+              </div>
+              {% else %}
+              <p class="empty-state">No documents yet.</p>
+              {% endfor %}
             </div>
-            <form class="stacked-form" method="post" action="/documents">
-              <label>
-                Title
-                <input name="title" required placeholder="Founder brief">
-              </label>
-              <label>
-                Type
-                <select name="doc_type">
-                  <option value="brief">Brief</option>
-                  <option value="prd">PRD</option>
-                  <option value="research">Research</option>
-                  <option value="architecture">Architecture</option>
-                </select>
-              </label>
-              <label>
-                Owner
-                <select name="owner_agent_id">
-                  {% for agent in agents %}
-                  <option value="{{ agent.id }}">{{ agent.name }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label>
-                Body
-                <textarea name="body" rows="5" placeholder="Draft notes or founder context"></textarea>
-              </label>
-              <button class="primary-button" type="submit">
-                <i data-lucide="file-plus-2"></i> Save draft
-              </button>
-            </form>
           </div>
 
           <div class="panel" id="runs">
-            <div class="panel-header">
-              <h2>Recent Hermes Runs</h2>
-            </div>
+            {{ ui.panel_header("Recent Hermes Runs") }}
             <div class="item-list compact">
               {% for run in runs %}
               <div class="run-row {{ run.status }}">
-                <div>
-                  <strong>{{ run.agent_name }}</strong>
-                  <small>{{ run.run_type }} - {{ run.status }}</small>
-                </div>
+                {% call ui.list_row(run.agent_name) %}{{ run.run_type }} - {{ run.status }}{% endcall %}
                 <p>{{ run.error or run.output }}</p>
               </div>
               {% else %}

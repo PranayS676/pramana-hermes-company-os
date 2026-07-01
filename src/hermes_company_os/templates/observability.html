@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -34,9 +35,7 @@
           </p>
         </div>
         <div class="project-title-actions">
-          <span class="status-pill {% if scope.company_wide %}ready{% else %}current{% endif %}">
-            {% if scope.company_wide %}Company-wide{% else %}Project scope{% endif %}
-          </span>
+          {{ ui.status_pill("Company-wide" if scope.company_wide else "Project scope", "ready" if scope.company_wide else "current") }}
           {% if scope.company_wide %}
           <a class="secondary-button link-button-muted" href="/observability.json">
             <i data-lucide="braces"></i> Metrics JSON
@@ -101,13 +100,9 @@
 
       <section class="observability-layout">
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Runs by agent</h2>
-              <p class="panel-kicker">Aggregated from the legacy runs table only.</p>
-            </div>
+          {% call ui.panel_header("Runs by agent", "Aggregated from the legacy runs table only.") %}
             <i data-lucide="users-round"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             {% for agent_id, count in runs.runs_by_agent|dictsort %}
             <div class="readiness-line">
@@ -124,13 +119,9 @@
         </section>
 
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Runs by source</h2>
-              <p class="panel-kicker">Agent, generation, and Codex run tables.</p>
-            </div>
+          {% call ui.panel_header("Runs by source", "Agent, generation, and Codex run tables.") %}
             <i data-lucide="activity"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             {% for source, count in runs.runs_by_source.items() %}
             <div class="readiness-line">
@@ -142,13 +133,9 @@
         </section>
 
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Blocked work</h2>
-              <p class="panel-kicker">Agent work queue summary.</p>
-            </div>
+          {% call ui.panel_header("Blocked work", "Agent work queue summary.") %}
             <i data-lucide="octagon-alert"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             <div class="readiness-line">
               <span>Blocked</span>
@@ -170,13 +157,9 @@
         </section>
 
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Founder attention</h2>
-              <p class="panel-kicker">Open decisions and outstanding review findings.</p>
-            </div>
+          {% call ui.panel_header("Founder attention", "Open decisions and outstanding review findings.") %}
             <i data-lucide="gavel"></i>
-          </div>
+          {% endcall %}
           <div class="readiness-stack">
             <a class="readiness-line linked-readiness-line" href="/decisions{% if not scope.company_wide %}?project_id={{ scope.project_id }}{% endif %}">
               <span>Open founder decisions</span>
@@ -200,13 +183,9 @@
 
       {% if scope.company_wide and projects %}
       <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>Per-project observability</h2>
-            <p class="panel-kicker">Scoped metrics for each company project.</p>
-          </div>
-          <span class="status-pill ready">{{ projects|length }} projects</span>
-        </div>
+        {% call ui.panel_header("Per-project observability", "Scoped metrics for each company project.") %}
+          {{ ui.status_pill((projects|length) ~ " projects", "ready") }}
+        {% endcall %}
         <div class="readiness-stack">
           {% for project in projects %}
           <a class="readiness-line linked-readiness-line" href="/projects/{{ project.id }}/observability">

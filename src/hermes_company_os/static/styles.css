@@ -1124,6 +1124,21 @@ summary {
   font-weight: 800;
 }
 
+.new-form {
+  margin-bottom: 12px;
+}
+
+.new-form > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-strong);
+}
+
+.new-form[open] > summary {
+  margin-bottom: 10px;
+}
+
 .agent-page {
   max-width: 1160px;
   margin: 0 auto;

@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -122,12 +123,7 @@
 
         <section class="decision-inbox-grid">
           <div class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Create decision</h2>
-                <p class="panel-kicker">Store only non-secret context and evidence.</p>
-              </div>
-            </div>
+            {{ ui.panel_header("Create decision", "Store only non-secret context and evidence.") }}
             <form class="stacked-form" method="post" action="/decisions">
               <input type="hidden" name="return_to" value="/decisions">
               <label>
@@ -205,20 +201,15 @@
           </div>
 
           <div class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Inbox</h2>
-                <p class="panel-kicker">{{ decisions|length }} decisions match the current filters.</p>
-              </div>
-            </div>
+            {{ ui.panel_header("Inbox", (decisions|length) ~ " decisions match the current filters.") }}
             <div class="item-list">
               {% for decision in decisions %}
               <article class="decision-row list-row {{ decision.status }}">
                 <div class="decision-title-line">
-                  <span class="status-pill {{ decision.status }}" aria-label="Decision status: {{ decision.status }}">{{ decision.status }}</span>
-                  <span class="status-pill {{ decision.urgency }}" aria-label="Decision urgency: {{ decision.urgency }}">{{ decision.urgency }}</span>
+                  {{ ui.status_pill(decision.status, decision.status, "Decision status: " ~ (decision.status)) }}
+                  {{ ui.status_pill(decision.urgency, decision.urgency, "Decision urgency: " ~ (decision.urgency)) }}
                   {% if decision.requires_founder_approval %}
-                  <span class="status-pill needed" aria-label="Founder-only decision">founder-only</span>
+                  {{ ui.status_pill("founder-only", "needed", "Founder-only decision") }}
                   {% endif %}
                   <strong>
                     <a href="/decisions/{{ decision.id }}">{{ decision.title }}</a>

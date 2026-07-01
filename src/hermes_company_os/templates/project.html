@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 {% set default_wizard_stages = [
   {
     "id": "research",
@@ -148,27 +149,11 @@
           <p class="page-subtitle">{{ project.founder_idea }}</p>
         </div>
         <div class="project-title-actions">
-          <span class="status-pill {{ artifact_status }}" aria-label="Artifact status: {{ artifact_status }}">{{ artifact_status }}</span>
+          {{ ui.status_pill(artifact_status, artifact_status, "Artifact status: " ~ (artifact_status)) }}
           {% if has_latest_artifact %}
-          <span
-            class="status-pill {% if artifact.selected %}needed{% else %}ready{% endif %}"
-            aria-label="{% if artifact.selected %}Selected artifact version{% else %}Latest artifact version{% endif %}"
-          >
-            {% if artifact.selected %}selected version{% else %}latest version{% endif %}
-          </span>
+          {{ ui.status_pill("selected version" if artifact.selected else "latest version", "needed" if artifact.selected else "ready", "Selected artifact version" if artifact.selected else "Latest artifact version") }}
           {% endif %}
-          <span
-            class="status-pill {% if kanban_gate_open %}ready{% else %}needed{% endif %}"
-            aria-label="{% if kanban_gate_open %}Kanban ready{% else %}Kanban blocked{% endif %}"
-          >
-            {% if kanban_gate_open %}
-            Kanban ready
-            {% elif not kanban_ready %}
-            Kanban verification needed
-            {% else %}
-            Kanban gated
-            {% endif %}
-          </span>
+          {{ ui.status_pill("Kanban ready" if kanban_gate_open else ("Kanban verification needed" if not kanban_ready else "Kanban gated"), "ready" if kanban_gate_open else "needed", "Kanban ready" if kanban_gate_open else "Kanban blocked") }}
         </div>
       </section>
 
@@ -216,9 +201,7 @@
 
       <section class="project-decision-strip" aria-label="Project founder decisions">
         <div>
-          <span class="status-pill {% if founder_decision_items %}needed{% else %}ready{% endif %}">
-            {{ founder_decision_items|length }} project decisions
-          </span>
+          {{ ui.status_pill((founder_decision_items|length) ~ " project decisions", "needed" if founder_decision_items else "ready") }}
           <strong>Project decisions</strong>
           <small>
             {% if founder_decision_items %}
@@ -236,9 +219,7 @@
 
       <section class="project-decision-strip project-queue-strip" aria-label="Project agent work queue">
         <div>
-          <span class="status-pill {% if queue_items %}planned{% else %}ready{% endif %}">
-            {{ queue_items|length }} queue items
-          </span>
+          {{ ui.status_pill((queue_items|length) ~ " queue items", "planned" if queue_items else "ready") }}
           <strong>Project agent queue</strong>
           <small>
             {% if queue_items %}
@@ -256,7 +237,7 @@
 
       <section class="project-decision-strip project-observability-strip" aria-label="Project run observability">
         <div>
-          <span class="status-pill ready">Run observability</span>
+          {{ ui.status_pill("Run observability", "ready") }}
           <strong>Project observability</strong>
           <small>
             Read-only run metrics: runs by agent, success and failure, blocked
@@ -271,7 +252,7 @@
 
       <section class="project-decision-strip project-research-strip" aria-label="Project UI/UX research">
         <div>
-          <span class="status-pill ready">UI/UX research</span>
+          {{ ui.status_pill("UI/UX research", "ready") }}
           <strong>Research packages</strong>
           <small>
             Founder-visible UI/UX research findings, recommendations, and
@@ -291,9 +272,7 @@
             <p class="panel-kicker">Recent project changes with their source records.</p>
           </div>
           <div class="panel-header-actions">
-            <span class="status-pill {% if activity_events %}ready{% else %}manual{% endif %}">
-              {{ activity_events|length }} events
-            </span>
+            {{ ui.status_pill((activity_events|length) ~ " events", "ready" if activity_events else "manual") }}
             <a class="secondary-button link-button-muted" href="/projects/{{ project.id }}/activity.json">
               <i data-lucide="braces"></i>
               Activity JSON
@@ -320,7 +299,7 @@
             <div class="activity-event-main">
               <div>
                 <strong>{{ event.event_label }}</strong>
-                <span class="status-pill {{ event.status }}">{{ event.status }}</span>
+                {{ ui.status_pill(event.status, event.status) }}
               </div>
               <p>{{ event.summary }}</p>
               <small>
@@ -507,17 +486,13 @@
           </section>
 
           <section class="panel live-readiness-panel" id="live-hermes-readiness">
-            <div class="panel-header">
-              <div>
-                <h2>Live Hermes readiness</h2>
-                <p class="panel-kicker">Founder approval and profile gates before live generation.</p>
-              </div>
+            {% call ui.panel_header("Live Hermes readiness", "Founder approval and profile gates before live generation.") %}
               <i data-lucide="shield-check"></i>
-            </div>
+            {% endcall %}
             <div class="quality-check-list" aria-label="Live Hermes readiness checks">
               {% for check in live_readiness_checks %}
               <div class="quality-check-row">
-                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                {{ ui.status_pill(check.status, check.status) }}
                 <div>
                   <strong>{{ check.label }}</strong>
                   <small>{{ check.detail }}</small>
@@ -529,7 +504,7 @@
             </div>
             <div class="live-readiness-actions">
               {% if live_readiness.ready %}
-              <span class="status-pill ready">ready</span>
+              {{ ui.status_pill("ready", "ready") }}
               <strong>Live Hermes gates are satisfied; operator console controls execution.</strong>
               {% elif live_readiness.approval_request_allowed %}
               <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-approval">
@@ -551,9 +526,7 @@
                 <h2>Live execution operator</h2>
                 <p class="panel-kicker">Command preview, config gate, and capture evidence before any real runner attempt.</p>
               </div>
-              <span class="status-pill {% if live_operator.execution_enabled %}urgent{% else %}manual{% endif %}">
-                execution {{ live_operator.execution_status|default("disabled", true) }}
-              </span>
+              {{ ui.status_pill("execution " ~ (live_operator.execution_status|default("disabled", true)), "urgent" if live_operator.execution_enabled else "manual") }}
             </div>
             <div class="operator-warning {% if live_operator.execution_enabled %}operator-warning-enabled{% endif %}">
               <strong>{{ live_operator.env_var|default("HERMES_LIVE_EXECUTION_ENABLED", true) }}</strong>
@@ -597,7 +570,7 @@
               <h3>Operator checklist</h3>
               {% for check in live_operator_checks %}
               <div class="quality-check-row">
-                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                {{ ui.status_pill(check.status, check.status) }}
                 <div>
                   <strong>{{ check.label }}</strong>
                   <small>{{ check.detail }}</small>
@@ -609,7 +582,7 @@
             </div>
             <div class="live-readiness-actions">
               {% if live_operator.run_confirmation_ready %}
-              <span class="status-pill ready">one-run confirmation ready</span>
+              {{ ui.status_pill("one-run confirmation ready", "ready") }}
               <strong>Founder-confirmed run token is fresh for this stage.</strong>
               {% elif live_operator.run_confirmation_request_allowed %}
               <form method="post" action="/projects/{{ project.id }}/stages/{{ active_stage_id }}/live-hermes-run-confirmation">
@@ -622,10 +595,10 @@
                 <i data-lucide="inbox"></i> Open run confirmation
               </a>
               {% elif live_operator.execution_enabled %}
-              <span class="status-pill needed">one-run confirmation needed</span>
+              {{ ui.status_pill("one-run confirmation needed", "needed") }}
               <strong>Complete readiness before requesting a one-run confirmation.</strong>
               {% else %}
-              <span class="status-pill manual">dry-run only</span>
+              {{ ui.status_pill("dry-run only", "manual") }}
               <strong>One-run confirmation is required only when real execution is enabled.</strong>
               {% endif %}
             </div>
@@ -693,13 +666,9 @@
           </section>
 
           <section class="panel review-contract-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Artifact review contract</h2>
-                <p class="panel-kicker">Owner, generation run, sources, checks, and approval context before founder action.</p>
-              </div>
+            {% call ui.panel_header("Artifact review contract", "Owner, generation run, sources, checks, and approval context before founder action.") %}
               <i data-lucide="clipboard-check"></i>
-            </div>
+            {% endcall %}
             {% if has_latest_artifact or generation_run %}
             <div class="review-contract-grid">
               <div>
@@ -760,7 +729,7 @@
               <h3>Quality checks</h3>
               {% for check in artifact_checks %}
               <div class="quality-check-row">
-                <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                {{ ui.status_pill(check.status, check.status) }}
                 <div>
                   <strong>{{ check.label }}</strong>
                   <small>{{ check.evidence }}</small>
@@ -779,13 +748,9 @@
           </section>
 
           <section class="panel intake-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Founder Intake</h2>
-                <p class="panel-kicker">Structured context captured before generation.</p>
-              </div>
+            {% call ui.panel_header("Founder Intake", "Structured context captured before generation.") %}
               <i data-lucide="clipboard-list"></i>
-            </div>
+            {% endcall %}
             <div class="intake-grid">
               <div>
                 <span>Target audience</span>
@@ -814,9 +779,7 @@
                   Reusable context for founder decisions, strategy, standards, risks, and launch lessons.
                 </p>
               </div>
-              <span class="status-pill {% if memory_aggregate.reusable_count %}ready{% else %}manual{% endif %}">
-                {{ memory_aggregate.reusable_count|default(0, true) }} reusable
-              </span>
+              {{ ui.status_pill((memory_aggregate.reusable_count|default(0, true)) ~ " reusable", "ready" if memory_aggregate.reusable_count else "manual") }}
             </div>
             <div class="memory-summary-strip" aria-label="Project memory summary">
               <span>Reusable context: {{ memory_aggregate.reusable_count|default(0, true) }}</span>
@@ -848,14 +811,14 @@
               {% for entry in memory_entries %}
               <div class="memory-entry-row {% if entry.reusable %}reusable{% elif entry.status == 'retired' %}retired{% else %}stale{% endif %}">
                 <div>
-                  <span class="status-pill {{ entry.status }}">{{ entry.status }}</span>
+                  {{ ui.status_pill(entry.status, entry.status) }}
                   {% if entry.reusable %}
-                  <span class="status-pill ready">Reusable context</span>
+                  {{ ui.status_pill("Reusable context", "ready") }}
                   {% elif entry.expired or entry.review_due %}
-                  <span class="status-pill needed">review needed</span>
+                  {{ ui.status_pill("review needed", "needed") }}
                   {% endif %}
                   {% if entry.pinned %}
-                  <span class="status-pill planned">pinned</span>
+                  {{ ui.status_pill("pinned", "planned") }}
                   {% endif %}
                   <strong>{{ entry.title }}</strong>
                   <small>
@@ -980,13 +943,9 @@
           </section>
 
           <section class="panel artifact-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Artifact Preview</h2>
-                <p class="panel-kicker">{{ artifact_title }}</p>
-              </div>
-              <span class="status-pill {{ artifact_status }}">{{ artifact_status }}</span>
-            </div>
+            {% call ui.panel_header("Artifact Preview", artifact_title) %}
+              {{ ui.status_pill(artifact_status, artifact_status) }}
+            {% endcall %}
             <article
               class="artifact-preview"
               id="artifact-preview"
@@ -1013,19 +972,12 @@
           </section>
 
           <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Generated Company Workflow</h2>
-                <p class="panel-kicker">
-                  {{ kanban_linked_count }} of {{ workflow_items|length }} workflow tasks linked to Hermes Kanban.
-                </p>
-              </div>
-            </div>
+            {{ ui.panel_header("Generated Company Workflow", (kanban_linked_count) ~ " of " ~ (workflow_items|length) ~ " workflow tasks linked to Hermes Kanban.") }}
             <div class="integration-table compact-table">
               {% for item in workflow_items %}
               <div class="integration-row workflow-item-row">
                 <div>
-                  <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                  {{ ui.status_pill(item.status, item.status) }}
                   <strong>{{ item.title }}</strong>
                   <small>{{ item.phase }} - {{ item.owner_name }} - {{ item.doc_type }}</small>
                   {% if item.kanban_task_id %}
@@ -1044,17 +996,13 @@
           </section>
 
           <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Agent Work Queue</h2>
-                <p class="panel-kicker">Read-first operating queue linked to wizard stages.</p>
-              </div>
+            {% call ui.panel_header("Agent Work Queue", "Read-first operating queue linked to wizard stages.") %}
               <a href="/queue?project_id={{ project.id }}">Open</a>
-            </div>
+            {% endcall %}
             <div class="queue-strip compact">
               {% for item in queue_items %}
               <a class="queue-strip-row" href="/queue?project_id={{ project.id }}&owner_agent_id={{ item.owner_agent_id }}">
-                <span class="status-pill {{ item.status }}">{{ item.status }}</span>
+                {{ ui.status_pill(item.status, item.status) }}
                 <div>
                   <strong>{{ item.title }}</strong>
                   <small>
@@ -1066,7 +1014,7 @@
                   {% endif %}
                 </div>
                 {% if item.founder_action_required %}
-                <span class="status-pill urgent">founder</span>
+                {{ ui.status_pill("founder", "urgent") }}
                 {% endif %}
               </a>
               {% else %}
@@ -1089,16 +1037,14 @@
                   {% endif %}
                 </p>
               </div>
-              <span class="status-pill {{ review_aggregate.status|default('blocked', true) }}">
-                {{ review_aggregate.status|default("blocked", true) }}
-              </span>
+              {{ ui.status_pill(review_aggregate.status|default("blocked", true), review_aggregate.status|default('blocked', true)) }}
             </div>
             {% if review_records %}
             <div class="quality-check-list" aria-label="Multi-agent review records">
               {% for reviewer in review_records %}
               <div class="quality-check-row">
                 <span>{{ reviewer.reviewer_name }} <code>{{ reviewer.reviewer_agent_id }}</code></span>
-                <span class="status-pill {{ reviewer.verdict }}">{{ reviewer.verdict }}</span>
+                {{ ui.status_pill(reviewer.verdict, reviewer.verdict) }}
               </div>
               {% endfor %}
             </div>
@@ -1157,20 +1103,16 @@
               Run multi-agent review
             </button>
             {% else %}
-            <span class="status-pill approved">Review approved</span>
+            {{ ui.status_pill("Review approved", "approved") }}
             {% endif %}
           </section>
         </div>
 
         <aside class="stage-side-column">
           <section class="panel readiness-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Founder Readiness</h2>
-                <p class="panel-kicker">Decision and handoff gates.</p>
-              </div>
+            {% call ui.panel_header("Founder Readiness", "Decision and handoff gates.") %}
               <i data-lucide="shield-check"></i>
-            </div>
+            {% endcall %}
             <div class="readiness-stack">
               <div class="readiness-line">
                 <span>Current stage</span>
@@ -1212,9 +1154,7 @@
                   {% endif %}
                 </p>
               </div>
-              <span class="status-pill {{ operating_loop_aggregate.status|default('blocked', true) }}">
-                {{ operating_loop_aggregate.status|default("blocked", true) }}
-              </span>
+              {{ ui.status_pill(operating_loop_aggregate.status|default("blocked", true), operating_loop_aggregate.status|default('blocked', true)) }}
             </div>
             <div class="readiness-stack">
               <div class="readiness-line">
@@ -1272,9 +1212,7 @@
                   {% endif %}
                 </p>
               </div>
-              <span class="status-pill {{ dispatch_preview_queue.status|default('blocked', true) }}">
-                {{ dispatch_preview_queue.status|default("blocked", true)|replace("_", " ") }}
-              </span>
+              {{ ui.status_pill(dispatch_preview_queue.status|default("blocked", true)|replace("_", " "), dispatch_preview_queue.status|default('blocked', true)) }}
             </div>
             <div class="readiness-stack">
               <div class="readiness-line">
@@ -1323,9 +1261,7 @@
                   {{ item.label }}
                   <small>{{ item.platform }} - {{ item.owner_agent_id }}</small>
                 </span>
-                <span class="status-pill {{ item.status }}">
-                  {{ item.status|replace("_", " ") }}
-                </span>
+                {{ ui.status_pill(item.status|replace("_", " "), item.status) }}
               </div>
               {% endfor %}
             </div>
@@ -1353,7 +1289,7 @@
               </div>
               <div class="quality-check-row">
                 <span>External dispatch still disabled</span>
-                <span class="status-pill consumed">consumed</span>
+                {{ ui.status_pill("consumed", "consumed") }}
               </div>
             </div>
             {% endif %}
@@ -1368,9 +1304,7 @@
                   External dispatch runner disabled
                   {% endif %}
                 </span>
-                <span class="status-pill {{ dispatch_preview_latest_runner.status }}">
-                  {{ dispatch_preview_latest_runner.status }}
-                </span>
+                {{ ui.status_pill(dispatch_preview_latest_runner.status, dispatch_preview_latest_runner.status) }}
               </div>
               <div class="quality-check-row">
                 <span>Runner label</span>
@@ -1378,9 +1312,7 @@
               </div>
               <div class="quality-check-row">
                 <span>{{ dispatch_preview_command_boundary.name|default("Hermes command boundary", true) }}</span>
-                <span class="status-pill {{ dispatch_preview_command_boundary.status|default('disabled', true) }}">
-                  {{ dispatch_preview_command_boundary.status|default("disabled", true) }}
-                </span>
+                {{ ui.status_pill(dispatch_preview_command_boundary.status|default("disabled", true), dispatch_preview_command_boundary.status|default('disabled', true)) }}
               </div>
               <div class="quality-check-row">
                 <span>Command fingerprints</span>
@@ -1447,13 +1379,9 @@
           </section>
 
           <section class="panel kanban-gate-panel" id="kanban-push">
-            <div class="panel-header">
-              <div>
-                <h2>Kanban Push</h2>
-                <p class="panel-kicker">Visible after task-stage approval and Kanban verification.</p>
-              </div>
+            {% call ui.panel_header("Kanban Push", "Visible after task-stage approval and Kanban verification.") %}
               <i data-lucide="kanban-square"></i>
-            </div>
+            {% endcall %}
             {% if kanban_gate_open %}
             <form method="post" action="/projects/{{ project.id }}/kanban">
               <button class="primary-button full-width-button" type="submit">
@@ -1490,13 +1418,9 @@
           </section>
 
           <section class="panel codex-gate-panel" id="codex-execution">
-            <div class="panel-header">
-              <div>
-                <h2>Codex Execution</h2>
-                <p class="panel-kicker">Future implementation handoff remains founder-gated.</p>
-              </div>
+            {% call ui.panel_header("Codex Execution", "Future implementation handoff remains founder-gated.") %}
               <i data-lucide="square-terminal"></i>
-            </div>
+            {% endcall %}
             <p class="empty-state gate-copy" id="codex-gate-reason">
               {% if codex_latest_run.status == "completed" %}
               Git worktree ready. Founder-approved Codex execution created the planned
@@ -1524,7 +1448,7 @@
               {% for gate in codex_gates.values() %}
               <div class="quality-check-row">
                 <span>{{ gate.label }}</span>
-                <span class="status-pill {{ gate.status }}">{{ gate.status }}</span>
+                {{ ui.status_pill(gate.status, gate.status) }}
               </div>
               {% endfor %}
             </div>
@@ -1538,9 +1462,7 @@
             <div class="quality-check-list" aria-label="Codex runner evidence">
               <div class="quality-check-row">
                 <span>Runner status</span>
-                <span class="status-pill {{ codex_latest_run.status }}">
-                  {{ codex_latest_run.status }}
-                </span>
+                {{ ui.status_pill(codex_latest_run.status, codex_latest_run.status) }}
               </div>
               <div class="quality-check-row">
                 <span>Approval consumed</span>
@@ -1553,9 +1475,9 @@
               <div class="quality-check-row">
                 <span>External execution</span>
                 {% if codex_latest_run.external_execution_enabled %}
-                <span class="status-pill urgent">External execution enabled</span>
+                {{ ui.status_pill("External execution enabled", "urgent") }}
                 {% else %}
-                <span class="status-pill manual">External execution disabled</span>
+                {{ ui.status_pill("External execution disabled", "manual") }}
                 {% endif %}
               </div>
             </div>
@@ -1590,7 +1512,7 @@
               Open Codex execution approval
             </a>
             {% elif codex_state.founder_approved_for_execution %}
-            <span class="status-pill ready">founder-approved</span>
+            {{ ui.status_pill("founder-approved", "ready") }}
             {% endif %}
             {% if codex_runner.queue_request_allowed %}
             <form method="post" action="/projects/{{ project.id }}/codex-execution-run">
@@ -1600,9 +1522,9 @@
               </button>
             </form>
             {% elif codex_runner.queue_open %}
-            <span class="status-pill queued">Codex runner queued</span>
+            {{ ui.status_pill("Codex runner queued", "queued") }}
             {% elif codex_latest_run.status == "completed" %}
-            <span class="status-pill ready">Git worktree ready</span>
+            {{ ui.status_pill("Git worktree ready", "ready") }}
             {% endif %}
             {% if codex_runner.queue_open %}
             <form method="post" action="/projects/{{ project.id }}/codex-execution-real-run">
@@ -1624,13 +1546,9 @@
           </section>
 
           <section class="panel stage-artifacts-panel">
-            <div class="panel-header">
-              <div>
-                <h2>Artifact history</h2>
-                <p class="panel-kicker">Generated outputs by stage.</p>
-              </div>
+            {% call ui.panel_header("Artifact history", "Generated outputs by stage.") %}
               <i data-lucide="files"></i>
-            </div>
+            {% endcall %}
             <div class="artifact-list">
               {% for stage in stages %}
               {% set stage_id = stage.id|default(stage.stage_id|default(stage.slug|default(stage, true), true), true) %}
