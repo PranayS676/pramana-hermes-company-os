@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -83,13 +84,9 @@
 
       <section class="memory-search-layout">
         <aside class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Filters</h2>
-              <p class="panel-kicker">Active status is the default; retired stays hidden.</p>
-            </div>
+          {% call ui.panel_header("Filters", "Active status is the default; retired stays hidden.") %}
             <i data-lucide="sliders-horizontal"></i>
-          </div>
+          {% endcall %}
           <form class="stacked-form" method="get" action="/memory/search">
             <label>
               Search text
@@ -133,13 +130,9 @@
         </aside>
 
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Results</h2>
-              <p class="panel-kicker">Cross-project memory ordered by company-wide, pinned, then recency.</p>
-            </div>
-            <span class="status-pill ready">{{ results|length }} shown</span>
-          </div>
+          {% call ui.panel_header("Results", "Cross-project memory ordered by company-wide, pinned, then recency.") %}
+            {{ ui.status_pill((results|length) ~ " shown", "ready") }}
+          {% endcall %}
 
           {% if results %}
           <table class="memory-search-results">
@@ -167,7 +160,7 @@
                   {% endif %}
                 </td>
                 <td>{{ entry.category_label }}</td>
-                <td><span class="status-pill {{ entry.status }}">{{ entry.status|title }}</span></td>
+                <td>{{ ui.status_pill(entry.status|title, entry.status) }}</td>
                 <td>{{ entry.confidence|title }}</td>
               </tr>
               {% endfor %}

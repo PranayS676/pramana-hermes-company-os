@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -253,7 +254,7 @@
         <section class="readiness-grid" aria-label="Readiness checks">
           {% for item in readiness %}
           <div class="readiness-card {{ item.status }}">
-            <span class="status-pill">{{ item.status }}</span>
+            {{ ui.status_pill(item.status) }}
             <strong>{{ item.label }}</strong>
             <small>{{ item.detail }}</small>
           </div>
@@ -262,10 +263,7 @@
 
         <section class="workspace-grid">
           <div class="panel wide" id="input-import">
-            <div class="panel-header">
-              <h2>Founder Reply Import</h2>
-              <a href="/setup/founder-input-request.md">Request packet</a>
-            </div>
+            {{ ui.panel_header("Founder Reply Import", link_url="/setup/founder-input-request.md", link_label="Request packet") }}
             {% if input_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Input import</strong>
@@ -297,10 +295,7 @@
           </div>
 
           <div class="panel wide" id="profile-personalization-import">
-            <div class="panel-header">
-              <h2>Profile Personalization Import</h2>
-              <a href="/setup/profile-personalization-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Profile Personalization Import", link_url="/setup/profile-personalization-template.md", link_label="Reply template") }}
             {% if profile_personalization_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Profile import</strong>
@@ -332,10 +327,7 @@
           </div>
 
           <div class="panel wide" id="slack-channel-import">
-            <div class="panel-header">
-              <h2>Slack Channel ID Import</h2>
-              <a href="/setup/slack-channel-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Slack Channel ID Import", link_url="/setup/slack-channel-template.md", link_label="Reply template") }}
             {% if slack_channel_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Slack channel import</strong>
@@ -367,10 +359,7 @@
           </div>
 
           <div class="panel wide" id="slack-bot-user-import">
-            <div class="panel-header">
-              <h2>Slack Bot User ID Import</h2>
-              <a href="/setup/slack-bot-user-map-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Slack Bot User ID Import", link_url="/setup/slack-bot-user-map-template.md", link_label="Reply template") }}
             {% if slack_bot_user_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Slack bot user import</strong>
@@ -402,10 +391,7 @@
           </div>
 
           <div class="panel wide" id="telegram-recipient-import">
-            <div class="panel-header">
-              <h2>Telegram Recipient ID Import</h2>
-              <a href="/setup/telegram-recipient-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Telegram Recipient ID Import", link_url="/setup/telegram-recipient-template.md", link_label="Reply template") }}
             {% if telegram_recipient_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Telegram recipient import</strong>
@@ -437,9 +423,7 @@
           </div>
 
           <div class="panel wide" id="inputs">
-            <div class="panel-header">
-              <h2>Deferred Setup Inputs</h2>
-            </div>
+            {{ ui.panel_header("Deferred Setup Inputs") }}
             <form class="setup-input-grid" method="post" action="/setup/inputs">
               {% for input in setup_inputs %}
               <label class="setup-input {{ input.group_name }}">
@@ -462,13 +446,11 @@
           </div>
 
           <div class="panel wide">
-            <div class="panel-header">
-              <h2>Setup Plan</h2>
-            </div>
+            {{ ui.panel_header("Setup Plan") }}
             <div class="setup-timeline">
               {% for step in setup_steps %}
               <div class="timeline-row">
-                <span class="status-pill {{ step.status }}">{{ step.status }}</span>
+                {{ ui.status_pill(step.status, step.status) }}
                 <div>
                   <strong>{{ step.name }}</strong>
                   <small>{{ step.phase }} - {{ step.owner }}</small>
@@ -482,10 +464,7 @@
           </div>
 
           <div class="panel wide" id="schedule-config-import">
-            <div class="panel-header">
-              <h2>Schedule Configuration Import</h2>
-              <a href="/setup/schedule-config-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Schedule Configuration Import", link_url="/setup/schedule-config-template.md", link_label="Reply template") }}
             {% if schedule_config_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Schedule config import</strong>
@@ -517,15 +496,11 @@
           </div>
 
           <div class="panel wide" id="schedules">
-            <div class="panel-header">
-              <h2>Standup Schedules</h2>
-            </div>
+            {{ ui.panel_header("Standup Schedules") }}
             <div class="setup-timeline">
               {% for schedule in schedules %}
               <form class="timeline-row" method="post" action="/setup/schedules/{{ schedule.id }}">
-                <span class="status-pill {% if schedule.active %}configured{% else %}deferred{% endif %}">
-                  {% if schedule.active %}active{% else %}paused{% endif %}
-                </span>
+                {{ ui.status_pill("active" if schedule.active else "paused", "configured" if schedule.active else "deferred") }}
                 <div class="setup-input-grid">
                   <label class="setup-input">
                     <span>Name</span>
@@ -565,14 +540,11 @@
           </div>
 
           <div class="panel wide" id="llm-presets">
-            <div class="panel-header">
-              <h2>LLM Provider Presets</h2>
-              <a href="/setup/llm-provider-presets.md">Preset plan</a>
-            </div>
+            {{ ui.panel_header("LLM Provider Presets", link_url="/setup/llm-provider-presets.md", link_label="Preset plan") }}
             <div class="setup-timeline">
               {% for preset in llm_presets %}
               <div class="timeline-row">
-                <span class="status-pill {{ preset.status }}">{{ preset.status }}</span>
+                {{ ui.status_pill(preset.status, preset.status) }}
                 <div>
                   <strong>{{ preset.label }}</strong>
                   <p>{{ preset.description }}</p>
@@ -589,10 +561,7 @@
           </div>
 
           <div class="panel wide" id="llm-preference-import">
-            <div class="panel-header">
-              <h2>LLM Preference Import</h2>
-              <a href="/setup/llm-preference-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("LLM Preference Import", link_url="/setup/llm-preference-template.md", link_label="Reply template") }}
             {% if llm_preference_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>LLM preference import</strong>
@@ -624,9 +593,7 @@
           </div>
 
           <div class="panel wide" id="models">
-            <div class="panel-header">
-              <h2>LLM Profile Preferences</h2>
-            </div>
+            {{ ui.panel_header("LLM Profile Preferences") }}
             <div class="setup-timeline">
               {% for preference in model_preferences %}
               <form
@@ -634,7 +601,7 @@
                 method="post"
                 action="/setup/model-preferences/{{ preference.agent_id }}"
               >
-                <span class="status-pill {{ preference.status }}">{{ preference.status }}</span>
+                {{ ui.status_pill(preference.status, preference.status) }}
                 <div class="setup-input-grid">
                   <label class="setup-input">
                     <span>Profile</span>
@@ -685,10 +652,7 @@
           </div>
 
           <div class="panel wide" id="profile-installation-tracking">
-            <div class="panel-header">
-              <h2>Profile Installation Tracking</h2>
-              <a href="/setup/profile-installation.md">Installation audit</a>
-            </div>
+            {{ ui.panel_header("Profile Installation Tracking", link_url="/setup/profile-installation.md", link_label="Installation audit") }}
             {% if profile_installation_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Profile audit import</strong>
@@ -722,7 +686,7 @@
               {% for check in profile_installation_checks %}
               <div class="integration-row" id="profile-installation-tracking-{{ check.id }}">
                 <div>
-                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  {{ ui.status_pill(check.status, check.status) }}
                   <strong>{{ check.agent_name }} - {{ check.label }}</strong>
                   <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
                   <p>{{ check.instructions }}</p>
@@ -752,17 +716,13 @@
           </div>
 
           <div class="panel wide" id="profile-smoke">
-            <div class="panel-header">
-              <h2>Profile Smoke Checks</h2>
-            </div>
+            {{ ui.panel_header("Profile Smoke Checks") }}
             <div class="setup-timeline">
               {% for preference in model_preferences %}
               {% set smoke_run = profile_smoke_runs.get(preference.agent_id) %}
               {% set smoke_blocker = profile_smoke_blockers.get(preference.agent_id, "") %}
               <div class="timeline-row">
-                <span class="status-pill {% if smoke_run %}{{ smoke_run.status }}{% else %}deferred{% endif %}">
-                  {% if smoke_run %}{{ smoke_run.status }}{% else %}not run{% endif %}
-                </span>
+                {{ ui.status_pill(smoke_run.status if smoke_run else "not run", smoke_run.status if smoke_run else "deferred") }}
                 <div>
                   <strong>{{ preference.agent_name }}</strong>
                   <small>{{ preference.hermes_command }} - {{ preference.provider }} / {{ preference.model }}</small>
@@ -792,11 +752,10 @@
           </div>
 
           <div class="panel wide" id="profile-acceptance-tracking">
-            <div class="panel-header">
-              <h2>Profile Acceptance Tracking</h2>
+            {% call ui.panel_header("Profile Acceptance Tracking") %}
               <a href="/setup/profile-acceptance.md">Acceptance suite</a>
               <a href="/setup/profile-acceptance-template.md">Reply template</a>
-            </div>
+            {% endcall %}
             {% if profile_acceptance_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Acceptance import</strong>
@@ -829,7 +788,7 @@
               {% for check in profile_acceptance_checks %}
               <div class="integration-row" id="profile-acceptance-tracking-{{ check.id }}">
                 <div>
-                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  {{ ui.status_pill(check.status, check.status) }}
                   <strong>{{ check.agent_name }} - {{ check.title }}</strong>
                   <small>{{ check.hermes_command }} - {{ check.agent_role }}</small>
                   <p>{{ check.instructions }}</p>
@@ -863,10 +822,7 @@
           </div>
 
           <div class="panel wide" id="messaging-verification">
-            <div class="panel-header">
-              <h2>Messaging Verification</h2>
-              <a href="/setup/messaging-verification-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Messaging Verification", link_url="/setup/messaging-verification-template.md", link_label="Reply template") }}
             {% if messaging_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Messaging import</strong>
@@ -899,7 +855,7 @@
               {% for check in messaging_checks %}
               <div class="integration-row">
                 <div>
-                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  {{ ui.status_pill(check.status, check.status) }}
                   <strong>{{ check.label }}</strong>
                   <small>{{ check.platform }} - {{ check.owner_name }}</small>
                   <p>{{ check.instructions }}</p>
@@ -933,10 +889,7 @@
           </div>
 
           <div class="panel wide" id="credential-status-import">
-            <div class="panel-header">
-              <h2>Credential Status Import</h2>
-              <a href="/setup/credential-status-template.md">Status template</a>
-            </div>
+            {{ ui.panel_header("Credential Status Import", link_url="/setup/credential-status-template.md", link_label="Status template") }}
             {% if credential_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Credential import</strong>
@@ -968,14 +921,12 @@
           </div>
 
           <div class="panel wide" id="secret-status">
-            <div class="panel-header">
-              <h2>External Secret Status</h2>
-            </div>
+            {{ ui.panel_header("External Secret Status") }}
             <div class="integration-table">
               {% for secret in secret_requirements %}
               <div class="integration-row">
                 <div>
-                  <span class="status-pill {{ secret.status }}">{{ secret.status }}</span>
+                  {{ ui.status_pill(secret.status, secret.status) }}
                   <strong>{{ secret.label }}</strong>
                   <small>
                     {{ secret.category }}
@@ -1015,9 +966,7 @@
           </div>
 
           <div class="panel" id="profiles">
-            <div class="panel-header">
-              <h2>Profile Commands</h2>
-            </div>
+            {{ ui.panel_header("Profile Commands") }}
             <div class="command-list">
               {% for command in profile_commands %}
               <div class="command-row">
@@ -1042,9 +991,7 @@
           </div>
 
           <div class="panel">
-            <div class="panel-header">
-              <h2>Activation Commands</h2>
-            </div>
+            {{ ui.panel_header("Activation Commands") }}
             <div class="command-list">
               {% for command in activation_commands %}
               <div class="command-row">
@@ -1062,9 +1009,7 @@
           </div>
 
           <div class="panel">
-            <div class="panel-header">
-              <h2>Standup Cron</h2>
-            </div>
+            {{ ui.panel_header("Standup Cron") }}
             <div class="command-list">
               {% for command in cron_commands %}
               <code>{{ command }}</code>
@@ -1073,10 +1018,7 @@
           </div>
 
           <div class="panel wide" id="schedule-verification">
-            <div class="panel-header">
-              <h2>Schedule Verification</h2>
-              <a href="/setup/schedule-verification-template.md">Reply template</a>
-            </div>
+            {{ ui.panel_header("Schedule Verification", link_url="/setup/schedule-verification-template.md", link_label="Reply template") }}
             {% if schedule_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Schedule import</strong>
@@ -1109,7 +1051,7 @@
               {% for check in schedule_checks %}
               <div class="integration-row">
                 <div>
-                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  {{ ui.status_pill(check.status, check.status) }}
                   <strong>{{ check.label }}</strong>
                   <small>
                     {{ "%02d"|format(check.schedule_hour) }}:{{ "%02d"|format(check.schedule_minute) }}
@@ -1147,15 +1089,14 @@
           </div>
 
           <div class="panel wide" id="kanban-verification">
-            <div class="panel-header">
-              <h2>Kanban Verification</h2>
+            {% call ui.panel_header("Kanban Verification") %}
               <a href="/setup/kanban-verification-template.md">Reply template</a>
               <form method="post" action="/setup/kanban/diagnostics">
                 <button class="primary-button" type="submit">
                   <i data-lucide="radar"></i> Kanban diagnostics
                 </button>
               </form>
-            </div>
+            {% endcall %}
             {% if kanban_import_summary.imported is not none %}
             <section class="notice-band compact">
               <strong>Kanban import</strong>
@@ -1188,7 +1129,7 @@
               {% for check in kanban_checks %}
               <div class="integration-row">
                 <div>
-                  <span class="status-pill {{ check.status }}">{{ check.status }}</span>
+                  {{ ui.status_pill(check.status, check.status) }}
                   <strong>{{ check.label }}</strong>
                   <small>{{ check.check_type }}</small>
                   <p>{{ check.instructions }}</p>
@@ -1218,14 +1159,12 @@
           </div>
 
           <div class="panel wide" id="integrations">
-            <div class="panel-header">
-              <h2>Integrations</h2>
-            </div>
+            {{ ui.panel_header("Integrations") }}
             <div class="integration-table">
               {% for integration in integrations %}
               <div class="integration-row">
                 <div>
-                  <span class="status-pill {{ integration.status }}">{{ integration.status }}</span>
+                  {{ ui.status_pill(integration.status, integration.status) }}
                   <strong>{{ integration.name }}</strong>
                   <small>{{ integration.category }}{% if integration.owner_name %} - {{ integration.owner_name }}{% endif %}</small>
                   <p>{{ integration.setup_notes }}</p>

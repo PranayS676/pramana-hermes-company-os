@@ -1,3 +1,4 @@
+{% import "_macros.html" as ui %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -62,13 +63,9 @@
 
       <section class="queue-layout">
         <aside class="panel queue-controls">
-          <div class="panel-header">
-            <div>
-              <h2>Filters</h2>
-              <p class="panel-kicker">Blocked and review-needed work stays visible first.</p>
-            </div>
+          {% call ui.panel_header("Filters", "Blocked and review-needed work stays visible first.") %}
             <i data-lucide="sliders-horizontal"></i>
-          </div>
+          {% endcall %}
           <form class="stacked-form" method="get" action="/queue">
             <label>
               State
@@ -177,23 +174,19 @@
         </aside>
 
         <section class="panel queue-table-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Queue items</h2>
-              <p class="panel-kicker">`needs_review` is not approved. External handoffs are status only.</p>
-            </div>
-            <span class="status-pill planned">{{ items|length }} shown</span>
-          </div>
+          {% call ui.panel_header("Queue items", "`needs_review` is not approved. External handoffs are status only.") %}
+            {{ ui.status_pill((items|length) ~ " shown", "planned") }}
+          {% endcall %}
 
           <div class="queue-row-list">
             {% for item in items %}
             <article class="queue-row {{ item.status }}">
               <div class="queue-row-main">
                 <div class="queue-title-line">
-                  <span class="status-pill {{ item.status }}" aria-label="Queue state: {{ state_labels[item.status] }}">{{ state_labels[item.status] }}</span>
-                  <span class="status-pill {{ item.priority }}" aria-label="Queue priority: {{ priority_labels[item.priority] }}">{{ priority_labels[item.priority] }}</span>
+                  {{ ui.status_pill(state_labels[item.status], item.status, "Queue state: " ~ (state_labels[item.status])) }}
+                  {{ ui.status_pill(priority_labels[item.priority], item.priority, "Queue priority: " ~ (priority_labels[item.priority])) }}
                   {% if item.founder_action_required %}
-                  <span class="status-pill urgent">Founder required</span>
+                  {{ ui.status_pill("Founder required", "urgent") }}
                   {% endif %}
                   <strong>{{ item.title }}</strong>
                 </div>

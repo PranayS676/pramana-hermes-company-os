@@ -1,0 +1,48 @@
+{# Shared UI partials for Hermes Company OS templates.
+
+   status_pill(label, status="", aria="")
+     Status badge. `status` adds the variant class (ready, urgent, needed, ...);
+     `aria` sets an explicit aria-label when the visible text isn't enough.
+
+   panel_header(title, kicker="", link_url="", link_label="")
+     Panel heading. Pass `kicker` for the muted sub-line, `link_url`/`link_label`
+     for a single trailing link. For a richer trailing area (icon, pill,
+     multiple links, a form) use a {% call %} block — the caller body is
+     rendered after the heading.
+
+   list_row(title)
+     The strong/small heading block shared by task, run, standup, and queue
+     rows. Provide the subtitle via a {% call %} block; omit it for no subtitle.
+#}
+
+{% macro status_pill(label, status="", aria="") -%}
+<span class="status-pill{% if status %} {{ status }}{% endif %}"{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{% macro panel_header(title, kicker="", link_url="", link_label="") -%}
+<div class="panel-header">
+  {%- if kicker %}
+  <div>
+    <h2>{{ title }}</h2>
+    <p class="panel-kicker">{{ kicker }}</p>
+  </div>
+  {%- else %}
+  <h2>{{ title }}</h2>
+  {%- endif %}
+  {%- if link_url %}
+  <a href="{{ link_url }}">{{ link_label }}</a>
+  {%- endif %}
+  {%- if caller %}
+  {{ caller() }}
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% macro list_row(title) -%}
+<div>
+  <strong>{{ title }}</strong>
+  {%- if caller %}
+  <small>{{ caller() }}</small>
+  {%- endif %}
+</div>
+{%- endmacro %}
