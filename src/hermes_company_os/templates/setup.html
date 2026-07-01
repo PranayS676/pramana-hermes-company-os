@@ -24,8 +24,8 @@
         <nav>
           <a href="/"><i data-lucide="layout-dashboard"></i> Dashboard</a>
           <a class="active" href="/setup"><i data-lucide="settings-2"></i> Setup</a>
-          <a href="#profiles"><i data-lucide="users-round"></i> Profiles</a>
-          <a href="#integrations"><i data-lucide="plug"></i> Integrations</a>
+          <a href="#grp-profiles"><i data-lucide="users-round"></i> Profiles</a>
+          <a href="#grp-integrations"><i data-lucide="plug"></i> Integrations</a>
         </nav>
       </aside>
 
@@ -261,8 +261,21 @@
           {% endfor %}
         </section>
 
-        <section class="workspace-grid">
-          <div class="panel wide" id="input-import">
+                <nav class="setup-subnav" aria-label="Setup sections">
+            <a href="#grp-inputs"><i data-lucide="clipboard-list"></i> Founder inputs <span class="setup-subnav-count">6</span></a>
+            <a href="#grp-schedules"><i data-lucide="calendar-clock"></i> Plan & schedules <span class="setup-subnav-count">3</span></a>
+            <a href="#grp-models"><i data-lucide="brain-circuit"></i> Language models <span class="setup-subnav-count">3</span></a>
+            <a href="#grp-profiles"><i data-lucide="users-round"></i> Agent profiles <span class="setup-subnav-count">3</span></a>
+            <a href="#grp-messaging"><i data-lucide="message-square"></i> Messaging & credentials <span class="setup-subnav-count">3</span></a>
+            <a href="#grp-commands"><i data-lucide="square-terminal"></i> Commands & activation <span class="setup-subnav-count">3</span></a>
+            <a href="#grp-verification"><i data-lucide="shield-check"></i> Verification <span class="setup-subnav-count">2</span></a>
+            <a href="#grp-integrations"><i data-lucide="plug"></i> Integrations <span class="setup-subnav-count">1</span></a>
+        </nav>
+        <div class="setup-groups">
+          <details class="setup-group" open id="grp-inputs">
+            <summary><span><i data-lucide="clipboard-list"></i> Founder inputs</span><span class="setup-group-count">6</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="input-import">
             {{ ui.panel_header("Founder Reply Import", link_url="/setup/founder-input-request.md", link_label="Request packet") }}
             {% if input_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -293,8 +306,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="profile-personalization-import">
+<div class="panel wide" id="profile-personalization-import">
             {{ ui.panel_header("Profile Personalization Import", link_url="/setup/profile-personalization-template.md", link_label="Reply template") }}
             {% if profile_personalization_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -325,8 +337,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="slack-channel-import">
+<div class="panel wide" id="slack-channel-import">
             {{ ui.panel_header("Slack Channel ID Import", link_url="/setup/slack-channel-template.md", link_label="Reply template") }}
             {% if slack_channel_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -357,8 +368,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="slack-bot-user-import">
+<div class="panel wide" id="slack-bot-user-import">
             {{ ui.panel_header("Slack Bot User ID Import", link_url="/setup/slack-bot-user-map-template.md", link_label="Reply template") }}
             {% if slack_bot_user_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -389,8 +399,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="telegram-recipient-import">
+<div class="panel wide" id="telegram-recipient-import">
             {{ ui.panel_header("Telegram Recipient ID Import", link_url="/setup/telegram-recipient-template.md", link_label="Reply template") }}
             {% if telegram_recipient_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -421,8 +430,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="inputs">
+<div class="panel wide" id="inputs">
             {{ ui.panel_header("Deferred Setup Inputs") }}
             <form class="setup-input-grid" method="post" action="/setup/inputs">
               {% for input in setup_inputs %}
@@ -444,8 +452,12 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-schedules">
+            <summary><span><i data-lucide="calendar-clock"></i> Plan & schedules</span><span class="setup-group-count">3</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide">
             {{ ui.panel_header("Setup Plan") }}
             <div class="setup-timeline">
               {% for step in setup_steps %}
@@ -462,8 +474,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="schedule-config-import">
+<div class="panel wide" id="schedule-config-import">
             {{ ui.panel_header("Schedule Configuration Import", link_url="/setup/schedule-config-template.md", link_label="Reply template") }}
             {% if schedule_config_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -494,8 +505,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="schedules">
+<div class="panel wide" id="schedules">
             {{ ui.panel_header("Standup Schedules") }}
             <div class="setup-timeline">
               {% for schedule in schedules %}
@@ -538,8 +548,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="llm-presets">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-models">
+            <summary><span><i data-lucide="brain-circuit"></i> Language models</span><span class="setup-group-count">3</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="llm-presets">
             {{ ui.panel_header("LLM Provider Presets", link_url="/setup/llm-provider-presets.md", link_label="Preset plan") }}
             <div class="setup-timeline">
               {% for preset in llm_presets %}
@@ -559,8 +573,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="llm-preference-import">
+<div class="panel wide" id="llm-preference-import">
             {{ ui.panel_header("LLM Preference Import", link_url="/setup/llm-preference-template.md", link_label="Reply template") }}
             {% if llm_preference_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -591,8 +604,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="models">
+<div class="panel wide" id="models">
             {{ ui.panel_header("LLM Profile Preferences") }}
             <div class="setup-timeline">
               {% for preference in model_preferences %}
@@ -650,8 +662,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="profile-installation-tracking">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-profiles">
+            <summary><span><i data-lucide="users-round"></i> Agent profiles</span><span class="setup-group-count">3</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="profile-installation-tracking">
             {{ ui.panel_header("Profile Installation Tracking", link_url="/setup/profile-installation.md", link_label="Installation audit") }}
             {% if profile_installation_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -714,8 +730,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="profile-smoke">
+<div class="panel wide" id="profile-smoke">
             {{ ui.panel_header("Profile Smoke Checks") }}
             <div class="setup-timeline">
               {% for preference in model_preferences %}
@@ -750,8 +765,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="profile-acceptance-tracking">
+<div class="panel wide" id="profile-acceptance-tracking">
             {% call ui.panel_header("Profile Acceptance Tracking") %}
               <a href="/setup/profile-acceptance.md">Acceptance suite</a>
               <a href="/setup/profile-acceptance-template.md">Reply template</a>
@@ -820,8 +834,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="messaging-verification">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-messaging">
+            <summary><span><i data-lucide="message-square"></i> Messaging & credentials</span><span class="setup-group-count">3</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="messaging-verification">
             {{ ui.panel_header("Messaging Verification", link_url="/setup/messaging-verification-template.md", link_label="Reply template") }}
             {% if messaging_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -887,8 +905,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="credential-status-import">
+<div class="panel wide" id="credential-status-import">
             {{ ui.panel_header("Credential Status Import", link_url="/setup/credential-status-template.md", link_label="Status template") }}
             {% if credential_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -919,8 +936,7 @@
               </button>
             </form>
           </div>
-
-          <div class="panel wide" id="secret-status">
+<div class="panel wide" id="secret-status">
             {{ ui.panel_header("External Secret Status") }}
             <div class="integration-table">
               {% for secret in secret_requirements %}
@@ -964,8 +980,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel" id="profiles">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-commands">
+            <summary><span><i data-lucide="square-terminal"></i> Commands & activation</span><span class="setup-group-count">3</span></summary>
+            <div class="workspace-grid">
+<div class="panel" id="profiles">
             {{ ui.panel_header("Profile Commands") }}
             <div class="command-list">
               {% for command in profile_commands %}
@@ -989,8 +1009,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel">
+<div class="panel">
             {{ ui.panel_header("Activation Commands") }}
             <div class="command-list">
               {% for command in activation_commands %}
@@ -1007,8 +1026,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel">
+<div class="panel">
             {{ ui.panel_header("Standup Cron") }}
             <div class="command-list">
               {% for command in cron_commands %}
@@ -1016,8 +1034,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="schedule-verification">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-verification">
+            <summary><span><i data-lucide="shield-check"></i> Verification</span><span class="setup-group-count">2</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="schedule-verification">
             {{ ui.panel_header("Schedule Verification", link_url="/setup/schedule-verification-template.md", link_label="Reply template") }}
             {% if schedule_import_summary.imported is not none %}
             <section class="notice-band compact">
@@ -1087,8 +1109,7 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="kanban-verification">
+<div class="panel wide" id="kanban-verification">
             {% call ui.panel_header("Kanban Verification") %}
               <a href="/setup/kanban-verification-template.md">Reply template</a>
               <form method="post" action="/setup/kanban/diagnostics">
@@ -1157,8 +1178,12 @@
               {% endfor %}
             </div>
           </div>
-
-          <div class="panel wide" id="integrations">
+            </div>
+          </details>
+          <details class="setup-group" open id="grp-integrations">
+            <summary><span><i data-lucide="plug"></i> Integrations</span><span class="setup-group-count">1</span></summary>
+            <div class="workspace-grid">
+<div class="panel wide" id="integrations">
             {{ ui.panel_header("Integrations") }}
             <div class="integration-table">
               {% for integration in integrations %}
@@ -1195,7 +1220,10 @@
               {% endfor %}
             </div>
           </div>
-        </section>
+            </div>
+          </details>
+        </div>
+
       </main>
     </div>
     <script>lucide.createIcons();</script>
